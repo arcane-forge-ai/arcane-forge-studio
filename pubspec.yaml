@@ -1,0 +1,51 @@
+name: arcane_forge
+description: "A new Flutter project."
+
+# Prevent accidental publishing to pub.dev.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  # cupertino_icons: ^1.0.8
+
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.10
+  provider: ^6.1.2
+  webview_flutter: ^4.9.0
+  webview_windows: ^0.4.0
+  url_launcher: ^6.3.1
+  web_socket_channel: ^3.0.3
+  dio: ^5.8.0+1
+  flutter_markdown: ^0.7.7+1
+  file_picker: ^10.2.0
+  uuid: ^4.5.1
+  shared_preferences: ^2.5.3
+  flutter_gen_ai_chat_ui: ^2.3.0
+  flutter_dotenv: ^5.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Enable generation of localized Strings from arb files.
+  generate: true
+
+  assets:
+    # Add assets from the images directory to the application.
+    - assets/images/
+    - assets/icons/
+    - .env
