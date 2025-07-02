@@ -14,6 +14,10 @@ This Flutter app uses environment variables to configure API endpoints and other
    # API Configuration
    API_BASE_URL=http://localhost:8000
    DEFAULT_USER_ID=-1
+
+   # Supabase
+   SUPABASE_URL=https://your-supabase-url.supabase.co
+   SUPABASE_ANON_KEY=your-supabase-anon-key
    
    # Environment
    ENVIRONMENT=development
@@ -26,6 +30,8 @@ This Flutter app uses environment variables to configure API endpoints and other
 | `API_BASE_URL` | The base URL for your FastAPI backend | `http://localhost:8000` |
 | `DEFAULT_USER_ID` | Default user ID for API requests (-1 for visitors) | `-1` |
 | `ENVIRONMENT` | Current environment (development, staging, production) | `development` |
+| `SUPABASE_URL` | Your Supabase project URL | `https://your-supabase-url.supabase.co` |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key | `your-supabase-anon-key` |
 
 ## Different Environments
 

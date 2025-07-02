@@ -27,3 +27,9 @@ the `lib/src/localization` directory.
 
 To support additional languages, please visit the tutorial on
 [Internationalizing Flutter apps](https://flutter.dev/to/internationalization).
+
+## Authentication
+
+The project uses [Supabase](https://supabase.com) for authentication. Provide
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` in your `.env` file as described in
+`ENVIRONMENT_SETUP.md`.

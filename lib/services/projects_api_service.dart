@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../screens/game_design_assistant/models/project_model.dart';
 import '../providers/settings_provider.dart';
+import '../providers/auth_provider.dart';
 
 class ProjectsApiService {
   // Get configuration from environment variables with fallback defaults
@@ -9,10 +10,12 @@ class ProjectsApiService {
   static int get defaultUserId => int.tryParse(dotenv.env['DEFAULT_USER_ID'] ?? '') ?? -1;
   
   final SettingsProvider? _settingsProvider;
+  final AuthProvider? _authProvider;
   final Dio _dio;
 
-  ProjectsApiService({SettingsProvider? settingsProvider})
+  ProjectsApiService({SettingsProvider? settingsProvider, AuthProvider? authProvider})
       : _settingsProvider = settingsProvider,
+        _authProvider = authProvider,
         _dio = Dio();
 
   /// Get current mock mode setting
@@ -23,7 +26,7 @@ class ProjectsApiService {
       return _mockGetProjects();
     }
 
-    final userIdToUse = userId ?? defaultUserId;
+    final userIdToUse = userId ?? _authProvider?.userId ?? defaultUserId;
     
     try {
       final response = await _dio.get(
@@ -53,7 +56,7 @@ class ProjectsApiService {
       return _mockCreateProject(name: name, description: description);
     }
 
-    final userIdToUse = userId ?? defaultUserId;
+    final userIdToUse = userId ?? _authProvider?.userId ?? defaultUserId;
     
     try {
       final response = await _dio.post(

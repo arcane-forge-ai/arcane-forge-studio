@@ -3,6 +3,9 @@ import 'package:arcane_forge/controllers/menu_app_controller.dart';
 import 'package:arcane_forge/screens/projects/projects_dashboard_screen.dart';
 import 'package:arcane_forge/screens/game_design_assistant/providers/project_provider.dart';
 import 'package:arcane_forge/providers/settings_provider.dart';
+import 'package:arcane_forge/providers/auth_provider.dart';
+import 'package:arcane_forge/screens/login/login_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -20,6 +23,12 @@ void main() async {
     // If .env file doesn't exist, continue with defaults
     debugPrint('Could not load .env file: $e');
   }
+
+  // Initialize Supabase
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL'] ?? '',
+    anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
+  );
 
   // Handle Flutter keyboard assertion errors on Windows
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -46,6 +55,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => MenuAppController()..changeScreen(ScreenType.projects)),
         ChangeNotifierProvider(create: (context) => ProjectProvider()),
         ChangeNotifierProvider(create: (context) => SettingsProvider()),
+        ChangeNotifierProvider(create: (context) => AuthProvider()),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -56,7 +66,14 @@ class MyApp extends StatelessWidget {
               .apply(bodyColor: Colors.white),
           canvasColor: secondaryColor,
         ),
-        home: const ProjectsDashboardScreen(),
+        home: Consumer<AuthProvider>(
+          builder: (context, auth, child) {
+            if (auth.isAuthenticated || auth.isVisitor) {
+              return const ProjectsDashboardScreen();
+            }
+            return const LoginScreen();
+          },
+        ),
       ),
     );
   }

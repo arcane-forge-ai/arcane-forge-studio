@@ -4,6 +4,7 @@ import '../../services/projects_api_service.dart';
 import '../game_design_assistant/models/project_model.dart';
 import '../project/project_dashboard_screen.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/auth_provider.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
@@ -25,8 +26,13 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   /// Get fresh ProjectsApiService instance with current settings
   ProjectsApiService _getProjectsApiService() {
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    return ProjectsApiService(settingsProvider: settingsProvider);
+    final settingsProvider =
+        Provider.of<SettingsProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    return ProjectsApiService(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
   }
 
   Future<void> _loadProjects() async {
