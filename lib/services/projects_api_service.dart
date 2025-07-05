@@ -2,33 +2,39 @@ import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../screens/game_design_assistant/models/project_model.dart';
 import '../providers/settings_provider.dart';
+import '../providers/auth_provider.dart';
+import '../utils/app_constants.dart';
 
 class ProjectsApiService {
   // Get configuration from environment variables with fallback defaults
   static String get baseUrl => dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
-  static int get defaultUserId => int.tryParse(dotenv.env['DEFAULT_USER_ID'] ?? '') ?? -1;
+  static String get defaultUserId => dotenv.env['DEFAULT_USER_ID'] ?? AppConstants.visitorUserId;
   
   final SettingsProvider? _settingsProvider;
+  final AuthProvider? _authProvider;
   final Dio _dio;
 
-  ProjectsApiService({SettingsProvider? settingsProvider})
+  ProjectsApiService({SettingsProvider? settingsProvider, AuthProvider? authProvider})
       : _settingsProvider = settingsProvider,
+        _authProvider = authProvider,
         _dio = Dio();
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? true;
 
-  Future<List<Project>> getProjects({int? userId}) async {
+  Future<List<Project>> getProjects({String? userId}) async {
     if (_useMockMode) {
       return _mockGetProjects();
     }
 
-    final userIdToUse = userId ?? defaultUserId;
+    final userIdToUse = userId ?? _authProvider?.userId ?? defaultUserId;
+    final url = '$baseUrl/api/v1/projects';
+    final queryParams = {'user_id': userIdToUse};
     
     try {
       final response = await _dio.get(
-        '$baseUrl/api/v1/projects',
-        queryParameters: {'user_id': userIdToUse},
+        url,
+        queryParameters: queryParams,
       );
 
       if (response.statusCode == 200) {
@@ -39,30 +45,36 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Projects API Error: $e');
-      // Fallback to mock data on error
-      return _mockGetProjects();
+      print('Request URL: $url');
+      print('Query Parameters: $queryParams');
+      print('Headers: ${_dio.options.headers}');
+      // Re-throw the exception to let the UI handle it properly
+      rethrow;
     }
   }
 
   Future<Project> createProject({
     required String name,
     required String description,
-    int? userId,
+    String? userId,
   }) async {
     if (_useMockMode) {
       return _mockCreateProject(name: name, description: description);
     }
 
-    final userIdToUse = userId ?? defaultUserId;
+    final userIdToUse = userId ?? _authProvider?.userId ?? defaultUserId;
+    final url = '$baseUrl/api/v1/projects';
+    final queryParams = {'user_id': userIdToUse};
+    final requestBody = {
+      'name': name,
+      'description': description,
+    };
     
     try {
       final response = await _dio.post(
-        '$baseUrl/api/v1/projects',
-        queryParameters: {'user_id': userIdToUse},
-        data: {
-          'name': name,
-          'description': description,
-        },
+        url,
+        queryParameters: queryParams,
+        data: requestBody,
       );
 
       if (response.statusCode == 200) {
@@ -72,8 +84,12 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Project Creation API Error: $e');
-      // Fallback to mock creation on error
-      return _mockCreateProject(name: name, description: description);
+      print('Request URL: $url');
+      print('Query Parameters: $queryParams');
+      print('Request Body: $requestBody');
+      print('Headers: ${_dio.options.headers}');
+      // Re-throw the exception to let the UI handle it properly
+      rethrow;
     }
   }
 
@@ -82,8 +98,10 @@ class ProjectsApiService {
       return _mockGetProjectById(projectId);
     }
 
+    final url = '$baseUrl/api/v1/projects/$projectId';
+
     try {
-      final response = await _dio.get('$baseUrl/api/v1/projects/$projectId');
+      final response = await _dio.get(url);
 
       if (response.statusCode == 200) {
         return Project.fromApiJson(response.data);
@@ -92,8 +110,10 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Project Get API Error: $e');
-      // Fallback to mock data on error
-      return _mockGetProjectById(projectId);
+      print('Request URL: $url');
+      print('Headers: ${_dio.options.headers}');
+      // Re-throw the exception to let the UI handle it properly
+      rethrow;
     }
   }
 
@@ -105,6 +125,7 @@ class ProjectsApiService {
         name: 'Fantasy RPG Adventure',
         description: 'A magical world filled with quests, dragons, and epic battles. Build your character and explore vast kingdoms.',
         createdAt: DateTime.now().subtract(const Duration(days: 7)),
+        userId: AppConstants.visitorUserId,
         hasKnowledgeBase: true,
       ),
       Project(
@@ -112,6 +133,7 @@ class ProjectsApiService {
         name: 'Sci-Fi Space Shooter',
         description: 'Fast-paced action in the depths of space. Command your ship through asteroid fields and alien encounters.',
         createdAt: DateTime.now().subtract(const Duration(days: 3)),
+        userId: AppConstants.visitorUserId,
         hasKnowledgeBase: false,
       ),
       Project(
@@ -119,6 +141,7 @@ class ProjectsApiService {
         name: 'Puzzle Platformer',
         description: 'Mind-bending puzzles combined with precise platforming. Each level challenges both your reflexes and intellect.',
         createdAt: DateTime.now().subtract(const Duration(days: 1)),
+        userId: AppConstants.visitorUserId,
         hasKnowledgeBase: true,
       ),
       Project(
@@ -126,6 +149,7 @@ class ProjectsApiService {
         name: 'Strategy Empire Builder',
         description: 'Build and manage your civilization from ancient times to the modern era. Research technologies and conquer lands.',
         createdAt: DateTime.now().subtract(const Duration(hours: 12)),
+        userId: AppConstants.visitorUserId,
         hasKnowledgeBase: false,
       ),
     ];
@@ -138,6 +162,7 @@ class ProjectsApiService {
       name: name,
       description: description,
       createdAt: DateTime.now(),
+      userId: AppConstants.visitorUserId,
       hasKnowledgeBase: false,
     );
   }
@@ -153,6 +178,7 @@ class ProjectsApiService {
         name: 'Sample Project',
         description: 'This is a sample project created in mock mode.',
         createdAt: DateTime.now(),
+        userId: AppConstants.visitorUserId,
         hasKnowledgeBase: false,
       );
     }

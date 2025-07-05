@@ -135,26 +135,98 @@ class SettingsScreen extends StatelessWidget {
             
             const SizedBox(height: 32),
             
-            // Future Settings Sections
+            // Application Settings Section
             _buildSettingsSection(
               context,
               title: 'Application',
               icon: Icons.settings,
               children: [
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.construction),
-                    title: const Text('Theme Settings'),
-                    subtitle: const Text('Coming soon...'),
-                    enabled: false,
-                  ),
+                Consumer<SettingsProvider>(
+                  builder: (context, settingsProvider, child) {
+                    return Card(
+                      child: SwitchListTile(
+                        title: const Text('Dark Mode'),
+                        subtitle: Text(
+                          settingsProvider.isDarkMode
+                              ? 'Using dark theme'
+                              : 'Using light theme',
+                        ),
+                        value: settingsProvider.isDarkMode,
+                        onChanged: (bool value) {
+                          settingsProvider.setThemeMode(value);
+                          
+                          // Show feedback to user
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                value 
+                                    ? 'Switched to dark mode'
+                                    : 'Switched to light mode',
+                              ),
+                              backgroundColor: Colors.blue,
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        secondary: Icon(
+                          settingsProvider.isDarkMode 
+                              ? Icons.dark_mode 
+                              : Icons.light_mode,
+                          color: settingsProvider.isDarkMode 
+                              ? Colors.indigo 
+                              : Colors.amber,
+                        ),
+                      ),
+                    );
+                  }
                 ),
+                const SizedBox(height: 16),
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.construction),
                     title: const Text('Language Settings'),
                     subtitle: const Text('Coming soon...'),
                     enabled: false,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              color: colorScheme.primary,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Theme Information',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '• Dark mode reduces eye strain in low light conditions\n'
+                          '• Light mode provides better visibility in bright environments\n'
+                          '• Theme changes apply immediately across the entire app\n'
+                          '• Your preference is saved automatically',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDark ? Colors.white70 : Colors.black54,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],

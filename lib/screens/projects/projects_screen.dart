@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../utils/app_constants.dart' as app_utils;
 import '../../services/projects_api_service.dart';
 import '../game_design_assistant/models/project_model.dart';
 import '../project/project_dashboard_screen.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/auth_provider.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
@@ -25,8 +27,13 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   /// Get fresh ProjectsApiService instance with current settings
   ProjectsApiService _getProjectsApiService() {
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    return ProjectsApiService(settingsProvider: settingsProvider);
+    final settingsProvider =
+        Provider.of<SettingsProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    return ProjectsApiService(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
   }
 
   Future<void> _loadProjects() async {
@@ -461,7 +468,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      _formatDate(project.createdAt),
+                                                    app_utils.DateUtils.formatDate(project.createdAt),
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white54 : Colors.black38,

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../services/projects_api_service.dart';
 import '../../game_design_assistant/models/project_model.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../constants.dart';
 
 class ProjectHomeScreen extends StatefulWidget {
@@ -28,6 +29,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
     super.initState();
     _apiService = ProjectsApiService(
       settingsProvider: context.read<SettingsProvider>(),
+      authProvider: context.read<AuthProvider>(),
     );
     _loadProject();
   }

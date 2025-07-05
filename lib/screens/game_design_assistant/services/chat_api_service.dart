@@ -41,11 +41,17 @@ class ChatApiService {
       return _mockChatResponse(request);
     }
 
+    final url = '${_dio.options.baseUrl}/chat';
+    final requestBody = request.toJson();
+
     try {
-      final response = await _dio.post('/chat', data: request.toJson());
+      final response = await _dio.post('/chat', data: requestBody);
       return ChatResponse.fromJson(response.data);
     } catch (e) {
       print('Chat API Error: $e');
+      print('Request URL: $url');
+      print('Request Body: $requestBody');
+      print('Headers: ${_dio.options.headers}');
       // Fallback to mock response on error
       return _mockChatResponse(request);
     }
@@ -116,6 +122,8 @@ class ChatApiService {
       return _mockKnowledgeBaseFiles();
     }
 
+    final url = '${_dio.options.baseUrl}/projects/$projectId/files';
+
     try {
       final response = await _dio.get('/projects/$projectId/files');
       final Map<String, dynamic> responseData = response.data;
@@ -123,6 +131,8 @@ class ChatApiService {
       return files.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
     } catch (e) {
       print('Knowledge Base API Error: $e');
+      print('Request URL: $url');
+      print('Headers: ${_dio.options.headers}');
       return _mockKnowledgeBaseFiles();
     }
   }
@@ -134,6 +144,8 @@ class ChatApiService {
       return true;
     }
 
+    final url = '${_dio.options.baseUrl}/projects/$projectId/files';
+
     try {
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(filePath, filename: fileName),
@@ -144,6 +156,10 @@ class ChatApiService {
       return responseData['success'] == true || response.statusCode == 200;
     } catch (e) {
       print('File Upload Error: $e');
+      print('Request URL: $url');
+      print('File Path: $filePath');
+      print('File Name: $fileName');
+      print('Headers: ${_dio.options.headers}');
       return false;
     }
   }
@@ -155,11 +171,15 @@ class ChatApiService {
       return true;
     }
 
+    final url = '${_dio.options.baseUrl}/projects/$projectId/files/$fileId';
+
     try {
       final response = await _dio.delete('/projects/$projectId/files/$fileId');
       return response.data['success'] == true;
     } catch (e) {
       print('File Delete Error: $e');
+      print('Request URL: $url');
+      print('Headers: ${_dio.options.headers}');
       return false;
     }
   }
@@ -170,31 +190,41 @@ class ChatApiService {
       return _mockChatSessions(projectId);
     }
 
+    final url = '${_dio.options.baseUrl}/projects/$projectId/chat/sessions';
+
     try {
       final response = await _dio.get('/projects/$projectId/chat/sessions');
       final List<dynamic> sessions = response.data;
       return sessions.map((item) => ChatSession.fromJson(item)).toList();
     } catch (e) {
       print('Chat Sessions API Error: $e');
+      print('Request URL: $url');
+      print('Headers: ${_dio.options.headers}');
       return _mockChatSessions(projectId);
     }
   }
 
   /// Create a new chat session for a project
-  Future<ChatSessionCreateResponse?> createChatSession(int projectId, int userId, {String? sessionId}) async {
+  Future<ChatSessionCreateResponse?> createChatSession(int projectId, String userId, {String? sessionId}) async {
     if (_useMockMode) {
       return _mockCreateChatSession(projectId, userId, sessionId: sessionId);
     }
 
+    final url = '${_dio.options.baseUrl}/projects/$projectId/chat/sessions';
+    final request = ChatSessionCreateRequest(userId: userId, sessionId: sessionId);
+    final requestBody = request.toJson();
+
     try {
-      final request = ChatSessionCreateRequest(userId: userId, sessionId: sessionId);
       final response = await _dio.post(
         '/projects/$projectId/chat/sessions',
-        data: request.toJson(),
+        data: requestBody,
       );
       return ChatSessionCreateResponse.fromJson(response.data);
     } catch (e) {
       print('Create Chat Session API Error: $e');
+      print('Request URL: $url');
+      print('Request Body: $requestBody');
+      print('Headers: ${_dio.options.headers}');
       return _mockCreateChatSession(projectId, userId, sessionId: sessionId);
     }
   }
@@ -205,11 +235,15 @@ class ChatApiService {
       return _mockChatHistory(sessionId);
     }
 
+    final url = '${_dio.options.baseUrl}/chat/sessions/$sessionId/messages';
+
     try {
       final response = await _dio.get('/chat/sessions/$sessionId/messages');
       return ChatHistoryResponse.fromJson(response.data);
     } catch (e) {
       print('Chat History API Error: $e');
+      print('Request URL: $url');
+      print('Headers: ${_dio.options.headers}');
       return _mockChatHistory(sessionId);
     }
   }
@@ -436,12 +470,13 @@ What specific aspect of game design would you like to explore? I can create deta
 
   List<ChatSession> _mockChatSessions(int projectId) {
     final now = DateTime.now();
+    const mockUserId = '00000000-0000-0000-0000-000000000000'; // Use proper UUID format
     return [
       ChatSession(
         id: 1,
         sessionId: 'session_001',
         projectId: projectId,
-        userId: 1,
+        userId: mockUserId,
         title: 'RPG Character System Discussion',
         createdAt: now.subtract(const Duration(days: 7)),
         updatedAt: now.subtract(const Duration(days: 7)),
@@ -450,7 +485,7 @@ What specific aspect of game design would you like to explore? I can create deta
         id: 2,
         sessionId: 'session_002',
         projectId: projectId,
-        userId: 1,
+        userId: mockUserId,
         title: 'Combat Mechanics Design',
         createdAt: now.subtract(const Duration(days: 5)),
         updatedAt: now.subtract(const Duration(days: 5)),
@@ -459,7 +494,7 @@ What specific aspect of game design would you like to explore? I can create deta
         id: 3,
         sessionId: 'session_003',
         projectId: projectId,
-        userId: 1,
+        userId: mockUserId,
         title: 'Level Design Principles',
         createdAt: now.subtract(const Duration(days: 3)),
         updatedAt: now.subtract(const Duration(days: 3)),
@@ -468,7 +503,7 @@ What specific aspect of game design would you like to explore? I can create deta
         id: 4,
         sessionId: 'session_004',
         projectId: projectId,
-        userId: 1,
+        userId: mockUserId,
         title: 'Game Economy Balance',
         createdAt: now.subtract(const Duration(days: 2)),
         updatedAt: now.subtract(const Duration(days: 2)),
@@ -477,7 +512,7 @@ What specific aspect of game design would you like to explore? I can create deta
         id: 5,
         sessionId: 'session_005',
         projectId: projectId,
-        userId: 1,
+        userId: mockUserId,
         title: 'Narrative Structure Planning',
         createdAt: now.subtract(const Duration(days: 1)),
         updatedAt: now.subtract(const Duration(days: 1)),
@@ -486,7 +521,7 @@ What specific aspect of game design would you like to explore? I can create deta
         id: 6,
         sessionId: 'session_006',
         projectId: projectId,
-        userId: 1,
+        userId: mockUserId,
         title: null, // Untitled session
         createdAt: now.subtract(const Duration(hours: 6)),
         updatedAt: now.subtract(const Duration(hours: 6)),
@@ -576,7 +611,7 @@ What specific aspect of game design would you like to explore? I can create deta
     );
   }
 
-  ChatSessionCreateResponse _mockCreateChatSession(int projectId, int userId, {String? sessionId}) {
+  ChatSessionCreateResponse _mockCreateChatSession(int projectId, String userId, {String? sessionId}) {
     final now = DateTime.now();
     final finalSessionId = sessionId ?? 'session_${now.millisecondsSinceEpoch}';
     
