@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../utils/app_constants.dart' as app_utils;
 import '../../services/projects_api_service.dart';
 import '../game_design_assistant/models/project_model.dart';
 import '../project/project_dashboard_screen.dart';
@@ -467,7 +468,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      _formatDate(project.createdAt),
+                                                    app_utils.DateUtils.formatDate(project.createdAt),
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white54 : Colors.black38,

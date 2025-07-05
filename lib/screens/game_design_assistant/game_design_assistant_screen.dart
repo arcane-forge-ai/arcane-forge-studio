@@ -10,11 +10,13 @@ import 'dart:io';
 import 'models/chat_message.dart' as app_models;
 import 'models/api_models.dart';
 import 'providers/project_provider.dart';
+import '../../providers/auth_provider.dart';
 import 'services/chat_api_service.dart';
 import 'services/document_extractor.dart';
 import 'services/langchain_message_parser.dart';
 import 'widgets/chat_history_sidebar.dart';
 import '../../providers/settings_provider.dart';
+import '../../utils/app_constants.dart' as app_utils;
 
 /// Game Design Assistant Screen using Flutter Gen AI Chat UI
 class GameDesignAssistantScreen extends StatefulWidget {
@@ -191,32 +193,41 @@ Ask me anything about game design, or try one of the example questions below!
     );
   }
 
-  Future<void> _handleSendMessage(ChatMessage message) async {
-    // Reset document state when user sends a new message
-    setState(() {
-      _lastResponseHasDocument = false;
-      _lastAiResponse = null;
-    });
-
-    // Add the user's message
-    _chatController.addMessage(message);
-
-    // Get project provider
+  /// Send a message to the chat API
+  Future<void> _sendMessage(ChatMessage message) async {
     final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     
-    // Generate message ID
-    final messageId = 'msg_${DateTime.now().millisecondsSinceEpoch}';
+    // FIRST: Add the user's message to the chat immediately
+    _chatController.addMessage(message);
+    
+    // Get project ID and user ID if available - let API handle defaults if missing
+    int? projectId;
+    String? userId;
+    
+    // Only include project ID if we have a valid current project
+    if (projectProvider.currentProject?.id != null) {
+      projectId = int.tryParse(projectProvider.currentProject!.id!);
+    }
+    
+    // Only include user ID if we have a valid authenticated user
+    final authUserId = authProvider.userId;
+    if (authUserId.isNotEmpty && authUserId != app_utils.AppConstants.visitorUserId) {
+      userId = authUserId;
+    }
 
-    // Create empty AI message for streaming
+    // Generate unique ID for the AI message
+    final messageId = _uuid.v4();
+    
+    // Create AI message for the UI
     final aiMessage = ChatMessage(
-      text: "",
+      text: '', // Start with empty text for streaming
       user: _aiUser,
       createdAt: DateTime.now(),
-      isMarkdown: true,
       customProperties: {'id': messageId},
     );
 
-    // Add empty message to chat
+    // Add empty AI message to chat for the response
     _chatController.addMessage(aiMessage);
 
     // Update state
@@ -237,9 +248,11 @@ Ask me anything about game design, or try one of the example questions below!
         ),
       ];
 
-      // Create chat request using the new API structure
+      // Create chat request - API will handle defaults for missing projectId/userId
       final request = ChatRequest(
         message: appMessages.last.content, // Send the latest user message
+        projectId: projectId, // Only included if available
+        userId: userId, // Only included if available
         knowledgeBaseName: projectProvider.knowledgeBaseName,
         sessionId: _currentSessionId, // Use current session ID for this conversation (may be null for first message)
         extraConfig: {
@@ -275,10 +288,8 @@ Ask me anything about game design, or try one of the example questions below!
         _lastResponseHasDocument = hasDocument;
       });
 
-      // NEW FLOW: Create session after successful message if we don't have one
-      if (_selectedChatSession == null && response.sessionId.isNotEmpty) {
-        await _createSessionAfterMessage(response.sessionId, message.text);
-      }
+      // Refresh the chat history sidebar to show any new sessions created by the API
+      _refreshChatHistory?.call();
 
     } catch (e) {
       // Handle error
@@ -300,50 +311,6 @@ Ask me anything about game design, or try one of the example questions below!
           _isGenerating = false;
         });
       }
-    }
-  }
-
-  /// Create a chat session after a successful message exchange
-  /// This assigns a title based on the first message and refreshes the chat list
-  Future<void> _createSessionAfterMessage(String sessionId, String firstMessage) async {
-    try {
-      final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-      final projectIdString = projectProvider.currentProject?.id ?? '1';
-      final projectId = int.tryParse(projectIdString) ?? 1;
-      const userId = 1; // Default user ID for now
-
-      // Create new chat session via API (this will assign a title based on the conversation)
-      final newSession = await _chatApiService.createChatSession(projectId, userId, sessionId: sessionId);
-      
-      if (newSession != null) {
-        setState(() {
-          _selectedChatSession = ChatSession(
-            id: newSession.id,
-            sessionId: newSession.sessionId,
-            projectId: newSession.projectId,
-            userId: newSession.userId,
-            title: newSession.title,
-            createdAt: newSession.createdAt,
-            updatedAt: newSession.updatedAt,
-          );
-        });
-        
-        // Refresh chat history sidebar to show the new session with updated title
-        _refreshChatHistory?.call();
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Chat session created: ${newSession.title ?? 'Untitled Chat'}'),
-              backgroundColor: Colors.blue,
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('Error creating session after message: $e');
-      // Don't show error to user as the message was sent successfully
     }
   }
 
@@ -539,8 +506,8 @@ Ask me anything about game design, or try one of the example questions below!
                   _buildInfoRow('Title', _selectedChatSession!.title ?? 'Untitled'),
                   _buildInfoRow('Project ID', _selectedChatSession!.projectId.toString()),
                   _buildInfoRow('User ID', _selectedChatSession!.userId.toString()),
-                  _buildInfoRow('Created', _formatDateTime(_selectedChatSession!.createdAt)),
-                  _buildInfoRow('Last Updated', _formatDateTime(_selectedChatSession!.updatedAt)),
+                          _buildInfoRow('Created', app_utils.DateUtils.formatDateTime(_selectedChatSession!.createdAt)),
+        _buildInfoRow('Last Updated', app_utils.DateUtils.formatDateTime(_selectedChatSession!.updatedAt)),
                 ] else ...[
                   const SizedBox(height: 12),
                   _buildInfoRow('Current Session ID', _currentSessionId ?? 'None'),
@@ -1061,7 +1028,7 @@ Ask me anything about game design, or try one of the example questions below!
                       currentUser: _currentUser,
                       aiUser: _aiUser,
                       controller: _chatController,
-                      onSendMessage: _handleSendMessage,
+                      onSendMessage: _sendMessage,
                       scrollController: _scrollController,
 
                       // Message styling

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_auth_ui/supabase_auth_ui.dart';
 
 import '../../providers/auth_provider.dart';
+import '../../constants.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,43 +13,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _loading = false;
-
-  Future<void> _signInWithEmail() async {
-    setState(() => _loading = true);
-    final auth = context.read<AuthProvider>();
-    try {
-      await auth.signInWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login failed: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _signInWithGoogle() async {
-    setState(() => _loading = true);
-    final auth = context.read<AuthProvider>();
-    try {
-      await auth.signInWithGoogle();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Login failed: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-    if (mounted) setState(() => _loading = false);
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -57,41 +22,95 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     return Scaffold(
+      backgroundColor: bgColor,
       body: Center(
-        child: SizedBox(
-          width: 400,
+        child: Container(
+          width: 500,
+          constraints: const BoxConstraints(maxHeight: 700),
           child: Card(
+            color: secondaryColor,
             margin: const EdgeInsets.all(24),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Sign In', style: Theme.of(context).textTheme.headlineSmall),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _emailController,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _passwordController,
-                    decoration: const InputDecoration(labelText: 'Password'),
-                    obscureText: true,
+                  Text(
+                    'Welcome to Arcane Forge',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _loading ? null : _signInWithEmail,
-                    child: const Text('Sign In'),
+                  
+                  // Supabase Auth UI Email Auth
+                  SupaEmailAuth(
+                    redirectTo: 'arcaneforge://auth-callback', // Windows deep linking
+                    onSignInComplete: (response) {
+                      // Navigation is handled by the Consumer in main.dart
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Welcome back!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    },
+                    onSignUpComplete: (response) {
+                      // Navigation is handled by the Consumer in main.dart
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Account created successfully! Please check your email to verify your account.'),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                    },
+                    onError: (error) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Authentication failed: ${error.toString()}'),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: _loading ? null : _signInWithGoogle,
-                    child: const Text('Sign in with Google'),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Social Auth (Google only)
+                  SupaSocialsAuth(
+                    socialProviders: const [OAuthProvider.google],
+                    redirectUrl: 'arcaneforge://auth-callback', // Windows deep linking
+                    onSuccess: (session) {
+                      // Navigation is handled by the Consumer in main.dart
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Welcome, ${session.user.email ?? 'User'}!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    },
+                    onError: (error) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Authentication failed: ${error.toString()}'),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 8),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Visitor Mode Button (keeping your existing functionality)
                   TextButton(
                     onPressed: auth.continueAsVisitor,
+                    style: TextButton.styleFrom(
+                      foregroundColor: primaryColor,
+                    ),
                     child: const Text('Continue as Visitor'),
                   ),
                 ],

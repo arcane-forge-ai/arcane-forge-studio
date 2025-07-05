@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../controllers/menu_app_controller.dart';
 import '../../shared/components/base_side_menu.dart';
 import '../../../providers/auth_provider.dart';
+import '../../login/login_screen.dart';
 
 class ProjectsSideMenu extends BaseSideMenu {
   const ProjectsSideMenu({
@@ -64,8 +65,17 @@ class ProjectsSideMenu extends BaseSideMenu {
           return ListTile(
             title: const Text('Sign Out'),
             leading: const Icon(Icons.logout),
-            onTap: () {
-              auth.signOut();
+            onTap: () async {
+              await auth.signOut();
+              if (context.mounted) {
+                // Explicitly navigate to login screen and clear navigation stack
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) => const LoginScreen(),
+                  ),
+                  (route) => false, // Remove all routes from stack
+                );
+              }
             },
           );
         },

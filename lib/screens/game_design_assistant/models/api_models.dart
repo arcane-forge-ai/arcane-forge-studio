@@ -4,24 +4,34 @@
 
 class ChatRequest {
   final String message;
+  final int? projectId;
+  final String? userId;
   final String? knowledgeBaseName;
   final String? sessionId;
   final Map<String, dynamic>? extraConfig;
 
   ChatRequest({
     required this.message,
+    this.projectId,
+    this.userId,
     this.knowledgeBaseName,
     this.sessionId,
     this.extraConfig,
   });
 
   Map<String, dynamic> toJson() {
-    return {
+    final json = <String, dynamic>{
       'message': message,
-      'knowledge_base_name': knowledgeBaseName,
-      'session_id': sessionId,
-      'extra_config': extraConfig,
     };
+    
+    // Only include fields if they have values - let API handle defaults
+    if (projectId != null) json['project_id'] = projectId;
+    if (userId != null) json['user_id'] = userId;
+    if (knowledgeBaseName != null) json['knowledge_base_name'] = knowledgeBaseName;
+    if (sessionId != null) json['session_id'] = sessionId;
+    if (extraConfig != null) json['extra_config'] = extraConfig;
+    
+    return json;
   }
 }
 
@@ -119,7 +129,7 @@ class ChatSession {
   final int id;
   final String sessionId;
   final int projectId;
-  final int userId;
+  final String userId;
   final String? title;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -191,7 +201,7 @@ class KnowledgeBaseFile {
 
 // Chat Session Management Models
 class ChatSessionCreateRequest {
-  final int userId;
+  final String userId;
   final String? sessionId;
 
   ChatSessionCreateRequest({
@@ -211,7 +221,7 @@ class ChatSessionCreateResponse {
   final int id;
   final String sessionId;
   final int projectId;
-  final int userId;
+  final String userId;
   final String? title;
   final DateTime createdAt;
   final DateTime updatedAt;

@@ -4,7 +4,7 @@ class Project {
   final String description;
   final DateTime createdAt;
   final DateTime? updatedAt;
-  final int? userId;
+  final String? userId;
   final String? difyDatasetId;
   final List<String> documentIds;
   final bool hasKnowledgeBase;
@@ -70,7 +70,7 @@ class Project {
     String? description,
     DateTime? createdAt,
     DateTime? updatedAt,
-    int? userId,
+    String? userId,
     String? difyDatasetId,
     List<String>? documentIds,
     bool? hasKnowledgeBase,
