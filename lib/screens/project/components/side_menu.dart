@@ -69,12 +69,34 @@ class SideMenu extends BaseSideMenu {
               .changeScreen(ScreenType.codeEditor);
         },
       ),
-      ListTile(
-        title: const Text("Image Generator"),
+      ExpansionTile(
+        title: const Text("Image Generation"),
+        leading: const Icon(Icons.image),
+        initiallyExpanded: true,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 16.0),
+            child: ListTile(
+              title: const Text("Overview"),
+              leading: const Icon(Icons.grid_view, size: 20),
+              onTap: () {
+                Provider.of<MenuAppController>(context, listen: false)
+                    .changeScreen(ScreenType.imageGenerationOverview);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 16.0),
+            child: ListTile(
+              title: const Text("Generation"),
+              leading: const Icon(Icons.auto_awesome, size: 20),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
-              .changeScreen(ScreenType.imageGenerator);
+                    .changeScreen(ScreenType.imageGenerationGeneration);
         },
+            ),
+          ),
+        ],
       ),
       ListTile(
         title: const Text("Sound Generator"),

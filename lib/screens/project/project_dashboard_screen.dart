@@ -9,6 +9,8 @@ import '../development/command_line_screen.dart';
 import '../game_design_assistant/game_design_assistant_screen.dart';
 import '../game_design_assistant/providers/project_provider.dart';
 import '../knowledge_base/knowledge_base_screen.dart';
+import '../image_generation/image_overview_screen.dart';
+import '../image_generation/image_generation_screen.dart';
 
 class ProjectDashboardScreen extends StatelessWidget {
   final String projectId;
@@ -65,6 +67,10 @@ class ProjectDashboardScreen extends StatelessWidget {
                       );
                     case ScreenType.codeEditor:
                       return CommandLineScreen();
+                    case ScreenType.imageGenerationOverview:
+                      return const ImageOverviewScreen();
+                    case ScreenType.imageGenerationGeneration:
+                      return ImageGenerationScreen(projectId: projectId);
                     default:
                       return DashboardScreen();
                   }

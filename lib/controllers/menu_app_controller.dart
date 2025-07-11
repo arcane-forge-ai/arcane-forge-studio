@@ -7,6 +7,8 @@ enum ScreenType {
   gameDesignAssistant,
   codeEditor,
   imageGenerator,
+  imageGenerationOverview,
+  imageGenerationGeneration,
   soundGenerator,
   musicGenerator,
   webServer,

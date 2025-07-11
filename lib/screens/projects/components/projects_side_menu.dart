@@ -59,6 +59,7 @@ class ProjectsSideMenu extends BaseSideMenu {
           );
         },
       ),
+      
       const Divider(),
       Consumer<AuthProvider>(
         builder: (context, auth, child) {

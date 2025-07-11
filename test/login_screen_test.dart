@@ -3,7 +3,7 @@ import 'package:arcane_forge/main.dart';
 
 void main() {
   testWidgets('shows login screen when not authenticated', (tester) async {
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(MyApp());
     expect(find.text('Sign In'), findsOneWidget);
   });
 }
