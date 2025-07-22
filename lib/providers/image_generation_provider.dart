@@ -14,6 +14,10 @@ class ImageGenerationProvider extends ChangeNotifier {
   bool _isGenerating = false;
   bool _isStartingService = false;
   GenerationRequest? _currentRequest;
+  List<String> _availableModels = [];
+  List<String> get availableModels => _availableModels;
+  List<String> _availableLoras = [];
+  List<String> get availableLoras => _availableLoras;
   
   ImageGenerationProvider(this._settingsProvider);
 
@@ -246,6 +250,48 @@ class ImageGenerationProvider extends ChangeNotifier {
 
   void refreshImages() {
     // Placeholder for refreshing images from storage
+    notifyListeners();
+  }
+
+  /// Refresh the list of available models from the working directory
+  Future<void> refreshAvailableModels() async {
+    final backend = _settingsProvider.defaultGenerationServer;
+    final workingDir = _settingsProvider.getWorkingDirectory(backend);
+    final modelDir = Directory(
+      '$workingDir/models/Stable-diffusion',
+    );
+    if (await modelDir.exists()) {
+      final files = modelDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.safetensors') || f.path.endsWith('.ckpt'))
+          .map((f) => f.uri.pathSegments.last)
+          .toList();
+      _availableModels = files;
+    } else {
+      _availableModels = [];
+    }
+    notifyListeners();
+  }
+
+    /// Refresh the list of available loras from the working directory
+  Future<void> refreshAvailableLoras() async {
+    final backend = _settingsProvider.defaultGenerationServer;
+    final workingDir = _settingsProvider.getWorkingDirectory(backend);
+    final modelDir = Directory(
+      '$workingDir/models/Lora',
+    );
+    if (await modelDir.exists()) {
+      final files = modelDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.safetensors') || f.path.endsWith('.ckpt'))
+          .map((f) => f.uri.pathSegments.last)
+          .toList();
+      _availableLoras = files;
+    } else {
+      _availableLoras = [];
+    }
     notifyListeners();
   }
 } 

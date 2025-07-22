@@ -20,32 +20,52 @@ class ImageGenerationScreen extends StatefulWidget {
 }
 
 class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
-  final TextEditingController _positivePromptController = TextEditingController();
-  final TextEditingController _negativePromptController = TextEditingController();
+  final TextEditingController _positivePromptController =
+      TextEditingController();
+  final TextEditingController _negativePromptController =
+      TextEditingController();
   final TextEditingController _seedController = TextEditingController();
-  final TextEditingController _stepsController = TextEditingController(text: '20');
-  final TextEditingController _cfgController = TextEditingController(text: '7.5');
-  final TextEditingController _widthController = TextEditingController(text: '512');
-  final TextEditingController _heightController = TextEditingController(text: '512');
-  
+  final TextEditingController _stepsController =
+      TextEditingController(text: '20');
+  final TextEditingController _cfgController =
+      TextEditingController(text: '7.5');
+  final TextEditingController _widthController =
+      TextEditingController(text: '512');
+  final TextEditingController _heightController =
+      TextEditingController(text: '512');
+
   String _selectedSampler = 'euler';
-  String _selectedModel = 'sd_xl_base_1.0.safetensors';
-  
+  String _selectedScheduler = "Automatic";
+  String _selectedModel = 'No models found';
+  String _selectedLora = 'Click on a Lora to add to prompt';
+
   @override
   void initState() {
     super.initState();
     _seedController.text = DateTime.now().millisecondsSinceEpoch.toString();
-    
+
     // Check if AI service is already running when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkServiceHealthOnLoad();
+      final imageGenerationProvider = Provider.of<ImageGenerationProvider>(context, listen: false);
+      _checkServiceHealthOnLoad(imageGenerationProvider);
+      // Refresh model list on load
+      imageGenerationProvider.refreshAvailableModels().then((_) {
+        if (mounted && imageGenerationProvider.availableModels.isNotEmpty) {
+          setState(() {
+            _selectedModel = imageGenerationProvider.availableModels.first;
+          });
+        }
+      });
+      imageGenerationProvider.refreshAvailableLoras().then((_) {
+        if (mounted && imageGenerationProvider.availableLoras.isNotEmpty) {
+        }
+      });
     });
   }
 
-  void _checkServiceHealthOnLoad() async {
-    final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+  void _checkServiceHealthOnLoad(ImageGenerationProvider imageGenerationProvider) async {
     try {
-      final isHealthy = await provider.isServiceHealthy();
+      final isHealthy = await imageGenerationProvider.isServiceHealthy();
       if (isHealthy && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -166,8 +186,10 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       children: [
         if (!provider.isServiceRunning)
           ElevatedButton.icon(
-            onPressed: provider.isServiceStarting ? null : () => provider.startAIService(),
-            icon: provider.isServiceStarting 
+            onPressed: provider.isServiceStarting
+                ? null
+                : () => provider.startAIService(),
+            icon: provider.isServiceStarting
                 ? const SizedBox(
                     width: 16,
                     height: 16,
@@ -188,8 +210,10 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           ),
         if (provider.isServiceRunning)
           ElevatedButton.icon(
-            onPressed: provider.isServiceStopping ? null : () => provider.stopAIService(),
-            icon: provider.isServiceStopping 
+            onPressed: provider.isServiceStopping
+                ? null
+                : () => provider.stopAIService(),
+            icon: provider.isServiceStopping
                 ? const SizedBox(
                     width: 16,
                     height: 16,
@@ -218,7 +242,8 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     );
   }
 
-  Widget _buildMainContent(BuildContext context, ImageGenerationProvider provider) {
+  Widget _buildMainContent(
+      BuildContext context, ImageGenerationProvider provider) {
     if (Responsive.isMobile(context)) {
       return _buildMobileLayout(provider);
     } else {
@@ -235,14 +260,14 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           child: _buildParametersPanel(provider),
         ),
         Container(width: 1, color: const Color(0xFF404040)),
-        
+
         // Middle Panel: Prompts
         Expanded(
           flex: 4,
           child: _buildPromptsPanel(provider),
         ),
         Container(width: 1, color: const Color(0xFF404040)),
-        
+
         // Right Panel: Recent Images
         Expanded(
           flex: 4,
@@ -281,23 +306,19 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          
+
           // Model Selection
           _buildModelSelection(),
           const SizedBox(height: 20),
-          
+
           // Dimensions
           _buildDimensionsSection(),
           const SizedBox(height: 20),
-          
-          // Steps and CFG
-          _buildStepsCfgSection(),
-          const SizedBox(height: 20),
-          
+
           // Sampler
-          _buildSamplerSection(),
+          _buildQualitySection(),
           const SizedBox(height: 20),
-          
+
           // Seed
           _buildSeedSection(),
         ],
@@ -306,46 +327,40 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildModelSelection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Model',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF3A3A3A),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF404040)),
-          ),
-          child: DropdownButton<String>(
-            value: _selectedModel,
-            isExpanded: true,
-            dropdownColor: const Color(0xFF3A3A3A),
-            underline: Container(),
-            style: const TextStyle(color: Colors.white),
-            items: [
-              'sd_xl_base_1.0.safetensors',
-              'sd_xl_turbo_1.0.safetensors',
-              'sd_v1-5-pruned-emaonly.safetensors',
-              'sd_v2-1_768-ema-pruned.safetensors',
-            ].map((model) => DropdownMenuItem<String>(
-              value: model,
-              child: Text(model),
-            )).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() {
-                  _selectedModel = value;
-                });
-              }
-            },
-          ),
-        ),
-      ],
+    return Consumer<ImageGenerationProvider>(
+      builder: (context, provider, child) {
+        final models = provider.availableModels;
+        return Column(
+          children: [
+            // Checkpoint selection
+            _buildDropdownWithLabel(
+              "Model",
+              _selectedModel,
+              models.isNotEmpty ? models : [_selectedModel],
+              (value) {
+                if (value != null && value != _selectedModel) {
+                  setState(() {
+                    _selectedModel = value;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            // Lora selection (unchanged, still static for now)
+            _buildDropdownWithLabel(
+                "Lora",
+                _selectedLora,
+                [
+                  _selectedLora,
+                  'sd_xl_base_1.0.safetensors',
+                  'sd_xl_turbo_1.0.safetensors',
+                  'sd_v1-5-pruned-emaonly.safetensors',
+                  'sd_v2-1_768-ema-pruned.safetensors',
+                ],
+                ((value) {})),
+          ],
+        );
+      },
     );
   }
 
@@ -373,74 +388,74 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     );
   }
 
-  Widget _buildStepsCfgSection() {
+  Widget _buildQualitySection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Quality Settings',
+          'Quality',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-              child: _buildNumberField('Steps', _stepsController),
+              child: _buildDropdownWithLabel(
+                "Sampler",
+                _selectedSampler,
+                [
+                  'euler',
+                  'euler_a',
+                  'heun',
+                  'dpm_2',
+                  'dpm_2_a',
+                  'lms',
+                  'ddim',
+                  'plms',
+                ],
+                (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedSampler = value;
+                    });
+                  }
+                },
+              ),
             ),
-            const SizedBox(width: 16),
+            SizedBox(width: 8),
             Expanded(
-              child: _buildNumberField('CFG Scale', _cfgController),
+              child: _buildDropdownWithLabel(
+                "Scheduler",
+                _selectedScheduler,
+                [
+                  'Automatic',
+                  'euler_a',
+                  'heun',
+                  'dpm_2',
+                  'dpm_2_a',
+                  'lms',
+                  'ddim',
+                  'plms',
+                ],
+                (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedScheduler = value;
+                    });
+                  }
+                },
+              ),
             ),
           ],
         ),
-      ],
-    );
-  }
-
-  Widget _buildSamplerSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Sampler',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF3A3A3A),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF404040)),
-          ),
-          child: DropdownButton<String>(
-            value: _selectedSampler,
-            isExpanded: true,
-            dropdownColor: const Color(0xFF3A3A3A),
-            underline: Container(),
-            style: const TextStyle(color: Colors.white),
-            items: [
-              'euler',
-              'euler_a',
-              'heun',
-              'dpm_2',
-              'dpm_2_a',
-              'lms',
-              'ddim',
-              'plms',
-            ].map((sampler) => DropdownMenuItem<String>(
-              value: sampler,
-              child: Text(sampler),
-            )).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() {
-                  _selectedSampler = value;
-                });
-              }
-            },
-          ),
-        ),
+        SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(child: _buildNumberField('Steps', _stepsController)),
+            SizedBox(width: 8),
+            Expanded(child: _buildNumberField('CFG Scale', _cfgController)),
+          ],
+        )
       ],
     );
   }
@@ -453,13 +468,15 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           children: [
             const Text(
               'Seed',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
             ),
             const Spacer(),
             TextButton(
               onPressed: () {
                 setState(() {
-                  _seedController.text = DateTime.now().millisecondsSinceEpoch.toString();
+                  _seedController.text =
+                      DateTime.now().millisecondsSinceEpoch.toString();
                 });
               },
               child: const Text(
@@ -475,29 +492,80 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     );
   }
 
-  Widget _buildNumberField(String label, TextEditingController controller) {
-    return TextField(
-      controller: controller,
+  Widget _buildDropdownWithItems(
+      String label, String value, List<String> items, ValueChanged onChanged) {
+    return DropdownButton<String>(
+      value: value,
+      isExpanded: true,
+      dropdownColor: const Color(0xFF3A3A3A),
+      underline: Container(),
       style: const TextStyle(color: Colors.white),
-      keyboardType: TextInputType.number,
-      decoration: InputDecoration(
-        hintText: label,
-        hintStyle: const TextStyle(color: Colors.white54),
-        filled: true,
-        fillColor: const Color(0xFF3A3A3A),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF404040)),
+      items: items
+          .map((sampler) => DropdownMenuItem<String>(
+                value: sampler,
+                child: Text(sampler),
+              ))
+          .toList(),
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _buildDropdownWithLabel(
+      String label, String value, List<String> items, ValueChanged onChanged) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          // style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF404040)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF3A3A3A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF404040)),
+            ),
+            child: _buildDropdownWithItems(label, value, items, onChanged),
+          ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF0078D4)),
+      ],
+    );
+  }
+
+  Widget _buildNumberField(String label, TextEditingController controller) {
+    return Row(
+      children: [
+        Text(label),
+        SizedBox(width: 12),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            style: const TextStyle(color: Colors.white),
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: label,
+              hintStyle: const TextStyle(color: Colors.white54),
+              filled: true,
+              fillColor: const Color(0xFF3A3A3A),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF404040)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF404040)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF0078D4)),
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -516,7 +584,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          
+
           // Positive Prompt
           _buildPromptField(
             'Positive Prompt',
@@ -524,7 +592,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             'Describe what you want to see in the image...',
           ),
           const SizedBox(height: 20),
-          
+
           // Negative Prompt
           _buildPromptField(
             'Negative Prompt',
@@ -532,7 +600,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             'Describe what you don\'t want to see in the image...',
           ),
           const SizedBox(height: 30),
-          
+
           // Generate Button
           _buildGenerateButton(provider),
         ],
@@ -540,13 +608,15 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     );
   }
 
-  Widget _buildPromptField(String label, TextEditingController controller, String hint) {
+  Widget _buildPromptField(
+      String label, TextEditingController controller, String hint) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style:
+              const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -577,16 +647,16 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildGenerateButton(ImageGenerationProvider provider) {
-    final canGenerate = provider.isServiceRunning && 
-                       !provider.isGenerating && 
-                       _positivePromptController.text.trim().isNotEmpty;
+    final canGenerate = provider.isServiceRunning &&
+        !provider.isGenerating &&
+        _positivePromptController.text.trim().isNotEmpty;
 
     return SizedBox(
       width: double.infinity,
       height: 48,
       child: ElevatedButton.icon(
         onPressed: canGenerate ? () => _generateImage(provider) : null,
-        icon: provider.isGenerating 
+        icon: provider.isGenerating
             ? const SizedBox(
                 width: 20,
                 height: 20,
@@ -640,7 +710,6 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          
           Expanded(
             child: _buildImagesList(provider),
           ),
@@ -679,7 +748,8 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     );
   }
 
-  Widget _buildImageTile(GeneratedImage image, ImageGenerationProvider provider) {
+  Widget _buildImageTile(
+      GeneratedImage image, ImageGenerationProvider provider) {
     return Card(
       color: const Color(0xFF2A2A2A),
       margin: const EdgeInsets.only(bottom: 12),
@@ -765,14 +835,14 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         height: int.tryParse(_heightController.text) ?? 512,
         steps: int.tryParse(_stepsController.text) ?? 20,
         cfgScale: double.tryParse(_cfgController.text) ?? 7.5,
-        seed: int.tryParse(_seedController.text) ?? 
-              DateTime.now().millisecondsSinceEpoch,
+        seed: int.tryParse(_seedController.text) ??
+            DateTime.now().millisecondsSinceEpoch,
         model: _selectedModel,
         sampler: _selectedSampler,
       );
 
       await provider.generateImage(request);
-      
+
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -904,9 +974,9 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           backgroundColor: Colors.orange,
         ),
       );
-      
+
       final success = await provider.killDanglingService();
-      
+
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -942,7 +1012,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       );
       return;
     }
-    
+
     final logsText = logs.join('\n');
     Clipboard.setData(ClipboardData(text: logsText)).then((_) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -972,4 +1042,4 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     _heightController.dispose();
     super.dispose();
   }
-} 
+}
