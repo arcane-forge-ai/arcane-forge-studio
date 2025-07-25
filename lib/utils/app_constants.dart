@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 class AppConstants {
   /// UUID for visitor mode - centralized so we can easily change it if needed
   static const String visitorUserId = '00000000-0000-0000-0000-000000000000';
+
+  /// Default output directory for all generated contents
+  static const String defaultOutputDirectory = 'output';
 }
 
 /// Image Generation Backend Types

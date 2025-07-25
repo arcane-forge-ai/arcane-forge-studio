@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/image_generation_models.dart';
 import '../services/comfyui_service.dart';
 import '../services/comfyui_service_manager.dart';
+import '../services/image_generation_services.dart';
 import '../providers/settings_provider.dart';
 import '../utils/app_constants.dart';
 import 'dart:io';
@@ -9,6 +10,7 @@ import 'dart:io';
 class ImageGenerationProvider extends ChangeNotifier {
   final SettingsProvider _settingsProvider;
   final AIImageGenerationServiceManager _serviceManager = AIImageGenerationServiceManager.instance;
+  late final A1111ImageGenerationService _a1111Service;
   
   List<GeneratedImage> _images = [];
   bool _isGenerating = false;
@@ -19,7 +21,9 @@ class ImageGenerationProvider extends ChangeNotifier {
   List<String> _availableLoras = [];
   List<String> get availableLoras => _availableLoras;
   
-  ImageGenerationProvider(this._settingsProvider);
+  ImageGenerationProvider(this._settingsProvider) {
+    _a1111Service = A1111ImageGenerationService(_settingsProvider);
+  }
 
   List<GeneratedImage> get images => _images;
   bool get isGenerating => _isGenerating;
@@ -176,7 +180,7 @@ class ImageGenerationProvider extends ChangeNotifier {
     return await _serviceManager.isServiceHealthy();
   }
 
-  Future<void> generateImage(GenerationRequest request) async {
+  Future<void> generateImage(GenerationRequest request, {required String projectName, required String projectId}) async {
     if (_isGenerating) return;
 
     _isGenerating = true;
@@ -200,6 +204,7 @@ class ImageGenerationProvider extends ChangeNotifier {
         seed: request.seed,
         model: request.model,
         sampler: request.sampler,
+        scheduler: request.scheduler,
         createdAt: DateTime.now(),
         status: GenerationStatus.generating,
         imagePath: null,
@@ -208,16 +213,28 @@ class ImageGenerationProvider extends ChangeNotifier {
       _images.insert(0, generatedImage);
       notifyListeners();
 
-      // TODO: Implement actual image generation with the AI service
-      // For now, simulate the generation process
-      await Future.delayed(const Duration(seconds: 3));
-      
+      // Generate the image using the A1111 service
+      final imageData = await _a1111Service.generateImage(request);
+
+      // Build output path: $output_directory/$project_name_with_id/image/$image_id.png
+      final outputDir = _settingsProvider.outputDirectory.isNotEmpty
+        ? _settingsProvider.outputDirectory
+        : 'output';
+      final safeProjectName = projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final projectFolder = '${safeProjectName}_${projectId}';
+      final imageDir = Directory('$outputDir/$projectFolder/image');
+      if (!imageDir.existsSync()) {
+        imageDir.createSync(recursive: true);
+      }
+      final imageFile = File('${imageDir.path}/${generatedImage.id}.png');
+      await imageFile.writeAsBytes(imageData);
+
       // Update the image status to completed
       final index = _images.indexWhere((img) => img.id == generatedImage.id);
       if (index != -1) {
         _images[index] = generatedImage.copyWith(
           status: GenerationStatus.completed,
-          imagePath: 'assets/images/logo.png', // Placeholder for now
+          imagePath: imageFile.path,
         );
       }
 
@@ -265,7 +282,12 @@ class ImageGenerationProvider extends ChangeNotifier {
           .listSync()
           .whereType<File>()
           .where((f) => f.path.endsWith('.safetensors') || f.path.endsWith('.ckpt'))
-          .map((f) => f.uri.pathSegments.last)
+          .map((f) {
+            final fileName = f.uri.pathSegments.last;
+            // Remove file extension by splitting and taking all parts except the last
+            final parts = fileName.split('.');
+            return parts.take(parts.length - 1).join('.');
+          })
           .toList();
       _availableModels = files;
     } else {
@@ -286,7 +308,12 @@ class ImageGenerationProvider extends ChangeNotifier {
           .listSync()
           .whereType<File>()
           .where((f) => f.path.endsWith('.safetensors') || f.path.endsWith('.ckpt'))
-          .map((f) => f.uri.pathSegments.last)
+          .map((f) {
+            final fileName = f.uri.pathSegments.last;
+            // Remove file extension by splitting and taking all parts except the last
+            final parts = fileName.split('.');
+            return parts.take(parts.length - 1).join('.');
+          })
           .toList();
       _availableLoras = files;
     } else {

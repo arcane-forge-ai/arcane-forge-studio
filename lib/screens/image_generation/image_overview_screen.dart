@@ -6,6 +6,7 @@ import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import 'widgets/image_detail_dialog.dart';
+import 'dart:io';
 
 class ImageOverviewScreen extends StatefulWidget {
   const ImageOverviewScreen({Key? key}) : super(key: key);
@@ -96,7 +97,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, ImageGenerationProvider provider) {
+  Widget _buildActionButtons(
+      BuildContext context, ImageGenerationProvider provider) {
     return Row(
       children: [
         ElevatedButton.icon(
@@ -208,36 +210,38 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((image) {
         return image.prompt.toLowerCase().contains(_searchQuery) ||
-               (image.negativePrompt?.toLowerCase().contains(_searchQuery) ?? false);
+            (image.negativePrompt?.toLowerCase().contains(_searchQuery) ??
+                false);
       }).toList();
     }
 
-         // Apply status filter
-     if (_filterType != 'All') {
-       GenerationStatus status;
-       switch (_filterType) {
-         case 'Completed':
-           status = GenerationStatus.completed;
-           break;
-         case 'Failed':
-           status = GenerationStatus.failed;
-           break;
-         case 'Generating':
-           status = GenerationStatus.generating;
-           break;
-         case 'Pending':
-           status = GenerationStatus.pending;
-           break;
-         default:
-           return filtered;
-       }
-       filtered = filtered.where((image) => image.status == status).toList();
-     }
+    // Apply status filter
+    if (_filterType != 'All') {
+      GenerationStatus status;
+      switch (_filterType) {
+        case 'Completed':
+          status = GenerationStatus.completed;
+          break;
+        case 'Failed':
+          status = GenerationStatus.failed;
+          break;
+        case 'Generating':
+          status = GenerationStatus.generating;
+          break;
+        case 'Pending':
+          status = GenerationStatus.pending;
+          break;
+        default:
+          return filtered;
+      }
+      filtered = filtered.where((image) => image.status == status).toList();
+    }
 
     return filtered;
   }
 
-  Widget _buildEmptyState(BuildContext context, ImageGenerationProvider provider) {
+  Widget _buildEmptyState(
+      BuildContext context, ImageGenerationProvider provider) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -282,10 +286,14 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  Widget _buildImageGrid(List<GeneratedImage> images, ImageGenerationProvider provider) {
-    final crossAxisCount = Responsive.isMobile(context) ? 2 : 
-                           Responsive.isTablet(context) ? 3 : 4;
-    
+  Widget _buildImageGrid(
+      List<GeneratedImage> images, ImageGenerationProvider provider) {
+    final crossAxisCount = Responsive.isMobile(context)
+        ? 2
+        : Responsive.isTablet(context)
+            ? 3
+            : 4;
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: GridView.builder(
@@ -303,7 +311,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  Widget _buildImageCard(GeneratedImage image, ImageGenerationProvider provider) {
+  Widget _buildImageCard(
+      GeneratedImage image, ImageGenerationProvider provider) {
     return Card(
       color: const Color(0xFF2A2A2A),
       elevation: 4,
@@ -390,188 +399,215 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-     Widget _buildImageThumbnail(GeneratedImage image) {
-     if (image.status == GenerationStatus.completed && image.imagePath != null) {
-       return Container(
-         decoration: const BoxDecoration(
-           borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-         ),
-         child: Center(
-           child: Column(
-             mainAxisAlignment: MainAxisAlignment.center,
-             children: [
-               Container(
-                 width: 60,
-                 height: 60,
-                 decoration: BoxDecoration(
-                   color: Colors.green.withOpacity(0.2),
-                   borderRadius: BorderRadius.circular(8),
-                   border: Border.all(color: Colors.green.withOpacity(0.5)),
-                 ),
-                 child: const Icon(
-                   Icons.image,
-                   color: Colors.green,
-                   size: 30,
-                 ),
-               ),
-               const SizedBox(height: 8),
-               const Text(
-                 'Image Generated',
-                 style: TextStyle(
-                   color: Colors.green,
-                   fontSize: 12,
-                   fontWeight: FontWeight.w500,
-                 ),
-               ),
-               const SizedBox(height: 4),
-               const Text(
-                 'Tap to view',
-                 style: TextStyle(
-                   color: Colors.white54,
-                   fontSize: 10,
-                 ),
-               ),
-             ],
-           ),
-         ),
-       );
-     } else if (image.status == GenerationStatus.generating) {
-       return Container(
-         decoration: const BoxDecoration(
-           borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-         ),
-         child: Center(
-           child: Column(
-             mainAxisAlignment: MainAxisAlignment.center,
-             children: [
-               Container(
-                 width: 60,
-                 height: 60,
-                 decoration: BoxDecoration(
-                   color: Colors.blue.withOpacity(0.2),
-                   borderRadius: BorderRadius.circular(8),
-                   border: Border.all(color: Colors.blue.withOpacity(0.5)),
-                 ),
-                 child: const CircularProgressIndicator(
-                   valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                   strokeWidth: 2,
-                 ),
-               ),
-               const SizedBox(height: 8),
-               const Text(
-                 'Generating...',
-                 style: TextStyle(
-                   color: Colors.blue,
-                   fontSize: 12,
-                   fontWeight: FontWeight.w500,
-                 ),
-               ),
-             ],
-           ),
-         ),
-       );
-     } else if (image.status == GenerationStatus.pending) {
-       return Container(
-         decoration: const BoxDecoration(
-           borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-         ),
-         child: Center(
-           child: Column(
-             mainAxisAlignment: MainAxisAlignment.center,
-             children: [
-               Container(
-                 width: 60,
-                 height: 60,
-                 decoration: BoxDecoration(
-                   color: Colors.orange.withOpacity(0.2),
-                   borderRadius: BorderRadius.circular(8),
-                   border: Border.all(color: Colors.orange.withOpacity(0.5)),
-                 ),
-                 child: const Icon(
-                   Icons.schedule,
-                   color: Colors.orange,
-                   size: 30,
-                 ),
-               ),
-               const SizedBox(height: 8),
-               const Text(
-                 'Queued',
-                 style: TextStyle(
-                   color: Colors.orange,
-                   fontSize: 12,
-                   fontWeight: FontWeight.w500,
-                 ),
-               ),
-             ],
-           ),
-         ),
-       );
-     } else {
-       return Container(
-         decoration: const BoxDecoration(
-           borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-         ),
-         child: Center(
-           child: Column(
-             mainAxisAlignment: MainAxisAlignment.center,
-             children: [
-               Container(
-                 width: 60,
-                 height: 60,
-                 decoration: BoxDecoration(
-                   color: Colors.red.withOpacity(0.2),
-                   borderRadius: BorderRadius.circular(8),
-                   border: Border.all(color: Colors.red.withOpacity(0.5)),
-                 ),
-                 child: const Icon(
-                   Icons.error,
-                   color: Colors.red,
-                   size: 30,
-                 ),
-               ),
-               const SizedBox(height: 8),
-               const Text(
-                 'Failed',
-                 style: TextStyle(
-                   color: Colors.red,
-                   fontSize: 12,
-                   fontWeight: FontWeight.w500,
-                 ),
-               ),
-             ],
-           ),
-         ),
-       );
-     }
-   }
+  Widget _buildImageThumbnail(GeneratedImage image) {
+    if (image.status == GenerationStatus.completed && image.imagePath != null) {
+      return Container(
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (image.imagePath != null && File(image.imagePath!).existsSync())
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.5)),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(image.imagePath!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.green.withOpacity(0.2),
+                          child: const Icon(
+                            Icons.broken_image,
+                            color: Colors.green,
+                            size: 30,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.5)),
+                  ),
+                  child: const Icon(
+                    Icons.image,
+                    color: Colors.green,
+                    size: 30,
+                  ),
+                ),
+              const SizedBox(height: 8),
+              const Text(
+                'Image Generated',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Tap to view',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else if (image.status == GenerationStatus.generating) {
+      return Container(
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                ),
+                child: const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                  strokeWidth: 2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Generating...',
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else if (image.status == GenerationStatus.pending) {
+      return Container(
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                ),
+                child: const Icon(
+                  Icons.schedule,
+                  color: Colors.orange,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Queued',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      return Container(
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.withOpacity(0.5)),
+                ),
+                child: const Icon(
+                  Icons.error,
+                  color: Colors.red,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Failed',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
 
-     Widget _buildStatusIndicator(GenerationStatus status) {
-     Color color;
-     IconData icon;
-     String text;
+  Widget _buildStatusIndicator(GenerationStatus status) {
+    Color color;
+    IconData icon;
+    String text;
 
-     switch (status) {
-       case GenerationStatus.completed:
-         color = Colors.green;
-         icon = Icons.check_circle;
-         text = 'Done';
-         break;
-       case GenerationStatus.generating:
-         color = Colors.blue;
-         icon = Icons.hourglass_empty;
-         text = 'Gen';
-         break;
-       case GenerationStatus.failed:
-         color = Colors.red;
-         icon = Icons.error;
-         text = 'Error';
-         break;
-       case GenerationStatus.pending:
-         color = Colors.orange;
-         icon = Icons.schedule;
-         text = 'Queue';
-         break;
-     }
+    switch (status) {
+      case GenerationStatus.completed:
+        color = Colors.green;
+        icon = Icons.check_circle;
+        text = 'Done';
+        break;
+      case GenerationStatus.generating:
+        color = Colors.blue;
+        icon = Icons.hourglass_empty;
+        text = 'Gen';
+        break;
+      case GenerationStatus.failed:
+        color = Colors.red;
+        icon = Icons.error;
+        text = 'Error';
+        break;
+      case GenerationStatus.pending:
+        color = Colors.orange;
+        icon = Icons.schedule;
+        text = 'Queue';
+        break;
+    }
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -598,7 +634,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  void _showImageDetail(GeneratedImage image, ImageGenerationProvider provider) {
+  void _showImageDetail(
+      GeneratedImage image, ImageGenerationProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -613,7 +650,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           children: [
             Text(
               'Prompt:',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
@@ -624,7 +662,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               const SizedBox(height: 12),
               Text(
                 'Negative Prompt:',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               Text(
@@ -635,7 +674,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             const SizedBox(height: 12),
             Text(
               'Parameters:',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
             Text(
@@ -651,7 +691,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               const SizedBox(height: 12),
               Text(
                 'Error:',
-                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    color: Colors.red, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
               Text(
@@ -674,7 +715,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  void _showImageContextMenu(GeneratedImage image, ImageGenerationProvider provider) {
+  void _showImageContextMenu(
+      GeneratedImage image, ImageGenerationProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -688,7 +730,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.info, color: Colors.white54),
-              title: const Text('View Details', style: TextStyle(color: Colors.white)),
+              title: const Text('View Details',
+                  style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.of(context).pop();
                 _showImageDetail(image, provider);
@@ -696,7 +739,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.auto_awesome, color: Colors.white54),
-              title: const Text('Generate Similar', style: TextStyle(color: Colors.white)),
+              title: const Text('Generate Similar',
+                  style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.of(context).pop();
                 _generateSimilar(image);
@@ -704,7 +748,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('Delete Image', style: TextStyle(color: Colors.red)),
+              title: const Text('Delete Image',
+                  style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.of(context).pop();
                 _confirmDeleteImage(image, provider);
@@ -727,14 +772,16 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
 
   void _generateSimilar(GeneratedImage image) {
     // Navigate to generation screen and populate fields
-    final menuController = Provider.of<MenuAppController>(context, listen: false);
+    final menuController =
+        Provider.of<MenuAppController>(context, listen: false);
     menuController.changeScreen(ScreenType.imageGenerationGeneration);
-    
+
     // TODO: Pre-populate the generation form with this image's parameters
     // This would require extending the provider interface to support parameter setting
   }
 
-  void _confirmDeleteImage(GeneratedImage image, ImageGenerationProvider provider) {
+  void _confirmDeleteImage(
+      GeneratedImage image, ImageGenerationProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -773,7 +820,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  void _showClearAllDialog(BuildContext context, ImageGenerationProvider provider) {
+  void _showClearAllDialog(
+      BuildContext context, ImageGenerationProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -817,4 +865,4 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     _searchController.dispose();
     super.dispose();
   }
-} 
+}

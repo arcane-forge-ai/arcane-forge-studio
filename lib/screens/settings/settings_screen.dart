@@ -432,6 +432,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        // Output Directory
+                        Text(
+                          'Output Directory',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Consumer<SettingsProvider>(
+                          builder: (context, settingsProvider, child) {
+                            final controller = TextEditingController(text: settingsProvider.outputDirectory);
+                            return TextFormField(
+                              controller: controller,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                hintText: 'Enter the output directory for generated contents...',
+                                contentPadding: EdgeInsets.all(12),
+                              ),
+                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                              onChanged: (value) {
+                                settingsProvider.setOutputDirectory(value);
+                              },
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
                         
                         // Backend Configuration Cards
                         ...ImageGenerationBackend.values.take(2).map((backend) => 

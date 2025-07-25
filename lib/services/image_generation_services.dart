@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import '../models/image_generation_models.dart';
-import 'comfyui_service.dart';
+import '../providers/settings_provider.dart';
 
 // Service interfaces
 abstract class ImageAssetService {
@@ -268,6 +272,122 @@ class MockModelService implements ModelService {
         description: 'Enhancement LoRA for $name',
         lastModified: DateTime.now().subtract(Duration(days: Random().nextInt(30))),
       ));
+    }
+  }
+} 
+
+class A1111ImageGenerationService {
+  final SettingsProvider _settingsProvider;
+  final Dio _dio;
+  
+  A1111ImageGenerationService(this._settingsProvider) : _dio = Dio() {
+    _dio.options.connectTimeout = const Duration(seconds: 30);
+    _dio.options.receiveTimeout = const Duration(seconds: 60);
+  }
+  
+  /// Generate image using A1111 API
+  Future<Uint8List> generateImage(GenerationRequest request) async {
+    final backend = _settingsProvider.defaultGenerationServer;
+    final apiEndpoint = _settingsProvider.getEndpoint(backend);
+    
+    if (apiEndpoint.isEmpty) {
+      throw Exception('API endpoint not configured for ${backend.displayName}');
+    }
+    
+    // Load the request template
+    final payload = await _loadRequestTemplate();
+    
+    // Update the payload with our request parameters
+    _updatePayload(payload, request);
+    
+    // Make the API call
+    final url = '$apiEndpoint/sdapi/v1/txt2img';
+    
+    try {
+      final response = await _dio.post(
+        url,
+        data: payload,
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('API request failed with status ${response.statusCode}');
+      }
+      
+      final responseData = response.data;
+      if (responseData['images'] == null || responseData['images'].isEmpty) {
+        throw Exception('No images returned from API');
+      }
+      
+      // Decode the Base64 image
+      final base64Image = responseData['images'][0];
+      final imageData = base64Decode(base64Image);
+      
+      return imageData;
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception('API request failed: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+  
+  /// Load the request template from the JSON file
+  Future<Map<String, dynamic>> _loadRequestTemplate() async {
+    try {
+      // Load the asset using rootBundle
+      final jsonString = await rootBundle.loadString('assets/requests/a1111_request.json');
+      return jsonDecode(jsonString) as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('Failed to load request template: $e');
+    }
+  }
+  
+  /// Update the payload with our generation parameters
+  void _updatePayload(Map<String, dynamic> payload, GenerationRequest request) {
+    // Update main parameters
+    payload['prompt'] = request.positivePrompt;
+    payload['negative_prompt'] = request.negativePrompt;
+    payload['width'] = request.width;
+    payload['height'] = request.height;
+    payload['steps'] = request.steps;
+    payload['cfg_scale'] = request.cfgScale;
+    payload['seed'] = request.seed;
+    payload['sampler_name'] = request.sampler;
+    payload['scheduler'] = request.scheduler;
+    
+    // Update alwayson_scripts parameters
+    final alwaysonScripts = payload['alwayson_scripts'] as Map<String, dynamic>;
+    
+    // Update Dynamic Thresholding (CFG Scale Fix) - 2nd value in args array
+    if (alwaysonScripts.containsKey('Dynamic Thresholding (CFG Scale Fix)')) {
+      final dynamicThresholding = alwaysonScripts['Dynamic Thresholding (CFG Scale Fix)'];
+      final args = dynamicThresholding['args'] as List;
+      if (args.length > 1) {
+        args[1] = request.cfgScale;
+      }
+    }
+    
+    // Update Sampler - contains 3 args: steps, sampler, and scheduler
+    if (alwaysonScripts.containsKey('Sampler')) {
+      final sampler = alwaysonScripts['Sampler'];
+      final args = sampler['args'] as List;
+      if (args.length >= 3) {
+        args[0] = request.steps;
+        args[1] = request.sampler;
+        args[2] = request.scheduler;
+      }
+    }
+    
+    // Update Seed - 1st value in args array
+    if (alwaysonScripts.containsKey('Seed')) {
+      final seed = alwaysonScripts['Seed'];
+      final args = seed['args'] as List;
+      if (args.isNotEmpty) {
+        args[0] = request.seed;
+      }
     }
   }
 } 

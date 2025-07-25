@@ -6,13 +6,18 @@ import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../services/comfyui_service.dart';
+import 'dart:io';
+import '../../screens/game_design_assistant/providers/project_provider.dart';
+import 'widgets/image_detail_dialog.dart';
 
 class ImageGenerationScreen extends StatefulWidget {
   final String projectId;
+  final String projectName;
 
   const ImageGenerationScreen({
     Key? key,
     required this.projectId,
+    required this.projectName,
   }) : super(key: key);
 
   @override
@@ -34,10 +39,10 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   final TextEditingController _heightController =
       TextEditingController(text: '512');
 
-  String _selectedSampler = 'euler';
+  String _selectedSampler = 'Euler a';
   String _selectedScheduler = "Automatic";
+  String _selectedModelFallbackValue = 'No models found';
   String _selectedModel = 'No models found';
-  String _selectedLora = 'Click on a Lora to add to prompt';
 
   @override
   void initState() {
@@ -46,7 +51,8 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
 
     // Check if AI service is already running when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final imageGenerationProvider = Provider.of<ImageGenerationProvider>(context, listen: false);
+      final imageGenerationProvider =
+          Provider.of<ImageGenerationProvider>(context, listen: false);
       _checkServiceHealthOnLoad(imageGenerationProvider);
       // Refresh model list on load
       imageGenerationProvider.refreshAvailableModels().then((_) {
@@ -57,13 +63,15 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         }
       });
       imageGenerationProvider.refreshAvailableLoras().then((_) {
-        if (mounted && imageGenerationProvider.availableLoras.isNotEmpty) {
+        if (mounted && imageGenerationProvider.availableLoras.isEmpty) {
+          setState(() {});
         }
       });
     });
   }
 
-  void _checkServiceHealthOnLoad(ImageGenerationProvider imageGenerationProvider) async {
+  void _checkServiceHealthOnLoad(
+      ImageGenerationProvider imageGenerationProvider) async {
     try {
       final isHealthy = await imageGenerationProvider.isServiceHealthy();
       if (isHealthy && mounted) {
@@ -330,6 +338,16 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     return Consumer<ImageGenerationProvider>(
       builder: (context, provider, child) {
         final models = provider.availableModels;
+        if (models.isNotEmpty &&
+            _selectedModel == _selectedModelFallbackValue) {
+          _selectedModel = models.first;
+        }
+        final loras = provider.availableLoras;
+        String loraDropdownLabel = 'Click on a Lora to add to prompt';
+        if (loras.isEmpty) {
+          loraDropdownLabel = 'No Loras found';
+        }
+
         return Column(
           children: [
             // Checkpoint selection
@@ -348,16 +366,31 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             const SizedBox(height: 8),
             // Lora selection (unchanged, still static for now)
             _buildDropdownWithLabel(
-                "Lora",
-                _selectedLora,
-                [
-                  _selectedLora,
-                  'sd_xl_base_1.0.safetensors',
-                  'sd_xl_turbo_1.0.safetensors',
-                  'sd_v1-5-pruned-emaonly.safetensors',
-                  'sd_v2-1_768-ema-pruned.safetensors',
-                ],
-                ((value) {})),
+              "Lora",
+              loraDropdownLabel,
+              [loraDropdownLabel] + loras,
+              ((value) {
+                // Add to positive prompt
+                if (value != null && value != 'No Loras found') {
+                  final loraTag = '<lora:$value:1>';
+                  final currentText = _positivePromptController.text;
+                  if (!currentText.contains(loraTag)) {
+                    String separator = '';
+                    if (currentText.isNotEmpty) {
+                      if (!currentText.trim().endsWith(',')) {
+                        separator = ', ';
+                      } else {
+                        separator = ' ';
+                      }
+                    }
+                    setState(() {
+                      _positivePromptController.text =
+                          currentText + separator + loraTag;
+                    });
+                  }
+                }
+              }),
+            ),
           ],
         );
       },
@@ -404,8 +437,8 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                 "Sampler",
                 _selectedSampler,
                 [
-                  'euler',
-                  'euler_a',
+                  'Euler a',
+                  'Euler',
                   'heun',
                   'dpm_2',
                   'dpm_2_a',
@@ -748,54 +781,115 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     );
   }
 
+  ImageGeneration _toImageGeneration(GeneratedImage img) {
+    return ImageGeneration(
+      id: img.id,
+      assetId: '',
+      imagePath: img.imagePath ?? '',
+      parameters: {
+        'model': img.model,
+        'positive_prompt': img.prompt,
+        'negative_prompt': img.negativePrompt,
+        'width': img.width,
+        'height': img.height,
+        'steps': img.steps,
+        'cfg_scale': img.cfgScale,
+        'sampler': img.sampler,
+        'scheduler': img.scheduler,
+        'seed': img.seed,
+      },
+      createdAt: img.createdAt,
+      status: img.status,
+      isFavorite: false,
+    );
+  }
+
   Widget _buildImageTile(
       GeneratedImage image, ImageGenerationProvider provider) {
-    return Card(
-      color: const Color(0xFF2A2A2A),
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _buildImageStatusIcon(image.status),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        image.prompt,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+    return InkWell(
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (context) => ImageDetailDialog(
+            generation: _toImageGeneration(image),
+          ),
+        );
+      },
+      child: Card(
+        color: const Color(0xFF2A2A2A),
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _buildImageStatusIcon(image.status),
+                  const SizedBox(width: 12),
+                  // Show image thumbnail if completed
+                  if (image.status == GenerationStatus.completed && image.imagePath != null)
+                    Container(
+                      width: 60,
+                      height: 60,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF404040)),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${image.width}x${image.height} • ${image.steps} steps',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(image.imagePath!),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: const Color(0xFF3A3A3A),
+                              child: const Icon(
+                                Icons.broken_image,
+                                color: Colors.white54,
+                                size: 24,
+                              ),
+                            );
+                          },
                         ),
                       ),
-                    ],
+                    ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          image.prompt,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${image.width}x${image.height} • ${image.steps} steps',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
+              if (image.error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Error: ${image.error}',
+                  style: const TextStyle(color: Colors.red, fontSize: 12),
                 ),
               ],
-            ),
-            if (image.error != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Error: ${image.error}',
-                style: const TextStyle(color: Colors.red, fontSize: 12),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -833,15 +927,24 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         negativePrompt: _negativePromptController.text.trim(),
         width: int.tryParse(_widthController.text) ?? 512,
         height: int.tryParse(_heightController.text) ?? 512,
+        sampler: _selectedSampler,
+        scheduler: _selectedScheduler,
         steps: int.tryParse(_stepsController.text) ?? 20,
         cfgScale: double.tryParse(_cfgController.text) ?? 7.5,
         seed: int.tryParse(_seedController.text) ??
             DateTime.now().millisecondsSinceEpoch,
         model: _selectedModel,
-        sampler: _selectedSampler,
       );
 
-      await provider.generateImage(request);
+      // Get project name and id from ProjectProvider
+      final projectProvider =
+          Provider.of<ProjectProvider>(context, listen: false);
+      final projectName =
+          projectProvider.currentProject?.name ?? widget.projectName;
+      final projectId = projectProvider.currentProject?.id ?? widget.projectId;
+
+      await provider.generateImage(request,
+          projectName: projectName, projectId: projectId);
 
       // Show success message
       if (mounted) {

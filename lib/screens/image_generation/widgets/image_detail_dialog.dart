@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
 import '../../../models/image_generation_models.dart';
 
 class ImageDetailDialog extends StatelessWidget {
@@ -96,129 +97,40 @@ class ImageDetailDialog extends StatelessWidget {
   }
 
   Widget _buildImageView() {
-    return Column(
-      children: [
-        // Header with close button
-        Row(
-          children: [
-            if (asset != null)
-              Text(
-                asset!.name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
+    // Get image dimensions
+    int width = 512;
+    int height = 512;
+    if (generation.parameters.containsKey('width')) {
+      width = generation.parameters['width'] ?? 512;
+    }
+    if (generation.parameters.containsKey('height')) {
+      height = generation.parameters['height'] ?? 512;
+    }
+    return Center(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.vertical,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Image.file(
+            File(generation.imagePath),
+            width: width.toDouble(),
+            height: height.toDouble(),
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: width.toDouble(),
+                height: height.toDouble(),
+                color: Colors.blue.withOpacity(0.2),
+                child: const Icon(
+                  Icons.broken_image,
+                  color: Colors.blue,
+                  size: 60,
                 ),
-              ),
-            const Spacer(),
-                         Builder(
-               builder: (context) => IconButton(
-                 onPressed: () => Navigator.of(context).pop(),
-                 icon: const Icon(Icons.close, color: Colors.white70),
-               ),
-             ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        // Large image placeholder
-        Expanded(
-          child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: const Color(0xFF3A3A3A),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF404040)),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.blue.withOpacity(0.5), width: 2),
-                    ),
-                    child: const Icon(
-                      Icons.image,
-                      color: Colors.blue,
-                      size: 60,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Generated Image',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Full-size preview will appear here',
-                    style: TextStyle(
-                      color: Colors.white54,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+              );
+            },
           ),
         ),
-        const SizedBox(height: 20),
-        // Action buttons
-        Row(
-          children: [
-            if (onFavoriteToggle != null)
-              ElevatedButton.icon(
-                onPressed: onFavoriteToggle,
-                icon: Icon(
-                  generation.isFavorite ? Icons.favorite : Icons.favorite_border,
-                  color: generation.isFavorite ? Colors.amber : Colors.white,
-                ),
-                label: Text(
-                  generation.isFavorite ? 'Unfavorite' : 'Favorite',
-                  style: const TextStyle(color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: generation.isFavorite ? Colors.amber.withOpacity(0.2) : const Color(0xFF404040),
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            const SizedBox(width: 12),
-                         Builder(
-               builder: (context) => ElevatedButton.icon(
-                 onPressed: () => _copyToClipboard(context),
-                 icon: const Icon(Icons.copy, color: Colors.white),
-                 label: const Text('Copy Details', style: TextStyle(color: Colors.white)),
-                 style: ElevatedButton.styleFrom(
-                   backgroundColor: const Color(0xFF0078D4),
-                 ),
-               ),
-             ),
-             const Spacer(),
-             Builder(
-               builder: (context) => ElevatedButton.icon(
-                 onPressed: () {
-                   // TODO: Implement export functionality
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     const SnackBar(content: Text('Export functionality coming soon!')),
-                   );
-                 },
-                 icon: const Icon(Icons.download, color: Colors.white),
-                 label: const Text('Export', style: TextStyle(color: Colors.white)),
-                 style: ElevatedButton.styleFrom(
-                   backgroundColor: const Color(0xFF0078D4),
-                 ),
-               ),
-             ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 

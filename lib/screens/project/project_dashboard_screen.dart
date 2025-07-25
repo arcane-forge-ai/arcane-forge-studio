@@ -51,7 +51,8 @@ class ProjectDashboardScreen extends StatelessWidget {
                       return ChangeNotifierProvider(
                         create: (context) {
                           final provider = ProjectProvider();
-                          provider.initializeWithProject(projectId, projectName);
+                          provider.initializeWithProject(
+                              projectId, projectName);
                           return provider;
                         },
                         child: KnowledgeBaseScreen(),
@@ -60,7 +61,8 @@ class ProjectDashboardScreen extends StatelessWidget {
                       return ChangeNotifierProvider(
                         create: (context) {
                           final provider = ProjectProvider();
-                          provider.initializeWithProject(projectId, projectName);
+                          provider.initializeWithProject(
+                              projectId, projectName);
                           return provider;
                         },
                         child: GameDesignAssistantScreen(),
@@ -70,7 +72,8 @@ class ProjectDashboardScreen extends StatelessWidget {
                     case ScreenType.imageGenerationOverview:
                       return const ImageOverviewScreen();
                     case ScreenType.imageGenerationGeneration:
-                      return ImageGenerationScreen(projectId: projectId);
+                      return ImageGenerationScreen(
+                          projectId: projectId, projectName: projectName);
                     default:
                       return DashboardScreen();
                   }

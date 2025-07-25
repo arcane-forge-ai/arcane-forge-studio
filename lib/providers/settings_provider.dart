@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../utils/app_constants.dart';
+import 'dart:io';
 
 class SettingsProvider extends ChangeNotifier {
-  bool _useMockMode = true; // Default to mock mode for development
+  bool _useMockMode = false; // Default to mock mode for development
   bool _isDarkMode = true; // Default to dark mode (current theme)
   
   // Image Generation Settings
@@ -31,6 +32,16 @@ class SettingsProvider extends ChangeNotifier {
     for (var backend in ImageGenerationBackend.values)
       backend: ImageGenerationConstants.defaultHealthCheckEndpoints[backend] ?? '',
   };
+
+  // Output directory for generated images
+  String _outputDirectory = AppConstants.defaultOutputDirectory; // Use default from AppConstants
+  String get outputDirectory => _outputDirectory;
+  void setOutputDirectory(String dir) {
+    if (_outputDirectory != dir) {
+      _outputDirectory = dir;
+      notifyListeners();
+    }
+  }
 
   // Existing getters
   bool get useMockMode => _useMockMode;

@@ -91,9 +91,9 @@ class ImageGeneration {
 
 class GenerationParameters {
   final Map<String, dynamic> _params;
-  
+
   GenerationParameters(this._params);
-  
+
   // Core parameters with getters
   String get model => _params['model'] ?? '';
   String get positivePrompt => _params['positive_prompt'] ?? '';
@@ -104,10 +104,11 @@ class GenerationParameters {
   double get cfgScale => _params['cfg_scale'] ?? 7.0;
   String get sampler => _params['sampler'] ?? 'euler';
   int get seed => _params['seed'] ?? -1;
-  
+
   // LoRA parameters
-  List<Map<String, dynamic>> get loras => List<Map<String, dynamic>>.from(_params['loras'] ?? []);
-  
+  List<Map<String, dynamic>> get loras =>
+      List<Map<String, dynamic>>.from(_params['loras'] ?? []);
+
   // Extensible: any other parameters
   dynamic operator [](String key) => _params[key];
   Map<String, dynamic> toJson() => Map<String, dynamic>.from(_params);
@@ -177,6 +178,7 @@ class GenerationRequest {
   final int steps;
   final double cfgScale;
   final String sampler;
+  final String scheduler;
   final int seed;
   final List<Map<String, dynamic>> loras;
 
@@ -190,6 +192,7 @@ class GenerationRequest {
     required this.steps,
     required this.cfgScale,
     required this.sampler,
+    required this.scheduler,
     required this.seed,
     this.loras = const [], // Added default value
   });
@@ -205,6 +208,7 @@ class GenerationRequest {
       'steps': steps,
       'cfg_scale': cfgScale,
       'sampler': sampler,
+      'scheduler': scheduler,
       'seed': seed,
       'loras': loras,
     };
@@ -223,6 +227,7 @@ class GeneratedImage {
   final int seed;
   final String model;
   final String sampler;
+  final String scheduler;
   final DateTime createdAt;
   final GenerationStatus status;
   final String? imagePath;
@@ -239,6 +244,7 @@ class GeneratedImage {
     required this.seed,
     required this.model,
     required this.sampler,
+    required this.scheduler,
     required this.createdAt,
     required this.status,
     this.imagePath,
@@ -256,6 +262,7 @@ class GeneratedImage {
     int? seed,
     String? model,
     String? sampler,
+    String? scheduler,
     DateTime? createdAt,
     GenerationStatus? status,
     String? imagePath,
@@ -272,10 +279,11 @@ class GeneratedImage {
       seed: seed ?? this.seed,
       model: model ?? this.model,
       sampler: sampler ?? this.sampler,
+      scheduler: scheduler ?? this.scheduler,
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
       imagePath: imagePath ?? this.imagePath,
       error: error ?? this.error,
     );
   }
-} 
+}
