@@ -5,8 +5,11 @@ import 'package:arcane_forge/screens/game_design_assistant/providers/project_pro
 import 'package:arcane_forge/providers/settings_provider.dart';
 import 'package:arcane_forge/providers/auth_provider.dart';
 import 'package:arcane_forge/providers/image_generation_provider.dart';
+import 'package:arcane_forge/providers/sfx_generation_provider.dart';
+import 'package:arcane_forge/services/sfx_generation_services.dart';
 import 'package:arcane_forge/screens/login/login_screen.dart';
 import 'package:arcane_forge/services/comfyui_service_manager.dart';
+import 'package:arcane_forge/utils/app_constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -86,8 +89,32 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (context) => SettingsProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
         ChangeNotifierProxyProvider<SettingsProvider, ImageGenerationProvider>(
-          create: (context) => ImageGenerationProvider(context.read<SettingsProvider>()),
-          update: (context, settingsProvider, previous) => previous ?? ImageGenerationProvider(settingsProvider),
+          create: (context) => ImageGenerationProvider(
+            context.read<SettingsProvider>(),
+            apiBaseUrl: ApiConfig.baseUrl,
+            useApiService: ApiConfig.enabled,
+          ),
+          update: (context, settingsProvider, previous) => previous ?? ImageGenerationProvider(
+            settingsProvider,
+            apiBaseUrl: ApiConfig.baseUrl,
+            useApiService: ApiConfig.enabled,
+          ),
+        ),
+        ChangeNotifierProxyProvider<SettingsProvider, SfxGenerationProvider>(
+          create: (context) => SfxGenerationProvider(
+            SfxAssetServiceFactory.create(
+              apiBaseUrl: ApiConfig.baseUrl,
+              useApiService: ApiConfig.enabled,
+            ),
+            context.read<SettingsProvider>(),
+          ),
+          update: (context, settingsProvider, previous) => previous ?? SfxGenerationProvider(
+            SfxAssetServiceFactory.create(
+              apiBaseUrl: ApiConfig.baseUrl,
+              useApiService: ApiConfig.enabled,
+            ),
+            settingsProvider,
+          ),
         ),
       ],
       child: Builder(

@@ -15,8 +15,9 @@ abstract class ImageAssetService {
   Future<ImageAsset> updateAsset(ImageAsset asset);
   Future<void> deleteAsset(String assetId);
   Future<void> deleteGeneration(String generationId);
-  Future<ImageGeneration> addGeneration(String assetId, ImageGeneration generation);
+  Future<ImageGeneration> addGeneration(String assetId, Map<String, dynamic> parameters, {GenerationStatus status = GenerationStatus.pending});
   Future<ImageGeneration> updateGeneration(ImageGeneration generation);
+  Future<ImageGeneration> getGeneration(String generationId);
 }
 
 abstract class ModelService {
@@ -24,6 +25,470 @@ abstract class ModelService {
   Future<List<AIModel>> getCheckpointModels();
   Future<List<AIModel>> getLoraModels();
   Future<void> refreshModels();
+}
+
+/// Service factory to create the appropriate asset service
+class ImageAssetServiceFactory {
+  static ImageAssetService create({
+    String? apiBaseUrl,
+    bool useApiService = false,
+  }) {
+    if (useApiService && apiBaseUrl != null) {
+      return ApiImageAssetService(baseUrl: apiBaseUrl);
+    }
+    return MockImageAssetService();
+  }
+}
+
+// API implementation using FastAPI backend
+class ApiImageAssetService implements ImageAssetService {
+  final Dio _dio;
+  final String _baseUrl;
+  
+  ApiImageAssetService({
+    required String baseUrl,
+    Dio? dio,
+  }) : _baseUrl = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl,
+       _dio = dio ?? Dio() {
+    _dio.options.connectTimeout = const Duration(seconds: 30);
+    _dio.options.receiveTimeout = const Duration(seconds: 60);
+    _dio.options.headers['Content-Type'] = 'application/json';
+  }
+
+  @override
+  Future<List<ImageAsset>> getProjectAssets(String projectId) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/v1/$projectId/assets',
+        queryParameters: {
+          'limit': 200, // Get all assets
+          'sort_by': 'created_at',
+          'sort_order': 'desc',
+        },
+      );
+      
+      final data = response.data as Map<String, dynamic>;
+      final assetsData = data['assets'] as List<dynamic>;
+      
+      return assetsData.map((assetJson) => _parseImageAsset(assetJson)).toList();
+    } catch (e) {
+      throw Exception('Failed to get project assets: $e');
+    }
+  }
+
+  /// Get project assets with advanced filtering
+  Future<Map<String, dynamic>> getProjectAssetsWithFilters(
+    String projectId, {
+    int limit = 50,
+    int offset = 0,
+    String? search,
+    List<String>? tags,
+    bool? hasGenerations,
+    DateTime? createdAfter,
+    DateTime? createdBefore,
+    String sortBy = 'created_at',
+    String sortOrder = 'desc',
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'limit': limit,
+        'offset': offset,
+        'sort_by': sortBy,
+        'sort_order': sortOrder,
+      };
+
+      if (search != null) queryParams['search'] = search;
+      if (tags != null && tags.isNotEmpty) queryParams['tags'] = tags.join(',');
+      if (hasGenerations != null) queryParams['has_generations'] = hasGenerations;
+      if (createdAfter != null) queryParams['created_after'] = createdAfter.toIso8601String();
+      if (createdBefore != null) queryParams['created_before'] = createdBefore.toIso8601String();
+
+      final response = await _dio.get(
+        '$_baseUrl/api/v1/$projectId/assets',
+        queryParameters: queryParams,
+      );
+      
+      final data = response.data as Map<String, dynamic>;
+      final assetsData = data['assets'] as List<dynamic>;
+      
+      return {
+        'assets': assetsData.map((assetJson) => _parseImageAsset(assetJson)).toList(),
+        'total': data['total'],
+        'has_more': data['has_more'],
+        'limit': data['limit'],
+        'offset': data['offset'],
+      };
+    } catch (e) {
+      throw Exception('Failed to get filtered project assets: $e');
+    }
+  }
+
+  @override
+  Future<ImageAsset> getAsset(String assetId) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/api/v1/assets/$assetId',
+        queryParameters: {'include_generations': true},
+      );
+      
+      return _parseImageAsset(response.data);
+    } catch (e) {
+      throw Exception('Failed to get asset: $e');
+    }
+  }
+
+  /// Get asset generations with filtering
+  Future<Map<String, dynamic>> getAssetGenerations(
+    String assetId, {
+    int limit = 20,
+    int offset = 0,
+    String? status,
+    bool? isFavorite,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'limit': limit,
+        'offset': offset,
+      };
+
+      if (status != null) queryParams['status'] = status;
+      if (isFavorite != null) queryParams['is_favorite'] = isFavorite;
+
+      final response = await _dio.get(
+        '$_baseUrl/api/v1/assets/$assetId/generations',
+        queryParameters: queryParams,
+      );
+      
+      final data = response.data as Map<String, dynamic>;
+      final generationsData = data['generations'] as List<dynamic>;
+      
+      return {
+        'generations': generationsData.map((genJson) => _parseImageGeneration(genJson)).toList(),
+        'total': data['total'],
+        'limit': data['limit'],
+        'offset': data['offset'],
+      };
+    } catch (e) {
+      throw Exception('Failed to get asset generations: $e');
+    }
+  }
+
+  @override
+  Future<ImageAsset> createAsset(String projectId, String name, String description) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/$projectId/assets',
+        data: {
+          'name': name,
+          'description': description,
+          'tags': <String>[],
+          'metadata': <String, dynamic>{},
+        },
+      );
+      
+      return _parseImageAsset(response.data);
+    } catch (e) {
+      throw Exception('Failed to create asset: $e');
+    }
+  }
+
+  /// Create multiple assets at once
+  Future<Map<String, dynamic>> createBulkAssets(
+    String projectId,
+    List<Map<String, dynamic>> assetsData,
+  ) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/$projectId/assets/bulk',
+        data: {'assets': assetsData},
+      );
+      
+      final data = response.data as Map<String, dynamic>;
+      final createdData = data['created'] as List<dynamic>;
+      final failedData = data['failed'] as List<dynamic>;
+      
+      return {
+        'created': createdData.map((assetJson) => _parseImageAsset(assetJson)).toList(),
+        'failed': failedData,
+      };
+    } catch (e) {
+      throw Exception('Failed to create bulk assets: $e');
+    }
+  }
+
+  @override
+  Future<ImageAsset> updateAsset(ImageAsset asset) async {
+    try {
+      final response = await _dio.put(
+        '$_baseUrl/api/v1/assets/${asset.id}',
+        data: {
+          'name': asset.name,
+          'description': asset.description,
+          'tags': <String>[], // Add tags support when available in models
+          'metadata': <String, dynamic>{},
+        },
+      );
+      
+      return _parseImageAsset(response.data);
+    } catch (e) {
+      throw Exception('Failed to update asset: $e');
+    }
+  }
+
+  @override
+  Future<void> deleteAsset(String assetId) async {
+    try {
+      await _dio.delete(
+        '$_baseUrl/api/v1/assets/$assetId',
+        queryParameters: {'force': true},
+      );
+    } catch (e) {
+      throw Exception('Failed to delete asset: $e');
+    }
+  }
+
+  /// Delete multiple assets at once
+  Future<Map<String, dynamic>> deleteBulkAssets(
+    String projectId,
+    List<String> assetIds, {
+    bool force = false,
+  }) async {
+    try {
+      final response = await _dio.delete(
+        '$_baseUrl/api/v1/$projectId/assets/bulk',
+        data: {
+          'asset_ids': assetIds,
+          'force': force,
+        },
+      );
+      
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('Failed to delete bulk assets: $e');
+    }
+  }
+
+  @override
+  Future<void> deleteGeneration(String generationId) async {
+    try {
+      await _dio.delete('$_baseUrl/api/v1/generations/$generationId');
+    } catch (e) {
+      throw Exception('Failed to delete generation: $e');
+    }
+  }
+
+  /// Get a specific generation by ID
+  Future<ImageGeneration> getGeneration(String generationId) async {
+    try {
+      final response = await _dio.get('$_baseUrl/api/v1/generations/$generationId');
+      return _parseImageGeneration(response.data);
+    } catch (e) {
+      throw Exception('Failed to get generation: $e');
+    }
+  }
+
+  @override
+  Future<ImageGeneration> addGeneration(String assetId, Map<String, dynamic> parameters, {GenerationStatus status = GenerationStatus.pending}) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/assets/$assetId/generations',
+        data: {
+          'parameters': parameters,
+          'status': status.name,
+        },
+      );
+      
+      return _parseImageGeneration(response.data);
+    } catch (e) {
+      throw Exception('Failed to add generation: $e');
+    }
+  }
+
+  @override
+  Future<ImageGeneration> updateGeneration(ImageGeneration generation) async {
+    try {
+      final response = await _dio.put(
+        '$_baseUrl/api/v1/generations/${generation.id}',
+        data: {
+          'status': generation.status.name,
+          'is_favorite': generation.isFavorite,
+          'image_path': generation.imagePath,
+          'metadata': <String, dynamic>{},
+        },
+      );
+      
+      return _parseImageGeneration(response.data);
+    } catch (e) {
+      throw Exception('Failed to update generation: $e');
+    }
+  }
+
+  /// Mark a generation as favorite
+  Future<ImageGeneration> markGenerationFavorite(String generationId) async {
+    try {
+      final response = await _dio.post('$_baseUrl/api/v1/generations/$generationId/favorite');
+      return _parseImageGeneration(response.data);
+    } catch (e) {
+      throw Exception('Failed to mark generation as favorite: $e');
+    }
+  }
+
+  /// Remove favorite status from a generation
+  Future<ImageGeneration> removeGenerationFavorite(String generationId) async {
+    try {
+      final response = await _dio.delete('$_baseUrl/api/v1/generations/$generationId/favorite');
+      return _parseImageGeneration(response.data);
+    } catch (e) {
+      throw Exception('Failed to remove generation favorite: $e');
+    }
+  }
+
+  /// Upload an image file for a generation
+  Future<Map<String, dynamic>> uploadGenerationImage(String generationId, Uint8List imageData, String filename) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          imageData,
+          filename: filename,
+        ),
+      });
+
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/generations/$generationId/upload',
+        data: formData,
+        options: Options(
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        ),
+      );
+
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('Failed to upload generation image: $e');
+    }
+  }
+
+  /// Complete generation workflow: create generation, upload image, update status
+  Future<ImageGeneration> completeGenerationWorkflow(
+    String assetId,
+    Map<String, dynamic> parameters,
+    Uint8List imageData,
+    String filename,
+  ) async {
+    try {
+      // 1. Create generation (server generates ID)
+      final generation = await addGeneration(assetId, parameters, status: GenerationStatus.generating);
+      
+      // 2. Upload image
+      final uploadResult = await uploadGenerationImage(generation.id, imageData, filename);
+      
+      // 3. Update generation with completed status and image path
+      final updatedGeneration = await updateGeneration(
+        generation.copyWith(
+          status: GenerationStatus.completed,
+          imagePath: uploadResult['image_path'],
+        ),
+      );
+      
+      return updatedGeneration;
+    } catch (e) {
+      throw Exception('Failed to complete generation workflow: $e');
+    }
+  }
+
+  /// Get project statistics
+  Future<Map<String, dynamic>> getProjectStats(String projectId) async {
+    try {
+      final response = await _dio.get('$_baseUrl/api/v1/$projectId/stats');
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      throw Exception('Failed to get project stats: $e');
+    }
+  }
+
+  /// Get project tags
+  Future<List<Map<String, dynamic>>> getProjectTags(String projectId) async {
+    try {
+      final response = await _dio.get('$_baseUrl/api/v1/$projectId/tags');
+      final data = response.data as Map<String, dynamic>;
+      return List<Map<String, dynamic>>.from(data['tags']);
+    } catch (e) {
+      throw Exception('Failed to get project tags: $e');
+    }
+  }
+
+  /// Get image URL for serving
+  String getImageUrl(String imageId) {
+    return '$_baseUrl/api/v1/files/images/$imageId';
+  }
+
+  /// Get asset thumbnail URL
+  String getAssetThumbnailUrl(String assetId, {String size = 'medium'}) {
+    return '$_baseUrl/api/v1/assets/$assetId/thumbnail?size=$size';
+  }
+
+  /// Test API connection
+  Future<bool> testConnection() async {
+    try {
+      final response = await _dio.get('$_baseUrl/health');
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Parse API response to ImageAsset model
+  ImageAsset _parseImageAsset(Map<String, dynamic> json) {
+    final generations = <ImageGeneration>[];
+    
+    if (json['generations'] != null) {
+      final generationsData = json['generations'] as List<dynamic>;
+      generations.addAll(
+        generationsData.map((genJson) => _parseImageGeneration(genJson)),
+      );
+    }
+
+    return ImageAsset(
+      id: json['id'] as String,
+      projectId: json['project_id'].toString(),
+      name: json['name'] as String,
+      description: json['description'] as String? ?? '',
+      createdAt: DateTime.parse(json['created_at'] as String),
+      generations: generations,
+      thumbnail: json['thumbnail'] as String?,
+      favoriteGenerationId: json['favorite_generation_id'] as String?,
+    );
+  }
+
+  /// Parse API response to ImageGeneration model
+  ImageGeneration _parseImageGeneration(Map<String, dynamic> json) {
+    return ImageGeneration(
+      id: json['id'] as String,
+      assetId: json['asset_id'] as String,
+      imagePath: json['image_path'] as String? ?? '',
+      parameters: Map<String, dynamic>.from(json['parameters'] as Map? ?? {}),
+      createdAt: DateTime.parse(json['created_at'] as String),
+      status: _parseGenerationStatus(json['status'] as String),
+      isFavorite: json['is_favorite'] as bool? ?? false,
+    );
+  }
+
+  /// Parse status string to GenerationStatus enum
+  GenerationStatus _parseGenerationStatus(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return GenerationStatus.pending;
+      case 'generating':
+        return GenerationStatus.generating;
+      case 'completed':
+        return GenerationStatus.completed;
+      case 'failed':
+        return GenerationStatus.failed;
+      default:
+        return GenerationStatus.pending;
+    }
+  }
 }
 
 // Mock implementations
@@ -94,8 +559,19 @@ class MockImageAssetService implements ImageAssetService {
   }
 
   @override
-  Future<ImageGeneration> addGeneration(String assetId, ImageGeneration generation) async {
+  Future<ImageGeneration> addGeneration(String assetId, Map<String, dynamic> parameters, {GenerationStatus status = GenerationStatus.pending}) async {
     await Future.delayed(Duration(milliseconds: 300));
+    
+    // Create a new generation with server-generated ID
+    final generation = ImageGeneration(
+      id: 'gen_${DateTime.now().millisecondsSinceEpoch}', // Mock server-generated ID
+      assetId: assetId,
+      imagePath: '', // Will be set when image is uploaded
+      parameters: parameters,
+      createdAt: DateTime.now(),
+      status: status,
+      isFavorite: false,
+    );
     
     final assetIndex = _mockAssets.indexWhere((a) => a.id == assetId);
     if (assetIndex != -1) {
@@ -109,6 +585,23 @@ class MockImageAssetService implements ImageAssetService {
     }
     
     return generation;
+  }
+
+  @override
+  Future<ImageGeneration> getGeneration(String generationId) async {
+    await Future.delayed(Duration(milliseconds: 300));
+    
+    // Find the asset that contains the generation
+    for (var asset in _mockAssets) {
+      for (var generation in asset.generations) {
+        if (generation.id == generationId) {
+          return generation;
+        }
+      }
+    }
+    
+    // If generation not found, throw an exception
+    throw Exception('Generation not found: $generationId');
   }
 
   @override
@@ -299,6 +792,8 @@ class A1111ImageGenerationService {
     
     // Update the payload with our request parameters
     _updatePayload(payload, request);
+
+    print(jsonEncode(payload));
     
     // Make the API call
     final url = '$apiEndpoint/sdapi/v1/txt2img';

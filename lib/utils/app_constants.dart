@@ -136,3 +136,20 @@ class DateUtils {
     }
   }
 } 
+
+// API Configuration
+class ApiConfig {
+  static const String defaultBaseUrl = 'http://localhost:8000';
+  static const bool useApiService = true; // Set to false to use mock service
+  
+  // Environment-based configuration
+  static String get baseUrl {
+    const apiUrl = String.fromEnvironment('API_BASE_URL', defaultValue: defaultBaseUrl);
+    return apiUrl;
+  }
+  
+  static bool get enabled {
+    const useApi = bool.fromEnvironment('USE_API_SERVICE', defaultValue: useApiService);
+    return useApi;
+  }
+} 

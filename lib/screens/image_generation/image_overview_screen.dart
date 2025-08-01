@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/image_generation_provider.dart';
-import '../../providers/settings_provider.dart';
+
 import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
-import 'widgets/image_detail_dialog.dart';
+
+import 'widgets/asset_detail_screen.dart';
 import 'dart:io';
 
 class ImageOverviewScreen extends StatefulWidget {
-  const ImageOverviewScreen({Key? key}) : super(key: key);
+  final String projectId;
+  final String projectName;
+
+  const ImageOverviewScreen({
+    Key? key,
+    required this.projectId,
+    required this.projectName,
+  }) : super(key: key);
 
   @override
   State<ImageOverviewScreen> createState() => _ImageOverviewScreenState();
@@ -23,9 +31,14 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ImageGenerationProvider>().refreshImages();
-    });
+    _initializeProjectContext();
+    WidgetsBinding.instance.addPostFrameCallback((_) {});
+  }
+
+  void _initializeProjectContext() async {
+    final imageProvider =
+        Provider.of<ImageGenerationProvider>(context, listen: false);
+    await imageProvider.setCurrentProject(widget.projectId);
   }
 
   @override
@@ -62,13 +75,13 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           Row(
             children: [
               const Icon(
-                Icons.grid_view,
+                Icons.folder_outlined,
                 color: Colors.white,
                 size: 28,
               ),
               const SizedBox(width: 12),
               const Text(
-                'Generated Images',
+                'Image Assets',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 24,
@@ -102,13 +115,10 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     return Row(
       children: [
         ElevatedButton.icon(
-          onPressed: () {
-            Provider.of<MenuAppController>(context, listen: false)
-                .changeScreen(ScreenType.imageGenerationGeneration);
-          },
+          onPressed: () => _showCreateAssetDialog(context, provider),
           icon: const Icon(Icons.add, color: Colors.white),
           label: const Text(
-            'Generate Images',
+            'Create Asset',
             style: TextStyle(color: Colors.white),
           ),
           style: ElevatedButton.styleFrom(
@@ -117,7 +127,23 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           ),
         ),
         const SizedBox(width: 12),
-        if (provider.images.isNotEmpty)
+        ElevatedButton.icon(
+          onPressed: () {
+            Provider.of<MenuAppController>(context, listen: false)
+                .changeScreen(ScreenType.imageGenerationGeneration);
+          },
+          icon: const Icon(Icons.auto_awesome, color: Colors.white70),
+          label: const Text(
+            'Generate Images',
+            style: TextStyle(color: Colors.white70),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF404040),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+        const SizedBox(width: 12),
+        if (provider.assets.isNotEmpty)
           OutlinedButton.icon(
             onPressed: () => _showClearAllDialog(context, provider),
             icon: const Icon(Icons.clear_all, color: Colors.white70),
@@ -144,7 +170,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
       },
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
-        hintText: 'Search images by prompt...',
+        hintText: 'Search assets by name or description...',
         hintStyle: const TextStyle(color: Colors.white54),
         prefixIcon: const Icon(Icons.search, color: Colors.white54),
         filled: true,
@@ -170,11 +196,10 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
         underline: Container(),
         style: const TextStyle(color: Colors.white),
         items: const [
-          DropdownMenuItem(value: 'All', child: Text('All Images')),
-          DropdownMenuItem(value: 'Completed', child: Text('Completed')),
-          DropdownMenuItem(value: 'Failed', child: Text('Failed')),
-          DropdownMenuItem(value: 'Generating', child: Text('Generating')),
-          DropdownMenuItem(value: 'Pending', child: Text('Pending')),
+          DropdownMenuItem(value: 'All', child: Text('All Assets')),
+          DropdownMenuItem(value: 'HasGenerations', child: Text('With Images')),
+          DropdownMenuItem(value: 'Empty', child: Text('Empty Assets')),
+          DropdownMenuItem(value: 'Recent', child: Text('Recent')),
         ],
         onChanged: (value) {
           setState(() {
@@ -187,54 +212,53 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
 
   Widget _buildRefreshButton(ImageGenerationProvider provider) {
     return IconButton(
-      onPressed: () => provider.refreshImages(),
+      onPressed: () => provider.refreshAssets(),
       icon: const Icon(Icons.refresh, color: Colors.white54),
-      tooltip: 'Refresh Images',
+      tooltip: 'Refresh Assets',
     );
   }
 
   Widget _buildContent(BuildContext context, ImageGenerationProvider provider) {
-    final filteredImages = _filterImages(provider.images);
+    final filteredAssets = _filterAssets(provider.assets);
 
-    if (filteredImages.isEmpty) {
+    if (filteredAssets.isEmpty) {
       return _buildEmptyState(context, provider);
     }
 
-    return _buildImageGrid(filteredImages, provider);
+    return _buildAssetGrid(filteredAssets, provider);
   }
 
-  List<GeneratedImage> _filterImages(List<GeneratedImage> images) {
-    var filtered = images;
+  List<ImageAsset> _filterAssets(List<ImageAsset> assets) {
+    var filtered = assets;
 
     // Apply search filter
     if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((image) {
-        return image.prompt.toLowerCase().contains(_searchQuery) ||
-            (image.negativePrompt?.toLowerCase().contains(_searchQuery) ??
-                false);
+      filtered = filtered.where((asset) {
+        return asset.name.toLowerCase().contains(_searchQuery) ||
+            asset.description.toLowerCase().contains(_searchQuery);
       }).toList();
     }
 
     // Apply status filter
-    if (_filterType != 'All') {
-      GenerationStatus status;
-      switch (_filterType) {
-        case 'Completed':
-          status = GenerationStatus.completed;
-          break;
-        case 'Failed':
-          status = GenerationStatus.failed;
-          break;
-        case 'Generating':
-          status = GenerationStatus.generating;
-          break;
-        case 'Pending':
-          status = GenerationStatus.pending;
-          break;
-        default:
-          return filtered;
-      }
-      filtered = filtered.where((image) => image.status == status).toList();
+    switch (_filterType) {
+      case 'HasGenerations':
+        filtered =
+            filtered.where((asset) => asset.generations.isNotEmpty).toList();
+        break;
+      case 'Empty':
+        filtered =
+            filtered.where((asset) => asset.generations.isEmpty).toList();
+        break;
+      case 'Recent':
+        filtered = filtered
+            .where((asset) =>
+                DateTime.now().difference(asset.createdAt).inDays < 7)
+            .toList();
+        break;
+      case 'All':
+      default:
+        // No additional filtering
+        break;
     }
 
     return filtered;
@@ -247,13 +271,13 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(
-            Icons.image_outlined,
+            Icons.folder_outlined,
             color: Colors.white54,
             size: 64,
           ),
           const SizedBox(height: 16),
           const Text(
-            'No images generated yet',
+            'No image assets yet',
             style: TextStyle(
               color: Colors.white54,
               fontSize: 18,
@@ -262,18 +286,16 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Create your first AI-generated image',
+            'Create your first image asset to organize your generations',
             style: TextStyle(color: Colors.white38),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () {
-              Provider.of<MenuAppController>(context, listen: false)
-                  .changeScreen(ScreenType.imageGenerationGeneration);
-            },
-            icon: const Icon(Icons.auto_awesome, color: Colors.white),
+            onPressed: () => _showCreateAssetDialog(context, provider),
+            icon: const Icon(Icons.add, color: Colors.white),
             label: const Text(
-              'Generate First Image',
+              'Create First Asset',
               style: TextStyle(color: Colors.white),
             ),
             style: ElevatedButton.styleFrom(
@@ -286,8 +308,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  Widget _buildImageGrid(
-      List<GeneratedImage> images, ImageGenerationProvider provider) {
+  Widget _buildAssetGrid(
+      List<ImageAsset> assets, ImageGenerationProvider provider) {
     final crossAxisCount = Responsive.isMobile(context)
         ? 2
         : Responsive.isTablet(context)
@@ -303,16 +325,15 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           mainAxisSpacing: 16,
           childAspectRatio: 0.8,
         ),
-        itemCount: images.length,
+        itemCount: assets.length,
         itemBuilder: (context, index) {
-          return _buildImageCard(images[index], provider);
+          return _buildAssetCard(assets[index], provider);
         },
       ),
     );
   }
 
-  Widget _buildImageCard(
-      GeneratedImage image, ImageGenerationProvider provider) {
+  Widget _buildAssetCard(ImageAsset asset, ImageGenerationProvider provider) {
     return Card(
       color: const Color(0xFF2A2A2A),
       elevation: 4,
@@ -322,11 +343,11 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _showImageDetail(image, provider),
+        onTap: () => _showAssetDetail(asset, provider),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image thumbnail
+            // Asset thumbnail
             Expanded(
               flex: 3,
               child: Container(
@@ -335,10 +356,10 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                   borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                   color: Color(0xFF3A3A3A),
                 ),
-                child: _buildImageThumbnail(image),
+                child: _buildAssetThumbnailWithFuture(asset, provider),
               ),
             ),
-            // Image Info
+            // Asset Info
             Expanded(
               flex: 2,
               child: Padding(
@@ -347,32 +368,32 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      image.prompt,
+                      asset.name,
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                        fontSize: 14,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _formatImageInfo(image),
+                      asset.description,
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 10,
+                        fontSize: 11,
                       ),
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const Spacer(),
                     Row(
                       children: [
-                        _buildStatusIndicator(image.status),
+                        _buildGenerationCount(asset.generations.length),
                         const Spacer(),
                         Text(
-                          _formatDate(image.createdAt),
+                          _formatDate(asset.createdAt),
                           style: const TextStyle(
                             color: Colors.white54,
                             fontSize: 10,
@@ -380,7 +401,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                         ),
                         const SizedBox(width: 8),
                         InkWell(
-                          onTap: () => _showImageContextMenu(image, provider),
+                          onTap: () => _showAssetContextMenu(asset, provider),
                           child: const Icon(
                             Icons.more_vert,
                             color: Colors.white54,
@@ -399,214 +420,140 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  Widget _buildImageThumbnail(GeneratedImage image) {
-    if (image.status == GenerationStatus.completed && image.imagePath != null) {
-      return Container(
-        decoration: const BoxDecoration(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (image.imagePath != null && File(image.imagePath!).existsSync())
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.withOpacity(0.5)),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      File(image.imagePath!),
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: Colors.green.withOpacity(0.2),
-                          child: const Icon(
-                            Icons.broken_image,
-                            color: Colors.green,
-                            size: 30,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                )
-              else
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.withOpacity(0.5)),
-                  ),
-                  child: const Icon(
-                    Icons.image,
-                    color: Colors.green,
-                    size: 30,
-                  ),
-                ),
-              const SizedBox(height: 8),
-              const Text(
-                'Image Generated',
-                style: TextStyle(
-                  color: Colors.green,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Tap to view',
-                style: TextStyle(
-                  color: Colors.white54,
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else if (image.status == GenerationStatus.generating) {
-      return Container(
-        decoration: const BoxDecoration(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.withOpacity(0.5)),
-                ),
-                child: const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                  strokeWidth: 2,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Generating...',
-                style: TextStyle(
-                  color: Colors.blue,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else if (image.status == GenerationStatus.pending) {
-      return Container(
-        decoration: const BoxDecoration(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withOpacity(0.5)),
-                ),
-                child: const Icon(
-                  Icons.schedule,
-                  color: Colors.orange,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Queued',
-                style: TextStyle(
-                  color: Colors.orange,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
+  Widget _buildAssetThumbnailWithFuture(ImageAsset asset, ImageGenerationProvider provider) {
+    if (asset.favoriteGenerationId != null) {
+      return FutureBuilder<ImageGeneration?>(
+        future: provider.getGeneration(asset.favoriteGenerationId!),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return _buildLoadingThumbnail();
+          } else if (snapshot.hasError) {
+            return _buildEmptyThumbnail(asset);
+          } else {
+            return _buildAssetThumbnail(asset, snapshot.data);
+          }
+        },
       );
     } else {
-      return Container(
-        decoration: const BoxDecoration(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.withOpacity(0.5)),
-                ),
-                child: const Icon(
-                  Icons.error,
-                  color: Colors.red,
-                  size: 30,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Failed',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+      // No favorite generation, use fallback logic
+      return _buildAssetThumbnail(asset, null);
     }
   }
 
-  Widget _buildStatusIndicator(GenerationStatus status) {
+  Widget _buildAssetThumbnail(ImageAsset asset, ImageGeneration? generation) {
+    if (generation != null &&
+        generation.imagePath.isNotEmpty &&
+        File(generation.imagePath).existsSync()) {
+      return Container(
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        ),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
+              child: Image.file(
+                File(generation.imagePath),
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (context, error, stackTrace) {
+                  return _buildEmptyThumbnail(asset);
+                },
+              ),
+            ),
+            if (generation.isFavorite)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: Icon(
+                  Icons.star,
+                  color: Colors.amber,
+                  size: 20,
+                ),
+              ),
+          ],
+        ),
+      );
+    } else {
+      return _buildEmptyThumbnail(asset);
+    }
+  }
+
+  Widget _buildLoadingThumbnail() {
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(
+          color: Colors.white54,
+          strokeWidth: 2,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyThumbnail(ImageAsset asset) {
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.withOpacity(0.5)),
+              ),
+              child: const Icon(
+                Icons.folder_outlined,
+                color: Colors.grey,
+                size: 30,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'No Images',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Tap to generate',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenerationCount(int count) {
     Color color;
     IconData icon;
-    String text;
 
-    switch (status) {
-      case GenerationStatus.completed:
-        color = Colors.green;
-        icon = Icons.check_circle;
-        text = 'Done';
-        break;
-      case GenerationStatus.generating:
-        color = Colors.blue;
-        icon = Icons.hourglass_empty;
-        text = 'Gen';
-        break;
-      case GenerationStatus.failed:
-        color = Colors.red;
-        icon = Icons.error;
-        text = 'Error';
-        break;
-      case GenerationStatus.pending:
-        color = Colors.orange;
-        icon = Icons.schedule;
-        text = 'Queue';
-        break;
+    if (count == 0) {
+      color = Colors.grey;
+      icon = Icons.folder_outlined;
+    } else if (count < 5) {
+      color = Colors.blue;
+      icon = Icons.image;
+    } else {
+      color = Colors.green;
+      icon = Icons.collections;
     }
 
     return Row(
@@ -615,7 +562,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
         Icon(icon, color: color, size: 14),
         const SizedBox(width: 4),
         Text(
-          text,
+          '$count',
           style: TextStyle(
             color: color,
             fontSize: 10,
@@ -626,103 +573,26 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  String _formatImageInfo(GeneratedImage image) {
-    return '${image.width}x${image.height} • ${image.steps} steps • ${image.model ?? 'Unknown'}';
-  }
-
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  void _showImageDetail(
-      GeneratedImage image, ImageGenerationProvider provider) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
-          'Image Details',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Prompt:',
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              image.prompt,
-              style: const TextStyle(color: Colors.white70),
-            ),
-            if (image.negativePrompt?.isNotEmpty ?? false) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Negative Prompt:',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                image.negativePrompt!,
-                style: const TextStyle(color: Colors.white70),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Text(
-              'Parameters:',
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${image.width}x${image.height}, ${image.steps} steps, CFG: ${image.cfgScale}',
-              style: const TextStyle(color: Colors.white70),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Model: ${image.model ?? 'Unknown'}',
-              style: const TextStyle(color: Colors.white70),
-            ),
-            if (image.error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Error:',
-                style: const TextStyle(
-                    color: Colors.red, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                image.error!,
-                style: const TextStyle(color: Colors.red),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text(
-              'Close',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-        ],
+  void _showAssetDetail(ImageAsset asset, ImageGenerationProvider provider) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AssetDetailScreen(asset: asset),
       ),
     );
   }
 
-  void _showImageContextMenu(
-      GeneratedImage image, ImageGenerationProvider provider) {
+  void _showAssetContextMenu(
+      ImageAsset asset, ImageGenerationProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A2A2A),
         title: const Text(
-          'Image Actions',
+          'Asset Actions',
           style: TextStyle(color: Colors.white),
         ),
         content: Column(
@@ -734,25 +604,34 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                   style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.of(context).pop();
-                _showImageDetail(image, provider);
+                _showAssetDetail(asset, provider);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit, color: Colors.white54),
+              title: const Text('Edit Asset',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.of(context).pop();
+                _showEditAssetDialog(asset, provider);
               },
             ),
             ListTile(
               leading: const Icon(Icons.auto_awesome, color: Colors.white54),
-              title: const Text('Generate Similar',
+              title: const Text('Generate Images',
                   style: TextStyle(color: Colors.white)),
               onTap: () {
                 Navigator.of(context).pop();
-                _generateSimilar(image);
+                _navigateToGeneration(asset);
               },
             ),
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('Delete Image',
+              title: const Text('Delete Asset',
                   style: TextStyle(color: Colors.red)),
               onTap: () {
                 Navigator.of(context).pop();
-                _confirmDeleteImage(image, provider);
+                _confirmDeleteAsset(asset, provider);
               },
             ),
           ],
@@ -770,29 +649,57 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  void _generateSimilar(GeneratedImage image) {
-    // Navigate to generation screen and populate fields
-    final menuController =
-        Provider.of<MenuAppController>(context, listen: false);
-    menuController.changeScreen(ScreenType.imageGenerationGeneration);
+  void _showCreateAssetDialog(
+      BuildContext context, ImageGenerationProvider provider) {
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
 
-    // TODO: Pre-populate the generation form with this image's parameters
-    // This would require extending the provider interface to support parameter setting
-  }
-
-  void _confirmDeleteImage(
-      GeneratedImage image, ImageGenerationProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A2A2A),
         title: const Text(
-          'Delete Image',
+          'Create New Asset',
           style: TextStyle(color: Colors.white),
         ),
-        content: const Text(
-          'Are you sure you want to delete this generated image?',
-          style: TextStyle(color: Colors.white70),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Asset Name',
+                labelStyle: const TextStyle(color: Colors.white70),
+                hintText: 'e.g., Main Character Portrait',
+                hintStyle: const TextStyle(color: Colors.white54),
+                filled: true,
+                fillColor: const Color(0xFF3A3A3A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Description',
+                labelStyle: const TextStyle(color: Colors.white70),
+                hintText: 'Describe what this asset represents...',
+                hintStyle: const TextStyle(color: Colors.white54),
+                filled: true,
+                fillColor: const Color(0xFF3A3A3A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -803,9 +710,204 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              provider.removeImage(image.id);
+            onPressed: () async {
+              final name = nameController.text.trim();
+              final description = descriptionController.text.trim();
+
+              if (name.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Asset name is required'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              try {
+                await provider.createAsset(name, description);
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Asset created successfully!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to create asset: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0078D4),
+            ),
+            child: const Text(
+              'Create',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditAssetDialog(
+      ImageAsset asset, ImageGenerationProvider provider) {
+    final nameController = TextEditingController(text: asset.name);
+    final descriptionController =
+        TextEditingController(text: asset.description);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'Edit Asset',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Asset Name',
+                labelStyle: const TextStyle(color: Colors.white70),
+                filled: true,
+                fillColor: const Color(0xFF3A3A3A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Description',
+                labelStyle: const TextStyle(color: Colors.white70),
+                filled: true,
+                fillColor: const Color(0xFF3A3A3A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameController.text.trim();
+              final description = descriptionController.text.trim();
+
+              if (name.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Asset name is required'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              try {
+                final updatedAsset = asset.copyWith(
+                  name: name,
+                  description: description,
+                );
+                await provider.updateAsset(updatedAsset);
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Asset updated successfully!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to update asset: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0078D4),
+            ),
+            child: const Text(
+              'Update',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToGeneration(ImageAsset asset) {
+    // TODO: In Step 4, we'll implement asset selection in the generation screen
+    Provider.of<MenuAppController>(context, listen: false)
+        .changeScreen(ScreenType.imageGenerationGeneration);
+  }
+
+  void _confirmDeleteAsset(ImageAsset asset, ImageGenerationProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'Delete Asset',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${asset.name}"? This will also delete all ${asset.generations.length} generated images for this asset.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await provider.deleteAsset(asset.id);
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Asset deleted successfully!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to delete asset: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -827,11 +929,11 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A2A2A),
         title: const Text(
-          'Clear All Images',
+          'Clear All Assets',
           style: TextStyle(color: Colors.white),
         ),
         content: const Text(
-          'Are you sure you want to delete all generated images? This action cannot be undone.',
+          'Are you sure you want to delete all image assets? This action cannot be undone.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -843,9 +945,26 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              provider.clearAllImages();
+            onPressed: () async {
+              try {
+                for (var asset in List.from(provider.assets)) {
+                  await provider.deleteAsset(asset.id);
+                }
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('All assets cleared successfully!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to clear assets: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,

@@ -11,6 +11,7 @@ import '../game_design_assistant/providers/project_provider.dart';
 import '../knowledge_base/knowledge_base_screen.dart';
 import '../image_generation/image_overview_screen.dart';
 import '../image_generation/image_generation_screen.dart';
+import '../sfx_generation/sfx_generation_screen.dart';
 
 class ProjectDashboardScreen extends StatelessWidget {
   final String projectId;
@@ -70,9 +71,13 @@ class ProjectDashboardScreen extends StatelessWidget {
                     case ScreenType.codeEditor:
                       return CommandLineScreen();
                     case ScreenType.imageGenerationOverview:
-                      return const ImageOverviewScreen();
+                      return ImageOverviewScreen(
+                          projectId: projectId, projectName: projectName);
                     case ScreenType.imageGenerationGeneration:
                       return ImageGenerationScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.soundGenerator:
+                      return SfxGenerationScreen(
                           projectId: projectId, projectName: projectName);
                     default:
                       return DashboardScreen();

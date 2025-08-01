@@ -7,7 +7,7 @@ import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../services/comfyui_service.dart';
 import 'dart:io';
-import '../../screens/game_design_assistant/providers/project_provider.dart';
+
 import 'widgets/image_detail_dialog.dart';
 
 class ImageGenerationScreen extends StatefulWidget {
@@ -44,6 +44,41 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   String _selectedModelFallbackValue = 'No models found';
   String _selectedModel = 'No models found';
 
+  // Asset selection state
+  ImageAsset? _selectedAsset;
+  List<ImageAsset> _availableAssets = [];
+  List<ImageGeneration> _selectedAssetGenerations = [];
+  bool _loadingGenerations = false;
+
+  // Providers
+  late ImageGenerationProvider imageGenerationProvider;
+
+  /// Refresh generations for the currently selected asset
+  Future<void> _refreshSelectedAssetGenerations() async {
+    if (_selectedAsset == null) return;
+    
+    setState(() {
+      _loadingGenerations = true;
+    });
+    
+    try {
+      final generations = await imageGenerationProvider.getAssetGenerations(_selectedAsset!.id);
+      if (mounted) {
+        setState(() {
+          _selectedAssetGenerations = generations;
+          _loadingGenerations = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _selectedAssetGenerations = [];
+          _loadingGenerations = false;
+        });
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -51,30 +86,23 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
 
     // Check if AI service is already running when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final imageGenerationProvider =
+      imageGenerationProvider =
           Provider.of<ImageGenerationProvider>(context, listen: false);
-      _checkServiceHealthOnLoad(imageGenerationProvider);
-      // Refresh model list on load
-      imageGenerationProvider.refreshAvailableModels().then((_) {
-        if (mounted && imageGenerationProvider.availableModels.isNotEmpty) {
-          setState(() {
-            _selectedModel = imageGenerationProvider.availableModels.first;
-          });
-        }
-      });
-      imageGenerationProvider.refreshAvailableLoras().then((_) {
-        if (mounted && imageGenerationProvider.availableLoras.isEmpty) {
-          setState(() {});
-        }
-      });
+      _initializeProviders(imageGenerationProvider);
     });
   }
 
-  void _checkServiceHealthOnLoad(
+  void _initializeProviders(
       ImageGenerationProvider imageGenerationProvider) async {
+    // Initialize project context
+    await imageGenerationProvider.setCurrentProject(widget.projectId);
+
+    // Load available assets
+    _refreshAssets(imageGenerationProvider);
+
+    // Check service health
     try {
-      final isHealthy = await imageGenerationProvider.isServiceHealthy();
-      if (isHealthy && mounted) {
+      if (imageGenerationProvider.isServiceRunning && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('AI service is already running and healthy!'),
@@ -85,7 +113,33 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       }
     } catch (e) {
       // Silently ignore errors during initial health check
-      // This is expected when no service is running
+    }
+
+    // Refresh model list on load
+    imageGenerationProvider.refreshAvailableModels().then((_) {
+      if (mounted && imageGenerationProvider.availableModels.isNotEmpty) {
+        setState(() {
+          _selectedModel = imageGenerationProvider.availableModels.first;
+        });
+      }
+    });
+    imageGenerationProvider.refreshAvailableLoras().then((_) {
+      if (mounted && imageGenerationProvider.availableLoras.isEmpty) {
+        setState(() {});
+      }
+    });
+  }
+
+  void _refreshAssets(ImageGenerationProvider provider) async {
+    try {
+      await provider.refreshAssets();
+      if (mounted) {
+        setState(() {
+          _availableAssets = provider.assets;
+        });
+      }
+    } catch (e) {
+      print('Error refreshing assets: $e');
     }
   }
 
@@ -196,7 +250,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           ElevatedButton.icon(
             onPressed: provider.isServiceStarting
                 ? null
-                : () => provider.startAIService(),
+                : () => provider.startService(),
             icon: provider.isServiceStarting
                 ? const SizedBox(
                     width: 16,
@@ -220,7 +274,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           ElevatedButton.icon(
             onPressed: provider.isServiceStopping
                 ? null
-                : () => provider.stopAIService(),
+                : () => provider.stopService(),
             icon: provider.isServiceStopping
                 ? const SizedBox(
                     width: 16,
@@ -315,6 +369,10 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           ),
           const SizedBox(height: 20),
 
+          // Asset Selection
+          _buildAssetSelection(),
+          const SizedBox(height: 20),
+
           // Model Selection
           _buildModelSelection(),
           const SizedBox(height: 20),
@@ -331,6 +389,174 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           _buildSeedSection(),
         ],
       ),
+    );
+  }
+
+  Widget _buildAssetSelection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Target Asset',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _showCreateAssetDialog,
+              icon: const Icon(Icons.add, color: Colors.blue, size: 16),
+              label: const Text(
+                'New Asset',
+                style: TextStyle(color: Colors.blue, fontSize: 12),
+              ),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3A3A3A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: _selectedAsset == null
+                  ? Colors.red.withOpacity(0.5)
+                  : const Color(0xFF404040),
+              width: 1,
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<ImageAsset?>(
+              value: _selectedAsset,
+              hint: const Text(
+                'Select an asset...',
+                style: TextStyle(color: Colors.white54),
+              ),
+              dropdownColor: const Color(0xFF3A3A3A),
+              style: const TextStyle(color: Colors.white),
+              items: [
+                const DropdownMenuItem<ImageAsset?>(
+                  value: null,
+                  child: Text(
+                    'Select an asset...',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ),
+                ..._availableAssets.map((asset) {
+                  return DropdownMenuItem<ImageAsset?>(
+                    value: asset,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          asset.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (asset.description.isNotEmpty)
+                          Text(
+                            asset.description,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+                              onChanged: (ImageAsset? value) async {
+                  setState(() {
+                    _selectedAsset = value;
+                  });
+                  
+                  // Refresh generations for the newly selected asset
+                  await _refreshSelectedAssetGenerations();
+                },
+            ),
+          ),
+        ),
+        if (_selectedAsset != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.folder_outlined,
+                  color: Colors.blue.withOpacity(0.7),
+                  size: 16,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedAsset!.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (_selectedAsset!.description.isNotEmpty)
+                        Text(
+                          _selectedAsset!.description,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${_selectedAsset!.generations.length} images',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (_selectedAsset == null) ...[
+          const SizedBox(height: 4),
+          const Text(
+            'Please select an asset to organize your generated images',
+            style: TextStyle(
+              color: Colors.red,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -722,7 +948,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           Row(
             children: [
               const Text(
-                'Recent Images',
+                'Recent Generations',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -736,7 +962,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                       .changeScreen(ScreenType.imageGenerationOverview);
                 },
                 child: const Text(
-                  'View All',
+                  'View All Assets',
                   style: TextStyle(color: Color(0xFF0078D4)),
                 ),
               ),
@@ -744,76 +970,102 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           ),
           const SizedBox(height: 20),
           Expanded(
-            child: _buildImagesList(provider),
+            child: _buildGenerationsList(provider),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildImagesList(ImageGenerationProvider provider) {
-    if (provider.images.isEmpty) {
+    Widget _buildGenerationsList(ImageGenerationProvider provider) {
+    // Show loading indicator if fetching generations
+    if (_loadingGenerations) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.image_outlined,
-              color: Colors.white54,
-              size: 48,
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
             ),
             SizedBox(height: 16),
             Text(
-              'No images generated yet',
+              'Loading generations...',
               style: TextStyle(color: Colors.white54),
             ),
           ],
         ),
       );
     }
+    
+    // Use selected asset generations if an asset is selected, otherwise show all
+    final displayGenerations = _selectedAsset != null 
+        ? _selectedAssetGenerations 
+        : provider.allGenerations;
+    
+    // Sort by creation date, most recent first (if not already sorted)
+    final sortedGenerations = [...displayGenerations];
+    sortedGenerations.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    
+    if (sortedGenerations.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.image_outlined,
+              color: Colors.white54,
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+                      Text(
+            _selectedAsset != null 
+                ? 'No images generated for "${_selectedAsset!.name}"'
+                : 'No images generated yet',
+            style: TextStyle(color: Colors.white54),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _selectedAsset != null
+                ? 'Generate your first image for this asset'
+                : 'Select an asset and generate your first image',
+            style: TextStyle(color: Colors.white38, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
+          ],
+        ),
+      );
+    }
 
     return ListView.builder(
-      itemCount: provider.images.length,
+      itemCount: sortedGenerations.length,
       itemBuilder: (context, index) {
-        final image = provider.images[index];
-        return _buildImageTile(image, provider);
+        final generation = sortedGenerations[index];
+        final asset = _selectedAsset ?? provider.getAssetFromCache(generation.assetId);
+        return _buildGenerationTile(generation, asset, provider);
       },
     );
   }
 
-  ImageGeneration _toImageGeneration(GeneratedImage img) {
-    return ImageGeneration(
-      id: img.id,
-      assetId: '',
-      imagePath: img.imagePath ?? '',
-      parameters: {
-        'model': img.model,
-        'positive_prompt': img.prompt,
-        'negative_prompt': img.negativePrompt,
-        'width': img.width,
-        'height': img.height,
-        'steps': img.steps,
-        'cfg_scale': img.cfgScale,
-        'sampler': img.sampler,
-        'scheduler': img.scheduler,
-        'seed': img.seed,
-      },
-      createdAt: img.createdAt,
-      status: img.status,
-      isFavorite: false,
-    );
-  }
-
-  Widget _buildImageTile(
-      GeneratedImage image, ImageGenerationProvider provider) {
+  Widget _buildGenerationTile(ImageGeneration generation, ImageAsset? asset,
+      ImageGenerationProvider provider) {
     return InkWell(
-      onTap: () {
-        showDialog(
-          context: context,
-          builder: (context) => ImageDetailDialog(
-            generation: _toImageGeneration(image),
-          ),
-        );
+      onTap: () async {
+        // Get fresh asset data for the dialog
+        final freshAsset = await provider.getAsset(generation.assetId);
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => ImageDetailDialog(
+              generation: generation,
+              asset: freshAsset,
+              onFavoriteToggle: freshAsset != null
+                  ? () => provider.setFavoriteGeneration(
+                      freshAsset.id, generation.id)
+                  : null,
+            ),
+          );
+        }
       },
       child: Card(
         color: const Color(0xFF2A2A2A),
@@ -825,10 +1077,10 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             children: [
               Row(
                 children: [
-                  _buildImageStatusIcon(image.status),
+                  _buildImageStatusIcon(generation.status),
                   const SizedBox(width: 12),
-                  // Show image thumbnail if completed
-                  if (image.status == GenerationStatus.completed && image.imagePath != null)
+                  // Show asset info and thumbnail
+                  if (asset != null)
                     Container(
                       width: 60,
                       height: 60,
@@ -839,38 +1091,61 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(image.imagePath!),
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: const Color(0xFF3A3A3A),
-                              child: const Icon(
-                                Icons.broken_image,
-                                color: Colors.white54,
-                                size: 24,
-                              ),
-                            );
-                          },
-                        ),
+                        child:
+                            generation.status == GenerationStatus.completed &&
+                                    generation.imagePath.isNotEmpty
+                                ? Image.file(
+                                    File(generation.imagePath),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        color: const Color(0xFF3A3A3A),
+                                        child: const Icon(
+                                          Icons.broken_image,
+                                          color: Colors.white54,
+                                          size: 24,
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : Container(
+                                    color: const Color(0xFF3A3A3A),
+                                    child: const Icon(
+                                      Icons.folder_outlined,
+                                      color: Colors.white54,
+                                      size: 24,
+                                    ),
+                                  ),
                       ),
                     ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          image.prompt,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                asset?.name ?? 'Unknown Asset',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (generation.isFavorite)
+                              const Icon(
+                                Icons.star,
+                                color: Colors.amber,
+                                size: 16,
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${image.width}x${image.height} • ${image.steps} steps',
+                          _formatGenerationInfo(generation),
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 12,
@@ -881,13 +1156,6 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                   ),
                 ],
               ),
-              if (image.error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Error: ${image.error}',
-                  style: const TextStyle(color: Colors.red, fontSize: 12),
-                ),
-              ],
             ],
           ),
         ),
@@ -915,6 +1183,11 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     }
   }
 
+  String _formatGenerationInfo(ImageGeneration generation) {
+    final params = GenerationParameters(generation.parameters);
+    return '${params.width}x${params.height} • ${params.steps} steps';
+  }
+
   void _generateImage(ImageGenerationProvider provider) async {
     if (_positivePromptController.text.trim().isEmpty) {
       _showErrorDialog('Please enter a positive prompt');
@@ -936,15 +1209,20 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         model: _selectedModel,
       );
 
-      // Get project name and id from ProjectProvider
-      final projectProvider =
-          Provider.of<ProjectProvider>(context, listen: false);
-      final projectName =
-          projectProvider.currentProject?.name ?? widget.projectName;
-      final projectId = projectProvider.currentProject?.id ?? widget.projectId;
+      // Use project name and id from widget parameters
+      final projectName = widget.projectName;
+      final projectId = widget.projectId;
+
+      // Check if asset is selected
+      if (_selectedAsset == null) {
+        _showErrorDialog('Please select an asset before generating images.');
+        return;
+      }
 
       await provider.generateImage(request,
-          projectName: projectName, projectId: projectId);
+          projectName: projectName,
+          projectId: projectId,
+          assetId: _selectedAsset!.id);
 
       // Show success message
       if (mounted) {
@@ -954,6 +1232,11 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             backgroundColor: Colors.green,
           ),
         );
+        
+        // Refresh the recent images panel if this asset is selected
+        if (_selectedAsset != null) {
+          _refreshSelectedAssetGenerations();
+        }
       }
     } catch (e) {
       _showErrorDialog('Failed to generate image: ${e.toString()}');
@@ -979,6 +1262,120 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             child: const Text(
               'OK',
               style: TextStyle(color: Color(0xFF0078D4)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateAssetDialog() {
+    final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'Create New Asset',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                labelText: 'Asset Name',
+                labelStyle: const TextStyle(color: Colors.white70),
+                hintText: 'e.g., Main Character Portrait',
+                hintStyle: const TextStyle(color: Colors.white54),
+                filled: true,
+                fillColor: const Color(0xFF3A3A3A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Description',
+                labelStyle: const TextStyle(color: Colors.white70),
+                hintText: 'Describe what this asset represents...',
+                hintStyle: const TextStyle(color: Colors.white54),
+                filled: true,
+                fillColor: const Color(0xFF3A3A3A),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = nameController.text.trim();
+              final description = descriptionController.text.trim();
+
+              if (name.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Asset name is required'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+
+              final provider =
+                  Provider.of<ImageGenerationProvider>(context, listen: false);
+              try {
+                final newAsset = await provider.createAsset(name, description);
+                Navigator.of(context).pop();
+
+                // Refresh assets and select the new one
+                _refreshAssets(provider);
+                setState(() {
+                  _selectedAsset = newAsset;
+                });
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Asset created successfully!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to create asset: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0078D4),
+            ),
+            child: const Text(
+              'Create',
+              style: TextStyle(color: Colors.white),
             ),
           ),
         ],
