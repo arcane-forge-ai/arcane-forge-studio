@@ -15,14 +15,15 @@ class SideMenu extends BaseSideMenu {
   List<Widget> buildMenuItems(BuildContext context) {
     return [
       // Navigation section
-      buildSectionHeader(context, icon: Icons.navigate_before, title: "Navigation"),
+      buildSectionHeader(context,
+          icon: Icons.navigate_before, title: "Navigation"),
       ListTile(
         title: const Text("All Projects"),
         leading: const Icon(Icons.folder_open),
         onTap: () {
           // Clear focus to prevent keyboard issues
           FocusScope.of(context).unfocus();
-          
+
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(
               builder: (context) => const ProjectsDashboardScreen(),
@@ -30,10 +31,9 @@ class SideMenu extends BaseSideMenu {
           );
         },
       ),
-      
+
       // Overview
-      buildSectionHeader(context,
-          icon: Icons.dashboard, title: "Overview"),
+      buildSectionHeader(context, icon: Icons.dashboard, title: "Overview"),
       ListTile(
         title: const Text("Project Home"),
         onTap: () {
@@ -50,8 +50,7 @@ class SideMenu extends BaseSideMenu {
       ),
 
       // Idealization
-      buildSectionHeader(context,
-          icon: Icons.lightbulb, title: "Idealization"),
+      buildSectionHeader(context, icon: Icons.lightbulb, title: "Idealization"),
       ListTile(
         title: const Text("Game Design Assistant"),
         onTap: () {
@@ -90,20 +89,42 @@ class SideMenu extends BaseSideMenu {
             child: ListTile(
               title: const Text("Generation"),
               leading: const Icon(Icons.auto_awesome, size: 20),
-        onTap: () {
-          Provider.of<MenuAppController>(context, listen: false)
+              onTap: () {
+                Provider.of<MenuAppController>(context, listen: false)
                     .changeScreen(ScreenType.imageGenerationGeneration);
-        },
+              },
             ),
           ),
         ],
       ),
-      ListTile(
-        title: const Text("Sound Generator"),
-        onTap: () {
-          Provider.of<MenuAppController>(context, listen: false)
-              .changeScreen(ScreenType.soundGenerator);
-        },
+      ExpansionTile(
+        title: const Text("SFX Generation"),
+        leading: const Icon(Icons.audiotrack),
+        initiallyExpanded: true,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 16.0),
+            child: ListTile(
+              title: const Text("Overview"),
+              leading: const Icon(Icons.library_music, size: 20),
+              onTap: () {
+                Provider.of<MenuAppController>(context, listen: false)
+                    .changeScreen(ScreenType.sfxGenerationOverview);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 16.0),
+            child: ListTile(
+              title: const Text("Generation"),
+              leading: const Icon(Icons.audiotrack, size: 20),
+              onTap: () {
+                Provider.of<MenuAppController>(context, listen: false)
+                    .changeScreen(ScreenType.sfxGenerationGeneration);
+              },
+            ),
+          ),
+        ],
       ),
       ListTile(
         title: const Text("Music Generator"),
@@ -119,11 +140,11 @@ class SideMenu extends BaseSideMenu {
                 .changeScreen(ScreenType.webServer);
           }),
 
-      // Production - Versions, Stats, Feedbacks
+      // Production - Release Info, Stats, Feedbacks
       buildSectionHeader(context,
           icon: Icons.production_quantity_limits, title: "Production"),
       ListTile(
-        title: const Text("Versions"),
+        title: const Text("Release Info"),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
               .changeScreen(ScreenType.versions);

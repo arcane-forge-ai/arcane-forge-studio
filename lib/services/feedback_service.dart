@@ -1,0 +1,111 @@
+import 'dart:convert';
+import 'package:dio/dio.dart';
+import '../models/feedback_models.dart';
+
+class FeedbackService {
+  final Dio _dio;
+
+  FeedbackService({Dio? dio}) : _dio = dio ?? Dio() {
+    _dio.options.connectTimeout = const Duration(seconds: 30);
+    _dio.options.receiveTimeout = const Duration(seconds: 60);
+    _dio.options.headers['Content-Type'] = 'application/json';
+  }
+
+  /// Get feedbacks from a custom feedback URL
+  Future<FeedbackResponse> getFeedbacks({required String feedbackUrl}) async {
+    try {
+      final response = await _dio.get(feedbackUrl);
+
+      if (response.statusCode == 200) {
+        return FeedbackResponse.fromJson(response.data as Map<String, dynamic>);
+      } else {
+        throw Exception('Failed to load feedbacks: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception('Failed to fetch feedbacks: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Mock service for development/testing
+  Future<FeedbackResponse> getMockFeedbacks() async {
+    // Simulate network delay
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    const mockResponseJson = '''
+{
+  "feedbacks": [
+    {
+      "id": "879af5e8-e6d0-4f3a-ad99-37158b0fcf0e",
+      "game_slug": "shape-rogue-v2",
+      "message": "Overall, the game is intuitive and highly engaging. However, there are a few areas that could be improved:\\n\\nBackground alignment: The background appears off-center, which can be visually distracting during gameplay.\\n\\nDifficulty progression: The difficulty does not scale linearly. For example, the jump in challenge from wave 4 to wave 5 is significantly steeper compared to earlier waves.\\n\\nControl instructions: The instructions are unclear. Keys like E, K, and Space all activate the same ability, but the way they are presented suggests they perform different actions, which can be confusing.\\n\\nLimited abilities: The only available ability appears to be a roll or dodge. It would enhance gameplay to include additional abilities, such as a \\"clear screen\\" move, especially when compared to similar games in the genre.\\n\\nWave transitions: The beginning and end of each wave are not clearly defined. It's unclear whether a wave is completed by surviving for a certain duration or by eliminating all enemies. Adding more visual or audio cues would help clarify this.",
+      "email": null,
+      "want_notify": false,
+      "created_at": "2025-07-07T21:04:41.479152+00:00"
+    },
+    {
+      "id": "8637b2b3-64b6-4728-beae-04160eb86937",
+      "game_slug": "shape-rogue-v2",
+      "message": "When exiting full screen mode, the hero object retains the full size in full screen mode, with a relatively gigantic hitbox compared to the enemies. The hit box and the shape should be scaled accordingly when exiting full screen mode.",
+      "email": null,
+      "want_notify": false,
+      "created_at": "2025-07-05T06:43:15.356219+00:00"
+    },
+    {
+      "id": "56f81917-fd26-4ac2-8226-2df5841505bc",
+      "game_slug": "shape-rogue-v2",
+      "message": "Escape button should be used for \\"back\\" in the \\"Choose your hero\\" screen.",
+      "email": null,
+      "want_notify": false,
+      "created_at": "2025-07-05T06:41:13.781978+00:00"
+    },
+    {
+      "id": "6a1c557e-03bc-4a40-8c99-7264ed1a5ff3",
+      "game_slug": "shape-rogue-v2",
+      "message": "The unit after reroll should be denominated in \\"COINS\\". I thought the number means number of rerolls remaining.",
+      "email": null,
+      "want_notify": false,
+      "created_at": "2025-07-05T06:39:04.195993+00:00"
+    },
+    {
+      "id": "0ab4d6c9-f570-4d2d-84e7-0def7135a592",
+      "game_slug": "shape-rogue-v2",
+      "message": "On the upgrade screen, \\"roll\\" should be \\"reroll\\" or \\"re-roll\\". \\nThe reroll count does not decrement even though rerolls do run out after 10 attempts.",
+      "email": null,
+      "want_notify": false,
+      "created_at": "2025-07-05T06:38:18.407364+00:00"
+    },
+    {
+      "id": "e3336e77-4b2e-4dcf-a5d8-c0af5275aba0",
+      "game_slug": "shape-rogue-v2",
+      "message": "The difficulty ramp between levels 4 and 5 are too large",
+      "email": null,
+      "want_notify": false,
+      "created_at": "2025-07-05T06:36:05.311191+00:00"
+    },
+    {
+      "id": "fd82cec9-0a08-492b-bcf6-da7a763205f1",
+      "game_slug": "shape-rogue-v2",
+      "message": "In the upgrade menu, the \\"PURCHASE\\" button does not get disabled when available funds are below the cost of the upgrade.",
+      "email": null,
+      "want_notify": false,
+      "created_at": "2025-07-05T06:32:50.770966+00:00"
+    },
+    {
+      "id": "f7b545b7-7f87-4503-92bb-f5723bad24ef",
+      "game_slug": "shape-rogue-v2",
+      "message": "The game background and the upgrade menu did not scale and are tucked into the upper left of the screen when in full screen mode.",
+      "email": null,
+      "want_notify": false,
+      "created_at": "2025-07-05T06:31:10.789501+00:00"
+    }
+  ]
+}
+''';
+
+    final jsonData = jsonDecode(mockResponseJson) as Map<String, dynamic>;
+    return FeedbackResponse.fromJson(jsonData);
+  }
+}

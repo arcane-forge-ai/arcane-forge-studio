@@ -8,6 +8,9 @@ class Project {
   final String? difyDatasetId;
   final List<String> documentIds;
   final bool hasKnowledgeBase;
+  final String? gameReleaseUrl;
+  final String? gameFeedbackUrl;
+  final String? gameIntroduction;
 
   Project({
     required this.id,
@@ -19,6 +22,9 @@ class Project {
     this.difyDatasetId,
     this.documentIds = const [],
     this.hasKnowledgeBase = false,
+    this.gameReleaseUrl,
+    this.gameFeedbackUrl,
+    this.gameIntroduction,
   });
 
   Map<String, dynamic> toJson() {
@@ -32,6 +38,9 @@ class Project {
       'difyDatasetId': difyDatasetId,
       'documentIds': documentIds,
       'hasKnowledgeBase': hasKnowledgeBase,
+      'gameReleaseUrl': gameReleaseUrl,
+      'gameFeedbackUrl': gameFeedbackUrl,
+      'gameIntroduction': gameIntroduction,
     };
   }
 
@@ -41,11 +50,15 @@ class Project {
       name: json['name'],
       description: json['description'],
       createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
+      updatedAt:
+          json['updatedAt'] != null ? DateTime.parse(json['updatedAt']) : null,
       userId: json['userId'],
       difyDatasetId: json['difyDatasetId'],
       documentIds: List<String>.from(json['documentIds'] ?? []),
       hasKnowledgeBase: json['hasKnowledgeBase'] ?? false,
+      gameReleaseUrl: json['gameReleaseUrl'],
+      gameFeedbackUrl: json['gameFeedbackUrl'],
+      gameIntroduction: json['gameIntroduction'],
     );
   }
 
@@ -56,11 +69,17 @@ class Project {
       name: json['name'],
       description: json['description'],
       createdAt: DateTime.parse(json['created_at']),
-      updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
       userId: json['user_id'],
       difyDatasetId: json['dify_dataset_id'],
       documentIds: const [], // API doesn't return this, we'll handle it separately
-      hasKnowledgeBase: json['dify_dataset_id'] != null, // Has knowledge base if dataset exists
+      hasKnowledgeBase: json['dify_dataset_id'] !=
+          null, // Has knowledge base if dataset exists
+      gameReleaseUrl: json['game_release_url'],
+      gameFeedbackUrl: json['game_feedback_url'],
+      gameIntroduction: json['game_introduction'],
     );
   }
 
@@ -74,6 +93,9 @@ class Project {
     String? difyDatasetId,
     List<String>? documentIds,
     bool? hasKnowledgeBase,
+    String? gameReleaseUrl,
+    String? gameFeedbackUrl,
+    String? gameIntroduction,
   }) {
     return Project(
       id: id ?? this.id,
@@ -85,6 +107,9 @@ class Project {
       difyDatasetId: difyDatasetId ?? this.difyDatasetId,
       documentIds: documentIds ?? this.documentIds,
       hasKnowledgeBase: hasKnowledgeBase ?? this.hasKnowledgeBase,
+      gameReleaseUrl: gameReleaseUrl ?? this.gameReleaseUrl,
+      gameFeedbackUrl: gameFeedbackUrl ?? this.gameFeedbackUrl,
+      gameIntroduction: gameIntroduction ?? this.gameIntroduction,
     );
   }
-} 
+}

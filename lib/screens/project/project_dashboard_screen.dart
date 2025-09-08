@@ -12,6 +12,9 @@ import '../knowledge_base/knowledge_base_screen.dart';
 import '../image_generation/image_overview_screen.dart';
 import '../image_generation/image_generation_screen.dart';
 import '../sfx_generation/sfx_generation_screen.dart';
+import '../sfx_generation/sfx_overview_screen.dart';
+import '../feedback/feedback_screen.dart';
+import 'release_info_screen.dart';
 
 class ProjectDashboardScreen extends StatelessWidget {
   final String projectId;
@@ -77,8 +80,20 @@ class ProjectDashboardScreen extends StatelessWidget {
                       return ImageGenerationScreen(
                           projectId: projectId, projectName: projectName);
                     case ScreenType.soundGenerator:
+                    case ScreenType.sfxGenerationGeneration:
                       return SfxGenerationScreen(
                           projectId: projectId, projectName: projectName);
+                    case ScreenType.sfxGenerationOverview:
+                      return SfxOverviewScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.feedbacks:
+                      return FeedbackScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.versions:
+                      return ReleaseInfoScreen(
+                        projectId: projectId,
+                        projectName: projectName,
+                      );
                     default:
                       return DashboardScreen();
                   }

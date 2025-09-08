@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sfx_generation_provider.dart';
-import '../../providers/settings_provider.dart';
 import '../../models/sfx_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
-import '../../services/sfx_generation_services.dart';
 import 'widgets/audio_detail_dialog.dart';
 
 class SfxGenerationScreen extends StatefulWidget {
@@ -24,9 +22,11 @@ class SfxGenerationScreen extends StatefulWidget {
 
 class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
   final TextEditingController _promptController = TextEditingController();
-  final TextEditingController _negativePromptController = TextEditingController();
-  final TextEditingController _durationController = TextEditingController(text: '2.0');
-  
+  final TextEditingController _negativePromptController =
+      TextEditingController();
+  final TextEditingController _durationController =
+      TextEditingController(text: '2.0');
+
   double _promptInfluence = 0.5;
 
   // Asset selection state
@@ -48,15 +48,16 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
 
   void _initializeProvider() {
     // Get the provider from context
-    sfxGenerationProvider = Provider.of<SfxGenerationProvider>(context, listen: false);
-    
+    sfxGenerationProvider =
+        Provider.of<SfxGenerationProvider>(context, listen: false);
+
     // Load initial data
     _loadAssets();
   }
 
   Future<void> _loadAssets() async {
     if (!mounted) return;
-    
+
     await sfxGenerationProvider.refreshAssets(projectId: widget.projectId);
     if (mounted) {
       setState(() {
@@ -82,7 +83,8 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     });
 
     try {
-      final updatedAsset = await sfxGenerationProvider.getAsset(_selectedAsset!.id);
+      final updatedAsset =
+          await sfxGenerationProvider.getAsset(_selectedAsset!.id);
       if (updatedAsset != null && mounted) {
         setState(() {
           _selectedAssetGenerations = updatedAsset.generations;
@@ -107,20 +109,12 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     return Consumer<SfxGenerationProvider>(
       builder: (context, provider, child) {
         return Scaffold(
-          body: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          backgroundColor: const Color(0xFF1E1E1E),
+          body: Column(
             children: [
-              // Left Panel - Generation Controls
-              if (Responsive.isDesktop(context))
-                Expanded(
-                  flex: 2,
-                  child: _buildGenerationPanel(),
-                ),
-              
-              // Right Panel - Assets and Recent Generations
+              _buildHeader(context, provider),
               Expanded(
-                flex: Responsive.isDesktop(context) ? 3 : 1,
-                child: _buildAssetsPanel(),
+                child: _buildMainContent(context, provider),
               ),
             ],
           ),
@@ -129,24 +123,99 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     );
   }
 
-  Widget _buildGenerationPanel() {
+  Widget _buildHeader(BuildContext context, SfxGenerationProvider provider) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
-        color: Color(0xFF1A1A1A),
+        color: Color(0xFF2A2A2A),
         border: Border(
-          right: BorderSide(color: Color(0xFF404040), width: 1),
+          bottom: BorderSide(color: Color(0xFF404040), width: 1),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          // Header
+          const Icon(
+            Icons.audiotrack,
+            color: Colors.white,
+            size: 28,
+          ),
+          const SizedBox(width: 12),
           const Text(
             'SFX Generation',
             style: TextStyle(
               color: Colors.white,
               fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () {
+              Provider.of<MenuAppController>(context, listen: false)
+                  .changeScreen(ScreenType.sfxGenerationOverview);
+            },
+            child: const Text(
+              'View All Assets',
+              style: TextStyle(color: Color(0xFF0078D4)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainContent(
+      BuildContext context, SfxGenerationProvider provider) {
+    if (Responsive.isMobile(context)) {
+      return _buildMobileLayout(provider);
+    } else {
+      return _buildDesktopLayout(provider);
+    }
+  }
+
+  Widget _buildDesktopLayout(SfxGenerationProvider provider) {
+    return Row(
+      children: [
+        // Left Panel: Generation Controls
+        Expanded(
+          flex: 3,
+          child: _buildGenerationPanel(),
+        ),
+        Container(width: 1, color: const Color(0xFF404040)),
+
+        // Right Panel: Recent Generations
+        Expanded(
+          flex: 4,
+          child: _buildRecentGenerationsPanel(provider),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileLayout(SfxGenerationProvider provider) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          _buildGenerationPanel(),
+          const Divider(color: Color(0xFF404040)),
+          _buildRecentGenerationsPanel(provider),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenerationPanel() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Generation Parameters Header
+          const Text(
+            'Generation Parameters',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -189,7 +258,8 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
             TextButton.icon(
               onPressed: _showCreateAssetDialog,
               icon: const Icon(Icons.add, color: Colors.blue),
-              label: const Text('New Asset', style: TextStyle(color: Colors.blue)),
+              label:
+                  const Text('New Asset', style: TextStyle(color: Colors.blue)),
             ),
           ],
         ),
@@ -245,7 +315,8 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
             style: const TextStyle(color: Colors.white),
             maxLines: 3,
             decoration: InputDecoration(
-              hintText: 'e.g., Laser shooting sound, slowly fading away as the laser travels',
+              hintText:
+                  'e.g., Laser shooting sound, slowly fading away as the laser travels',
               hintStyle: const TextStyle(color: Colors.white38),
               filled: true,
               fillColor: const Color(0xFF2A2A2A),
@@ -386,9 +457,10 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
       width: double.infinity,
       height: 48,
       child: ElevatedButton.icon(
-        onPressed: _selectedAsset != null && _promptController.text.trim().isNotEmpty
-            ? () => _generateSfx()
-            : null,
+        onPressed:
+            _selectedAsset != null && _promptController.text.trim().isNotEmpty
+                ? () => _generateSfx()
+                : null,
         icon: const Icon(Icons.audiotrack),
         label: const Text('Generate SFX'),
         style: ElevatedButton.styleFrom(
@@ -404,171 +476,98 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     );
   }
 
-  Widget _buildAssetsPanel() {
+  Widget _buildRecentGenerationsPanel(SfxGenerationProvider provider) {
     return Container(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Row(
             children: [
               const Text(
-                'SFX Assets',
+                'Recent Generations',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const Spacer(),
-              IconButton(
-                onPressed: _loadAssets,
-                icon: const Icon(Icons.refresh, color: Colors.white54),
-                tooltip: 'Refresh Assets',
+              TextButton(
+                onPressed: () {
+                  Provider.of<MenuAppController>(context, listen: false)
+                      .changeScreen(ScreenType.sfxGenerationOverview);
+                },
+                child: const Text(
+                  'View All Assets',
+                  style: TextStyle(color: Color(0xFF0078D4)),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-
-          // Selected Asset Generations
-          if (_selectedAsset != null) ...[
-            Text(
-              'Recent Generations for "${_selectedAsset!.name}"',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              flex: 1,
-              child: _buildGenerationsList(),
-            ),
-            const SizedBox(height: 20),
-          ],
-
-          // All Assets List
-          const Text(
-            'All Assets',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           Expanded(
-            flex: _selectedAsset != null ? 1 : 2,
-            child: _buildAssetsList(),
+            child: _buildGenerationsList(provider),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildGenerationsList() {
+  Widget _buildGenerationsList(SfxGenerationProvider provider) {
+    // Show loading indicator if fetching generations
     if (_loadingGenerations) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_selectedAssetGenerations.isEmpty) {
       return const Center(
-        child: Text(
-          'No generations yet.\nGenerate your first SFX!',
-          style: TextStyle(color: Colors.white54),
-          textAlign: TextAlign.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Loading generations...',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ],
         ),
       );
     }
 
-    return ListView.builder(
-      itemCount: _selectedAssetGenerations.length,
-      itemBuilder: (context, index) {
-        final generation = _selectedAssetGenerations[index];
-        return _buildGenerationTile(generation);
-      },
-    );
-  }
+    // Use selected asset generations if an asset is selected, otherwise show all
+    final displayGenerations = _selectedAsset != null
+        ? _selectedAssetGenerations
+        : provider.getAllGenerations();
 
-  Widget _buildGenerationTile(SfxGeneration generation) {
-    return Card(
-      color: const Color(0xFF2A2A2A),
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: _getStatusColor(generation.status),
-          child: Icon(
-            generation.status == GenerationStatus.completed
-                ? Icons.audiotrack
-                : generation.status == GenerationStatus.generating
-                    ? Icons.hourglass_empty
-                    : generation.status == GenerationStatus.failed
-                        ? Icons.error
-                        : Icons.pending,
-            color: Colors.white,
-            size: 20,
-          ),
-        ),
-        title: Text(
-          generation.parameters['prompt'] ?? 'No prompt',
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          _formatGenerationSubtitle(generation),
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (generation.isFavorite)
-              const Icon(Icons.favorite, color: Colors.red, size: 16),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.info_outline,
-              color: Colors.white54,
-              size: 16,
-            ),
-          ],
-        ),
-        onTap: () => _showGenerationDetails(generation),
-      ),
-    );
-  }
+    // Sort by creation date, most recent first (if not already sorted)
+    final sortedGenerations = [...displayGenerations];
+    sortedGenerations.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  Widget _buildAssetsList() {
-    if (sfxGenerationProvider.isLoadingAssets) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_availableAssets.isEmpty) {
+    if (sortedGenerations.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               Icons.audiotrack,
-              size: 64,
-              color: Colors.white24,
+              color: Colors.white54,
+              size: 48,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'No SFX assets yet.\nCreate your first asset!',
-              style: TextStyle(color: Colors.white54),
+            Text(
+              _selectedAsset != null
+                  ? 'No audio generated for "${_selectedAsset!.name}"'
+                  : 'No audio generated yet',
+              style: const TextStyle(color: Colors.white54),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _showCreateAssetDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('Create Asset'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
+            const SizedBox(height: 8),
+            Text(
+              _selectedAsset != null
+                  ? 'Generate your first audio for this asset'
+                  : 'Select an asset and generate your first audio',
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -576,65 +575,161 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     }
 
     return ListView.builder(
-      itemCount: _availableAssets.length,
+      itemCount: sortedGenerations.length,
       itemBuilder: (context, index) {
-        final asset = _availableAssets[index];
-        return _buildAssetTile(asset);
+        final generation = sortedGenerations[index];
+        final asset = _selectedAsset ??
+            provider.assets.firstWhere((a) => a.id == generation.assetId,
+                orElse: () => SfxAsset(
+                    id: generation.assetId,
+                    projectId: '',
+                    name: 'Unknown Asset',
+                    description: '',
+                    createdAt: DateTime.now(),
+                    updatedAt: DateTime.now(),
+                    generations: []));
+        return _buildGenerationTile(generation, asset, provider);
       },
     );
   }
 
-  Widget _buildAssetTile(SfxAsset asset) {
-    return Card(
-      color: _selectedAsset?.id == asset.id 
-          ? const Color(0xFF3A3A3A) 
-          : const Color(0xFF2A2A2A),
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Colors.orange,
-          child: const Icon(Icons.audiotrack, color: Colors.white),
+  Widget _buildGenerationTile(SfxGeneration generation, SfxAsset? asset,
+      SfxGenerationProvider provider) {
+    return InkWell(
+      onTap: () async {
+        // Get fresh asset data for the dialog
+        final freshAsset = asset ?? await provider.getAsset(generation.assetId);
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AudioDetailDialog(
+              generation: generation,
+              asset: freshAsset,
+              onFavoriteToggle: freshAsset != null
+                  ? () => provider.setFavoriteSfxGeneration(
+                      freshAsset.id, generation.id)
+                  : null,
+            ),
+          );
+        }
+      },
+      child: Card(
+        color: const Color(0xFF2A2A2A),
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _buildAudioStatusIcon(generation.status),
+                  const SizedBox(width: 12),
+                  // Show asset info and audio visualization
+                  if (asset != null)
+                    Container(
+                      width: 60,
+                      height: 60,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF404040)),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Colors.blue.withOpacity(0.6),
+                            Colors.purple.withOpacity(0.4),
+                          ],
+                        ),
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.audiotrack,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                            if (generation.duration != null)
+                              Text(
+                                '${generation.duration!.toStringAsFixed(1)}s',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                asset?.name ?? 'Unknown Asset',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (generation.isFavorite)
+                              const Icon(
+                                Icons.star,
+                                color: Colors.amber,
+                                size: 16,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatGenerationInfo(generation),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        title: Text(
-          asset.name,
-          style: const TextStyle(color: Colors.white, fontSize: 14),
-        ),
-        subtitle: Text(
-          asset.description.isNotEmpty 
-              ? asset.description 
-              : '${asset.totalGenerations} generations',
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: Text(
-          '${asset.totalGenerations}',
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        onTap: () {
-          setState(() {
-            _selectedAsset = asset;
-            _selectedAssetGenerations = asset.generations;
-          });
-        },
       ),
     );
   }
 
-  Color _getStatusColor(GenerationStatus status) {
+  Widget _buildAudioStatusIcon(GenerationStatus status) {
     switch (status) {
       case GenerationStatus.completed:
-        return Colors.green;
+        return const Icon(Icons.check_circle, color: Colors.green, size: 24);
       case GenerationStatus.generating:
-        return Colors.orange;
-      case GenerationStatus.failed:
-        return Colors.red;
+        return const SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+          ),
+        );
       case GenerationStatus.pending:
-        return Colors.grey;
+        return const Icon(Icons.schedule, color: Colors.orange, size: 24);
+      case GenerationStatus.failed:
+        return const Icon(Icons.error, color: Colors.red, size: 24);
     }
   }
 
-  String _formatGenerationSubtitle(SfxGeneration generation) {
+  String _formatGenerationInfo(SfxGeneration generation) {
     final parts = <String>[];
     if (generation.duration != null) {
       parts.add('${generation.duration!.toStringAsFixed(1)}s');
@@ -691,28 +786,6 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     }
   }
 
-  void _showGenerationDetails(SfxGeneration generation) {
-    showDialog(
-      context: context,
-      builder: (context) => AudioDetailDialog(
-        generation: generation,
-        asset: _selectedAsset,
-        onFavoriteToggle: () async {
-          try {
-            await sfxGenerationProvider.setFavoriteSfxGeneration(
-              generation.assetId,
-              generation.id,
-            );
-            Navigator.of(context).pop();
-            await _refreshSelectedAssetGenerations();
-          } catch (e) {
-            _showErrorDialog('Failed to toggle favorite: ${e.toString()}');
-          }
-        },
-      ),
-    );
-  }
-
   void _showCreateAssetDialog() {
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -721,7 +794,8 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text('Create New SFX Asset', style: TextStyle(color: Colors.white)),
+        title: const Text('Create New SFX Asset',
+            style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -764,7 +838,8 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -775,9 +850,9 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
                     nameController.text.trim(),
                     descriptionController.text.trim(),
                   );
-                  
+
                   Navigator.of(context).pop();
-                  
+
                   setState(() {
                     _availableAssets = sfxGenerationProvider.assets;
                     _selectedAsset = asset;
@@ -815,4 +890,4 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
       ),
     );
   }
-} 
+}

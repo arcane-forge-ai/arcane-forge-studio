@@ -7,14 +7,17 @@ import '../utils/app_constants.dart';
 
 class ProjectsApiService {
   // Get configuration from environment variables with fallback defaults
-  static String get baseUrl => dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
-  static String get defaultUserId => dotenv.env['DEFAULT_USER_ID'] ?? AppConstants.visitorUserId;
-  
+  static String get baseUrl =>
+      dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
+  static String get defaultUserId =>
+      dotenv.env['DEFAULT_USER_ID'] ?? AppConstants.visitorUserId;
+
   final SettingsProvider? _settingsProvider;
   final AuthProvider? _authProvider;
   final Dio _dio;
 
-  ProjectsApiService({SettingsProvider? settingsProvider, AuthProvider? authProvider})
+  ProjectsApiService(
+      {SettingsProvider? settingsProvider, AuthProvider? authProvider})
       : _settingsProvider = settingsProvider,
         _authProvider = authProvider,
         _dio = Dio();
@@ -30,7 +33,7 @@ class ProjectsApiService {
     final userIdToUse = userId ?? _authProvider?.userId ?? defaultUserId;
     final url = '$baseUrl/api/v1/projects';
     final queryParams = {'user_id': userIdToUse};
-    
+
     try {
       final response = await _dio.get(
         url,
@@ -69,7 +72,7 @@ class ProjectsApiService {
       'name': name,
       'description': description,
     };
-    
+
     try {
       final response = await _dio.post(
         url,
@@ -117,21 +120,65 @@ class ProjectsApiService {
     }
   }
 
+  Future<Project> updateProjectById({
+    required int projectId,
+    String? name,
+    String? description,
+    String? gameReleaseUrl,
+    String? gameFeedbackUrl,
+  }) async {
+    if (_useMockMode) {
+      // Update the mock project and return
+      final current = _mockGetProjectById(projectId);
+      return current.copyWith(
+        name: name,
+        description: description,
+        gameReleaseUrl: gameReleaseUrl,
+        gameFeedbackUrl: gameFeedbackUrl,
+      );
+    }
+
+    final url = '$baseUrl/api/v1/projects/$projectId';
+
+    final Map<String, dynamic> body = {};
+    if (name != null) body['name'] = name;
+    if (description != null) body['description'] = description;
+    if (gameReleaseUrl != null) body['game_release_url'] = gameReleaseUrl;
+    if (gameFeedbackUrl != null) body['game_feedback_url'] = gameFeedbackUrl;
+
+    try {
+      final response = await _dio.put(url, data: body);
+      if (response.statusCode == 200) {
+        return Project.fromApiJson(response.data);
+      } else {
+        throw Exception('Failed to update project: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Project Update API Error: $e');
+      print('Request URL: $url');
+      print('Request Body: $body');
+      print('Headers: ${_dio.options.headers}');
+      rethrow;
+    }
+  }
+
   // Mock data methods for development
   List<Project> _mockGetProjects() {
     return [
       Project(
         id: '1',
         name: 'Fantasy RPG Adventure',
-        description: 'A magical world filled with quests, dragons, and epic battles. Build your character and explore vast kingdoms.',
+        description:
+            'A magical world filled with quests, dragons, and epic battles. Build your character and explore vast kingdoms.',
         createdAt: DateTime.now().subtract(const Duration(days: 7)),
         userId: AppConstants.visitorUserId,
         hasKnowledgeBase: true,
       ),
       Project(
-        id: '2', 
+        id: '2',
         name: 'Sci-Fi Space Shooter',
-        description: 'Fast-paced action in the depths of space. Command your ship through asteroid fields and alien encounters.',
+        description:
+            'Fast-paced action in the depths of space. Command your ship through asteroid fields and alien encounters.',
         createdAt: DateTime.now().subtract(const Duration(days: 3)),
         userId: AppConstants.visitorUserId,
         hasKnowledgeBase: false,
@@ -139,7 +186,8 @@ class ProjectsApiService {
       Project(
         id: '3',
         name: 'Puzzle Platformer',
-        description: 'Mind-bending puzzles combined with precise platforming. Each level challenges both your reflexes and intellect.',
+        description:
+            'Mind-bending puzzles combined with precise platforming. Each level challenges both your reflexes and intellect.',
         createdAt: DateTime.now().subtract(const Duration(days: 1)),
         userId: AppConstants.visitorUserId,
         hasKnowledgeBase: true,
@@ -147,7 +195,8 @@ class ProjectsApiService {
       Project(
         id: '4',
         name: 'Strategy Empire Builder',
-        description: 'Build and manage your civilization from ancient times to the modern era. Research technologies and conquer lands.',
+        description:
+            'Build and manage your civilization from ancient times to the modern era. Research technologies and conquer lands.',
         createdAt: DateTime.now().subtract(const Duration(hours: 12)),
         userId: AppConstants.visitorUserId,
         hasKnowledgeBase: false,
@@ -155,7 +204,8 @@ class ProjectsApiService {
     ];
   }
 
-  Project _mockCreateProject({required String name, required String description}) {
+  Project _mockCreateProject(
+      {required String name, required String description}) {
     // Simulate API delay
     return Project(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -165,6 +215,57 @@ class ProjectsApiService {
       userId: AppConstants.visitorUserId,
       hasKnowledgeBase: false,
     );
+  }
+
+  Future<Project> updateProject({
+    required String projectId,
+    String? name,
+    String? description,
+    String? gameReleaseUrl,
+    String? gameFeedbackUrl,
+    String? gameIntroduction,
+  }) async {
+    if (_useMockMode) {
+      return _mockUpdateProject(
+        projectId: projectId,
+        name: name,
+        description: description,
+        gameReleaseUrl: gameReleaseUrl,
+        gameFeedbackUrl: gameFeedbackUrl,
+        gameIntroduction: gameIntroduction,
+      );
+    }
+
+    final url = '$baseUrl/api/v1/projects/$projectId';
+    final requestBody = <String, dynamic>{};
+
+    if (name != null) requestBody['name'] = name;
+    if (description != null) requestBody['description'] = description;
+    if (gameReleaseUrl != null)
+      requestBody['game_release_url'] = gameReleaseUrl;
+    if (gameFeedbackUrl != null)
+      requestBody['game_feedback_url'] = gameFeedbackUrl;
+    if (gameIntroduction != null)
+      requestBody['game_introduction'] = gameIntroduction;
+
+    try {
+      final response = await _dio.put(
+        url,
+        data: requestBody,
+      );
+
+      if (response.statusCode == 200) {
+        return Project.fromApiJson(response.data);
+      } else {
+        throw Exception('Failed to update project: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Project Update API Error: $e');
+      print('Request URL: $url');
+      print('Request Body: $requestBody');
+      print('Headers: ${_dio.options.headers}');
+      rethrow;
+    }
   }
 
   Project _mockGetProjectById(int projectId) {
@@ -183,4 +284,27 @@ class ProjectsApiService {
       );
     }
   }
-} 
+
+  Project _mockUpdateProject({
+    required String projectId,
+    String? name,
+    String? description,
+    String? gameReleaseUrl,
+    String? gameFeedbackUrl,
+    String? gameIntroduction,
+  }) {
+    // In mock mode, just return a project with updated values
+    return Project(
+      id: projectId,
+      name: name ?? 'Updated Project',
+      description: description ?? 'Updated description in mock mode.',
+      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      updatedAt: DateTime.now(),
+      userId: AppConstants.visitorUserId,
+      hasKnowledgeBase: false,
+      gameReleaseUrl: gameReleaseUrl,
+      gameFeedbackUrl: gameFeedbackUrl,
+      gameIntroduction: gameIntroduction,
+    );
+  }
+}

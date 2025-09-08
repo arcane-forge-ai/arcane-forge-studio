@@ -34,7 +34,7 @@ class SfxGenerationProvider extends ChangeNotifier {
   // Asset Management
   Future<void> refreshAssets({String? projectId}) async {
     if (projectId == null) return;
-    
+
     _isLoadingAssets = true;
     _assetsError = null;
     notifyListeners();
@@ -59,9 +59,11 @@ class SfxGenerationProvider extends ChangeNotifier {
     }
   }
 
-  Future<SfxAsset> createAsset(String projectId, String name, String description) async {
+  Future<SfxAsset> createAsset(
+      String projectId, String name, String description) async {
     try {
-      final asset = await _assetService.createSfxAsset(projectId, name, description);
+      final asset =
+          await _assetService.createSfxAsset(projectId, name, description);
       _assets.insert(0, asset); // Add to beginning of list
       notifyListeners();
       return asset;
@@ -106,7 +108,8 @@ class SfxGenerationProvider extends ChangeNotifier {
   }
 
   // Generation Management
-  Future<void> generateSfx(SfxGenerationRequest request, {
+  Future<void> generateSfx(
+    SfxGenerationRequest request, {
     required String projectId,
     required String assetId,
   }) async {
@@ -126,11 +129,11 @@ class SfxGenerationProvider extends ChangeNotifier {
 
       // Add generation to asset (server will generate the ID and handle ElevenLabs)
       final generation = await _assetService.addSfxGeneration(
-        assetId, 
-        request, 
+        assetId,
+        request,
         status: GenerationStatus.generating,
       );
-      
+
       // Refresh assets to get updated asset with new generation
       await refreshAssets(projectId: projectId);
 
@@ -138,7 +141,6 @@ class SfxGenerationProvider extends ChangeNotifier {
       if (_selectedAsset?.id == assetId) {
         _selectedAsset = await getAsset(assetId);
       }
-
     } catch (e) {
       _generationError = e.toString();
       rethrow;
@@ -149,30 +151,32 @@ class SfxGenerationProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> setFavoriteSfxGeneration(String assetId, String generationId) async {
+  Future<void> setFavoriteSfxGeneration(
+      String assetId, String generationId) async {
     try {
       await _assetService.setFavoriteSfxGeneration(assetId, generationId);
-      
+
       // Update local state
       final assetIndex = _assets.indexWhere((a) => a.id == assetId);
       if (assetIndex != -1) {
         final asset = _assets[assetIndex];
-        
+
         // Update favorite generation ID
         final updatedAsset = asset.copyWith(favoriteGenerationId: generationId);
-        
+
         // Update generation's favorite status
         final updatedGenerations = asset.generations.map((gen) {
           return gen.copyWith(isFavorite: gen.id == generationId);
         }).toList();
-        
-        _assets[assetIndex] = updatedAsset.copyWith(generations: updatedGenerations);
-        
+
+        _assets[assetIndex] =
+            updatedAsset.copyWith(generations: updatedGenerations);
+
         // Update selected asset if needed
         if (_selectedAsset?.id == assetId) {
           _selectedAsset = _assets[assetIndex];
         }
-        
+
         notifyListeners();
       }
     } catch (e) {
@@ -210,9 +214,7 @@ class SfxGenerationProvider extends ChangeNotifier {
   }
 
   List<SfxGeneration> getFavoriteGenerations() {
-    return getAllGenerations()
-        .where((gen) => gen.isFavorite)
-        .toList();
+    return getAllGenerations().where((gen) => gen.isFavorite).toList();
   }
 
   // Clear state
@@ -233,4 +235,4 @@ class SfxGenerationProvider extends ChangeNotifier {
     clearAssets();
     super.dispose();
   }
-} 
+}

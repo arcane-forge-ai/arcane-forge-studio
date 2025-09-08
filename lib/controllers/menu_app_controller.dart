@@ -10,6 +10,8 @@ enum ScreenType {
   imageGenerationOverview,
   imageGenerationGeneration,
   soundGenerator,
+  sfxGenerationOverview,
+  sfxGenerationGeneration,
   musicGenerator,
   webServer,
   versions,

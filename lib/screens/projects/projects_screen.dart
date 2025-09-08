@@ -46,7 +46,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       _projects = await _getProjectsApiService().getProjects();
     } catch (e) {
       print('Error loading projects: $e');
-      _errorMessage = 'Failed to load projects. Please check your connection and try again.';
+      _errorMessage =
+          'Failed to load projects. Please check your connection and try again.';
       _projects = [];
     }
 
@@ -58,7 +59,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   Future<void> _createNewProject() async {
     // Clear focus to prevent keyboard issues
     FocusScope.of(context).unfocus();
-    
+
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (context) => _NewProjectDialog(),
@@ -83,7 +84,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Project "${newProject.name}" created successfully!'),
+              content:
+                  Text('Project "${newProject.name}" created successfully!'),
               backgroundColor: Colors.green,
             ),
           );
@@ -92,7 +94,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         setState(() {
           _isLoading = false;
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -108,12 +110,13 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   Future<void> _deleteProject(Project project) async {
     // Clear focus to prevent keyboard issues
     FocusScope.of(context).unfocus();
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Project'),
-        content: Text('Are you sure you want to delete "${project.name}"? This action cannot be undone.'),
+        content: Text(
+            'Are you sure you want to delete "${project.name}"? This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () {
@@ -144,7 +147,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Project "${project.name}" deleted (Note: Delete API not implemented yet)'),
+            content: Text(
+                'Project "${project.name}" deleted (Note: Delete API not implemented yet)'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -155,7 +159,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   void _openProject(Project project) {
     // Clear focus to prevent keyboard issues
     FocusScope.of(context).unfocus();
-    
+
     // Navigate to project dashboard with this project
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -204,7 +208,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                   style: TextStyle(
                                     fontSize: 24,
                                     fontWeight: FontWeight.bold,
-                                    color: isDark ? Colors.white : Colors.black87,
+                                    color:
+                                        isDark ? Colors.white : Colors.black87,
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -212,7 +217,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                                   'Manage and organize your game development projects',
                                   style: TextStyle(
                                     fontSize: 16,
-                                    color: isDark ? Colors.white70 : Colors.black54,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.black54,
                                   ),
                                 ),
                               ],
@@ -229,17 +236,19 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                      
+
                       // Projects Grid
                       Expanded(
                         child: GridView.builder(
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 3,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                             childAspectRatio: 1.2,
                           ),
-                          itemCount: _projects.length + 1, // +1 for "New Project" card
+                          itemCount:
+                              _projects.length + 1, // +1 for "New Project" card
                           itemBuilder: (context, index) {
                             if (index == 0) {
                               // "New Project" card
@@ -260,7 +269,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   Widget _buildErrorWidget() {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -305,7 +314,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   Widget _buildNewProjectCard() {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(
@@ -374,7 +383,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   Widget _buildProjectCard(Project project) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(
@@ -440,9 +449,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 8),
-                
+
                 // Project description
                 Expanded(
                   child: Text(
@@ -455,9 +464,9 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                
+
                 const SizedBox(height: 12),
-                
+
                 // Project metadata
                 Row(
                   children: [
@@ -468,7 +477,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                                                    app_utils.DateUtils.formatDate(project.createdAt),
+                      app_utils.DateUtils.formatDate(project.createdAt),
                       style: TextStyle(
                         fontSize: 12,
                         color: isDark ? Colors.white54 : Colors.black38,
@@ -494,7 +503,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inDays == 0) {
       return 'Today';
     } else if (difference.inDays == 1) {
@@ -589,4 +598,4 @@ class _NewProjectDialogState extends State<_NewProjectDialog> {
       ],
     );
   }
-} 
+}
