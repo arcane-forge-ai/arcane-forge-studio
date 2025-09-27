@@ -341,6 +341,13 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
   Widget _buildGenerationCard(SfxGeneration generation) {
     return Card(
       color: const Color(0xFF2A2A2A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: generation.isFavorite ? Colors.amber : const Color(0xFF404040),
+          width: generation.isFavorite ? 2 : 1,
+        ),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: () => _showGenerationDetails(generation),
@@ -353,8 +360,14 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
                 children: [
                   _buildStatusIcon(generation.status),
                   const Spacer(),
-                  if (generation.isFavorite)
-                    const Icon(Icons.star, color: Colors.amber, size: 16),
+                  InkWell(
+                    onTap: () => _toggleFavorite(generation),
+                    child: Icon(
+                      generation.isFavorite ? Icons.favorite : Icons.favorite_border,
+                      color: generation.isFavorite ? Colors.red : Colors.white54,
+                      size: 20,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
@@ -408,6 +421,13 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
   Widget _buildGenerationListTile(SfxGeneration generation) {
     return Card(
       color: const Color(0xFF2A2A2A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: generation.isFavorite ? Colors.amber : const Color(0xFF404040),
+          width: generation.isFavorite ? 2 : 1,
+        ),
+      ),
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: _getStatusColor(generation.status),
@@ -436,9 +456,15 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (generation.isFavorite)
-              const Icon(Icons.star, color: Colors.amber, size: 16),
-            const SizedBox(width: 4),
+            InkWell(
+              onTap: () => _toggleFavorite(generation),
+              child: Icon(
+                generation.isFavorite ? Icons.favorite : Icons.favorite_border,
+                color: generation.isFavorite ? Colors.red : Colors.white54,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 8),
             const Icon(
               Icons.info_outline,
               color: Colors.white54,
@@ -504,24 +530,48 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
     return '${dateTime.day}/${dateTime.month} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
+  void _toggleFavorite(SfxGeneration generation) async {
+    try {
+      final provider = Provider.of<SfxGenerationProvider>(context, listen: false);
+      await provider.setFavoriteSfxGeneration(
+        generation.assetId,
+        generation.id,
+      );
+      
+      // Refresh the asset to update the UI
+      _refreshAsset();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              generation.isFavorite 
+                  ? 'Removed from favorites' 
+                  : 'Marked as favorite',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update favorite: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _showGenerationDetails(SfxGeneration generation) async {
     await showDialog(
       context: context,
       builder: (context) => AudioDetailDialog(
         generation: generation,
         asset: _currentAsset,
-        onFavoriteToggle: () async {
-          try {
-            final provider =
-                Provider.of<SfxGenerationProvider>(context, listen: false);
-            await provider.setFavoriteSfxGeneration(
-              generation.assetId,
-              generation.id,
-            );
-          } catch (e) {
-            // Handle error if needed
-          }
-        },
+        onFavoriteToggle: () => _toggleFavorite(generation),
       ),
     );
 

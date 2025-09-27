@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sfx_generation_provider.dart';
 import '../../models/sfx_generation_models.dart';
@@ -26,6 +27,8 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
       TextEditingController();
   final TextEditingController _durationController =
       TextEditingController(text: '2.0');
+  final TextEditingController _batchCountController =
+      TextEditingController(text: '1');
 
   double _promptInfluence = 0.5;
 
@@ -34,6 +37,11 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
   List<SfxAsset> _availableAssets = [];
   List<SfxGeneration> _selectedAssetGenerations = [];
   bool _loadingGenerations = false;
+
+  // Batch generation state
+  int _currentBatchIndex = 0;
+  int _totalBatchCount = 0;
+  bool _isBatchGenerating = false;
 
   // Providers
   late SfxGenerationProvider sfxGenerationProvider;
@@ -71,6 +79,7 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     _promptController.dispose();
     _negativePromptController.dispose();
     _durationController.dispose();
+    _batchCountController.dispose();
     super.dispose();
   }
 
@@ -264,39 +273,66 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF2A2A2A),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFF404040)),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<SfxAsset>(
-              value: _selectedAsset,
-              hint: const Text(
-                'Choose an asset...',
-                style: TextStyle(color: Colors.white54),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2A2A2A),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF404040)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<SfxAsset>(
+                    value: _selectedAsset,
+                    hint: const Text(
+                      'Choose an asset...',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                    style: const TextStyle(color: Colors.white),
+                    dropdownColor: const Color(0xFF2A2A2A),
+                    items: _availableAssets.map((asset) {
+                      return DropdownMenuItem<SfxAsset>(
+                        value: asset,
+                        child: Text(asset.name),
+                      );
+                    }).toList(),
+                    onChanged: (asset) async {
+                      setState(() {
+                        _selectedAsset = asset;
+                        if (asset != null) {
+                          _selectedAssetGenerations = asset.generations;
+                        }
+                      });
+                      
+                      // Refresh the selected asset to get latest generations
+                      if (asset != null) {
+                        await _refreshSelectedAssetGenerations();
+                      }
+                    },
+                  ),
+                ),
               ),
-              style: const TextStyle(color: Colors.white),
-              dropdownColor: const Color(0xFF2A2A2A),
-              items: _availableAssets.map((asset) {
-                return DropdownMenuItem<SfxAsset>(
-                  value: asset,
-                  child: Text(asset.name),
-                );
-              }).toList(),
-              onChanged: (asset) {
-                setState(() {
-                  _selectedAsset = asset;
-                  if (asset != null) {
-                    _selectedAssetGenerations = asset.generations;
-                  }
-                });
-              },
             ),
-          ),
+            if (_selectedAsset != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => _showAssetMetadataDialog(_selectedAsset!),
+                icon: const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                tooltip: 'View Asset Metadata',
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFF2A2A2A),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: const BorderSide(color: Color(0xFF404040)),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
       ],
     );
@@ -421,6 +457,35 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
             ],
           ),
         ),
+
+        // Batch Count
+        _buildFormSection(
+          'Batch Generation',
+          'Number of audio files to generate (1-10)',
+          TextField(
+            controller: _batchCountController,
+            style: const TextStyle(color: Colors.white),
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: '1',
+              hintStyle: const TextStyle(color: Colors.white38),
+              filled: true,
+              fillColor: const Color(0xFF2A2A2A),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF404040)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF404040)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.blue),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -453,18 +518,41 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
   }
 
   Widget _buildGenerateButton() {
+    final canGenerate = _selectedAsset != null && 
+        _promptController.text.trim().isNotEmpty && 
+        !_isBatchGenerating;
+
+    final batchCount = int.tryParse(_batchCountController.text) ?? 1;
+    
+    String buttonText;
+    if (_isBatchGenerating && _totalBatchCount > 1) {
+      buttonText = 'Generating ${_currentBatchIndex + 1}/$_totalBatchCount...';
+    } else if (_isBatchGenerating) {
+      buttonText = 'Generating...';
+    } else if (batchCount > 1) {
+      buttonText = 'Generate $batchCount SFX';
+    } else {
+      buttonText = 'Generate SFX';
+    }
+
     return SizedBox(
       width: double.infinity,
       height: 48,
       child: ElevatedButton.icon(
-        onPressed:
-            _selectedAsset != null && _promptController.text.trim().isNotEmpty
-                ? () => _generateSfx()
-                : null,
-        icon: const Icon(Icons.audiotrack),
-        label: const Text('Generate SFX'),
+        onPressed: canGenerate ? () => _generateSfx() : null,
+        icon: _isBatchGenerating
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : const Icon(Icons.audiotrack),
+        label: Text(buttonText),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
+          backgroundColor: canGenerate ? Colors.blue : Colors.grey[800],
           foregroundColor: Colors.white,
           disabledBackgroundColor: Colors.grey[800],
           disabledForegroundColor: Colors.grey[600],
@@ -754,26 +842,68 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
       return;
     }
 
+    // Validate batch count
+    final batchCount = int.tryParse(_batchCountController.text) ?? 1;
+    if (batchCount < 1 || batchCount > 10) {
+      _showErrorDialog('Batch count must be between 1 and 10');
+      return;
+    }
+
     try {
-      final request = SfxGenerationRequest(
-        prompt: _promptController.text.trim(),
-        negativePrompt: _negativePromptController.text.trim().isNotEmpty
-            ? _negativePromptController.text.trim()
-            : null,
-        durationSeconds: double.tryParse(_durationController.text) ?? 2.0,
-        promptInfluence: _promptInfluence,
-      );
+      // Set batch generation state
+      setState(() {
+        _isBatchGenerating = true;
+        _totalBatchCount = batchCount;
+        _currentBatchIndex = 0;
+      });
 
-      await sfxGenerationProvider.generateSfx(
-        request,
-        projectId: widget.projectId,
-        assetId: _selectedAsset!.id,
-      );
+      // Generate SFX files sequentially
+      for (int i = 0; i < batchCount; i++) {
+        // Update current batch index
+        if (mounted) {
+          setState(() {
+            _currentBatchIndex = i;
+          });
+        }
 
+        final request = SfxGenerationRequest(
+          prompt: _promptController.text.trim(),
+          negativePrompt: _negativePromptController.text.trim().isNotEmpty
+              ? _negativePromptController.text.trim()
+              : null,
+          durationSeconds: double.tryParse(_durationController.text) ?? 2.0,
+          promptInfluence: _promptInfluence,
+        );
+
+        // Generate one SFX at a time and wait for completion
+        await sfxGenerationProvider.generateSfx(
+          request,
+          projectId: widget.projectId,
+          assetId: _selectedAsset!.id,
+        );
+
+        // Small delay between generations to ensure different timestamps
+        if (i < batchCount - 1) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
+
+      // Reset batch generation state
+      if (mounted) {
+        setState(() {
+          _isBatchGenerating = false;
+          _totalBatchCount = 0;
+          _currentBatchIndex = 0;
+        });
+      }
+
+      // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('SFX generation started successfully!'),
+          SnackBar(
+            content: Text(batchCount > 1 
+                ? 'Generated $batchCount SFX files successfully!'
+                : 'SFX generation started successfully!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -782,8 +912,205 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
         await _refreshSelectedAssetGenerations();
       }
     } catch (e) {
+      // Reset batch generation state on error
+      if (mounted) {
+        setState(() {
+          _isBatchGenerating = false;
+          _totalBatchCount = 0;
+          _currentBatchIndex = 0;
+        });
+      }
       _showErrorDialog('Failed to generate SFX: ${e.toString()}');
     }
+  }
+
+  void _showAssetMetadataDialog(SfxAsset asset) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Container(
+          width: 500,
+          constraints: const BoxConstraints(maxHeight: 600),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.blue, size: 24),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Asset Metadata',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white54),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildMetadataSection('Basic Information', [
+                        _buildMetadataRow('Name', asset.name),
+                        _buildMetadataRow('Description', asset.description.isEmpty ? 'No description' : asset.description),
+                        _buildMetadataRow('Asset ID', asset.id),
+                        _buildMetadataRow('Project ID', asset.projectId),
+                      ]),
+                      
+                      const SizedBox(height: 20),
+                      
+                      _buildMetadataSection('Statistics', [
+                        _buildMetadataRow('Total Generations', asset.totalGenerations.toString()),
+                        _buildMetadataRow('Active Generations', asset.generations.length.toString()),
+                        if (asset.favoriteGenerationId != null)
+                          _buildMetadataRow('Favorite Generation ID', asset.favoriteGenerationId!),
+                        if (asset.fileSize != null)
+                          _buildMetadataRow('File Size', '${(asset.fileSize! / 1024).toStringAsFixed(2)} KB'),
+                      ]),
+                      
+                      const SizedBox(height: 20),
+                      
+                      _buildMetadataSection('Timestamps', [
+                        _buildMetadataRow('Created At', _formatDetailedDateTime(asset.createdAt)),
+                        _buildMetadataRow('Updated At', _formatDetailedDateTime(asset.updatedAt)),
+                      ]),
+                      
+                      if (asset.tags.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _buildMetadataSection('Tags', [
+                          _buildMetadataRow('Tags', asset.tags.join(', ')),
+                        ]),
+                      ],
+                      
+                      if (asset.metadata.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _buildMetadataSection('Custom Metadata', 
+                          asset.metadata.entries.map((entry) => 
+                            _buildMetadataRow(entry.key, entry.value.toString())
+                          ).toList()
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetadataSection(String title, List<Widget> rows) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF404040)),
+          ),
+          child: Column(
+            children: rows,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetadataRow(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: Color(0xFF404040), width: 0.5),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: () => _copyToClipboard(value, label),
+            icon: const Icon(Icons.copy, color: Colors.blue, size: 16),
+            tooltip: 'Copy $label',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied to clipboard'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  String _formatDetailedDateTime(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} at ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
   }
 
   void _showCreateAssetDialog() {

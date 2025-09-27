@@ -180,6 +180,66 @@ class FeedbackAnalysisService {
     }
   }
 
+  /// List existing feedback analysis runs for a project
+  Future<FeedbackRunListResponse> listFeedbackAnalysisRuns({
+    required int projectId,
+    String? status,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    if (_useMockMode) {
+      return _mockListFeedbackAnalysisRuns(projectId, status, limit, offset);
+    }
+
+    final url = '/projects/$projectId/feedback/analysis';
+    final queryParams = <String, dynamic>{
+      'limit': limit,
+      'offset': offset,
+    };
+    if (status != null) queryParams['status'] = status;
+
+    try {
+      final response = await _dio.get(url, queryParameters: queryParams);
+
+      if (response.statusCode == 200) {
+        return FeedbackRunListResponse.fromJson(response.data);
+      } else {
+        throw Exception('Failed to list feedback analysis runs: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('List Feedback Analysis Runs API Error: $e');
+      print('Request URL: $url');
+      print('Query Params: $queryParams');
+      rethrow;
+    }
+  }
+
+  /// Get detailed feedback analysis run with results
+  Future<FeedbackRunDetailResponse> getFeedbackAnalysis({
+    required int projectId,
+    required String runId,
+  }) async {
+    if (_useMockMode) {
+      return _mockGetFeedbackAnalysis(projectId, runId);
+    }
+
+    final url = '/projects/$projectId/feedback/analysis/$runId';
+
+    try {
+      final response = await _dio.get(url);
+
+      if (response.statusCode == 200) {
+        return FeedbackRunDetailResponse.fromJson(response.data);
+      } else {
+        throw Exception('Failed to get feedback analysis: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Get Feedback Analysis API Error: $e');
+      print('Request URL: $url');
+      rethrow;
+    }
+  }
+
   // Mock data methods for development
   Future<FeedbackAnalysisResult> _mockCreateFeedbackAnalysis(
     int projectId,
@@ -368,5 +428,77 @@ class FeedbackAnalysisService {
         createdAt: DateTime.now(),
       ),
     ];
+  }
+
+  /// Mock method for listing feedback analysis runs
+  Future<FeedbackRunListResponse> _mockListFeedbackAnalysisRuns(
+      int projectId, String? status, int limit, int offset) async {
+    // Simulate API delay
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final mockRuns = [
+      FeedbackRunSummary(
+        id: 'mock_run_1',
+        projectId: projectId,
+        status: 'completed',
+        createdAt: DateTime.now().subtract(const Duration(days: 1)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
+      ),
+      FeedbackRunSummary(
+        id: 'mock_run_2',
+        projectId: projectId,
+        status: 'completed',
+        createdAt: DateTime.now().subtract(const Duration(days: 3)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 3)),
+      ),
+      FeedbackRunSummary(
+        id: 'mock_run_3',
+        projectId: projectId,
+        status: 'failed',
+        errorMessage: 'Mock error for testing',
+        createdAt: DateTime.now().subtract(const Duration(days: 7)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 7)),
+      ),
+    ];
+
+    // Filter by status if provided
+    final filteredRuns = status != null
+        ? mockRuns.where((run) => run.status == status).toList()
+        : mockRuns;
+
+    // Apply pagination
+    final startIndex = offset;
+    final endIndex = (startIndex + limit).clamp(0, filteredRuns.length);
+    final paginatedRuns = filteredRuns.sublist(startIndex, endIndex);
+
+    return FeedbackRunListResponse(
+      runs: paginatedRuns,
+      total: filteredRuns.length,
+      limit: limit,
+      offset: offset,
+    );
+  }
+
+  /// Mock method for getting detailed feedback analysis
+  Future<FeedbackRunDetailResponse> _mockGetFeedbackAnalysis(
+      int projectId, String runId) async {
+    // Simulate API delay
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    final mockRun = FeedbackRunFull(
+      id: runId,
+      projectId: projectId,
+      status: 'completed',
+      inputGameIntroMd: 'Mock game introduction for testing',
+      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      updatedAt: DateTime.now().subtract(const Duration(days: 1)),
+    );
+
+    return FeedbackRunDetailResponse(
+      run: mockRun,
+      clusters: _mockClusters(),
+      opportunities: _mockOpportunities(),
+      mutationBriefs: _mockMutationBriefsData(),
+    );
   }
 }

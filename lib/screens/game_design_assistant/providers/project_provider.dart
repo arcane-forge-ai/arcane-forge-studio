@@ -8,8 +8,17 @@ class ProjectProvider with ChangeNotifier {
   Project? _currentProject;
   List<ExtractedDocument> _extractedDocuments = [];
   
+  // Mutation design data
+  String? _pendingMutationMessage;
+  String? _pendingMutationTitle;
+  
   Project? get currentProject => _currentProject;
   List<ExtractedDocument> get extractedDocuments => _extractedDocuments;
+  
+  // Mutation design getters
+  String? get pendingMutationMessage => _pendingMutationMessage;
+  String? get pendingMutationTitle => _pendingMutationTitle;
+  bool get hasPendingMutationDesign => _pendingMutationMessage != null;
   
   /// Load or create a default project
   Future<void> initializeProject() async {
@@ -140,5 +149,19 @@ class ProjectProvider with ChangeNotifier {
       return _currentProject!.name.toLowerCase().replaceAll(' ', '_');
     }
     return null;
+  }
+  
+  /// Set mutation design data
+  void setMutationDesignData(String message, String title) {
+    _pendingMutationMessage = message;
+    _pendingMutationTitle = title;
+    notifyListeners();
+  }
+  
+  /// Clear mutation design data after it's been used
+  void clearMutationDesignData() {
+    _pendingMutationMessage = null;
+    _pendingMutationTitle = null;
+    notifyListeners();
   }
 } 

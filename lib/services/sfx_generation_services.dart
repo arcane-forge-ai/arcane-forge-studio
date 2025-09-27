@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../models/sfx_generation_models.dart';
+import '../models/extracted_asset_models.dart';
 
 // Service interfaces
 abstract class SfxAssetService {
@@ -274,6 +274,79 @@ class ApiSfxAssetService implements SfxAssetService {
       duration: (json['duration'] as num?)?.toDouble(),
       format: json['format'] as String?,
       metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? {}),
+    );
+  }
+
+  /// Extract assets from document content using API
+  Future<List<ExtractedAsset>> extractAssetsFromContent(String projectId, String content) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/$projectId/sfx-assets/extract',
+        data: {
+          'file_content': content,
+        },
+      );
+      
+      final data = response.data as Map<String, dynamic>;
+      final assetsData = data['assets'] as List<dynamic>;
+
+      return assetsData.map((assetJson) {
+        // Create a copy of the original JSON for metadata
+        final originalJson = Map<String, dynamic>.from(assetJson);
+        
+        // Create the asset with original JSON in metadata
+        final asset = _parseExtractedAsset(assetJson);
+        
+        // Merge original JSON with existing metadata (original JSON takes precedence)
+        final updatedMetadata = Map<String, dynamic>.from(asset.metadata);
+        updatedMetadata.addAll(originalJson);
+        
+        return ExtractedAsset(
+          name: asset.name,
+          description: asset.description,
+          tags: asset.tags,
+          metadata: updatedMetadata,
+        );
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to extract SFX assets from content: $e');
+    }
+  }
+
+  /// Batch create assets from extracted asset data
+  Future<List<SfxAsset>> batchCreateAssets(String projectId, List<ExtractedAsset> extractedAssets) async {
+    try {
+      // Convert ExtractedAsset to SfxAssetCreateRequest format
+      final assetsData = extractedAssets.map((asset) => {
+        'name': asset.name,
+        'description': asset.description ?? '',
+        'tags': asset.tags,
+        'metadata': asset.metadata,
+      }).toList();
+
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/$projectId/sfx-assets/batch-create',
+        data: {
+          'assets': assetsData,
+        },
+      );
+      
+      final data = response.data as Map<String, dynamic>;
+      final createdData = data['created'] as List<dynamic>;
+      
+      return createdData.map((assetJson) => _parseSfxAsset(assetJson)).toList();
+    } catch (e) {
+      throw Exception('Failed to batch create SFX assets: $e');
+    }
+  }
+
+  /// Parse ExtractedAsset from JSON
+  ExtractedAsset _parseExtractedAsset(Map<String, dynamic> json) {
+    return ExtractedAsset(
+      name: json['name'] as String,
+      description: json['description'] as String?,
+      tags: List<String>.from(json['tags'] ?? []),
+      metadata: Map<String, dynamic>.from(json['metadata'] ?? {}),
     );
   }
 

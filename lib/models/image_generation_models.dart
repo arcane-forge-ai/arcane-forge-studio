@@ -1,3 +1,4 @@
+
 enum GenerationStatus {
   pending,
   generating,
@@ -47,6 +48,15 @@ class ImageAsset {
       favoriteGenerationId: favoriteGenerationId ?? this.favoriteGenerationId,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is ImageAsset && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class ImageGeneration {
@@ -168,6 +178,80 @@ class AIModel {
   });
 }
 
+/// A1111 Checkpoint model from /sdapi/v1/sd-models
+class A1111Checkpoint {
+  final String title;
+  final String modelName;
+  final String? hash;
+  final String? sha256;
+  final String filename;
+  final String? config;
+
+  A1111Checkpoint({
+    required this.title,
+    required this.modelName,
+    this.hash,
+    this.sha256,
+    required this.filename,
+    this.config,
+  });
+
+  factory A1111Checkpoint.fromJson(Map<String, dynamic> json) {
+    return A1111Checkpoint(
+      title: json['title'] ?? '',
+      modelName: json['model_name'] ?? '',
+      hash: json['hash'],
+      sha256: json['sha256'],
+      filename: json['filename'] ?? '',
+      config: json['config'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'model_name': modelName,
+      'hash': hash,
+      'sha256': sha256,
+      'filename': filename,
+      'config': config,
+    };
+  }
+}
+
+/// A1111 LoRA model from /sdapi/v1/loras
+class A1111Lora {
+  final String name;
+  final String? alias;
+  final String path;
+  final Map<String, dynamic>? metadata;
+
+  A1111Lora({
+    required this.name,
+    this.alias,
+    required this.path,
+    this.metadata,
+  });
+
+  factory A1111Lora.fromJson(Map<String, dynamic> json) {
+    return A1111Lora(
+      name: json['name'] ?? '',
+      alias: json['alias'],
+      path: json['path'] ?? '',
+      metadata: json['metadata'] as Map<String, dynamic>?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'alias': alias,
+      'path': path,
+      'metadata': metadata,
+    };
+  }
+}
+
 class GenerationRequest {
   final String? assetId; // Made optional for simplified workflow
   final String positivePrompt;
@@ -214,6 +298,7 @@ class GenerationRequest {
     };
   }
 }
+
 
 /// Simplified image generation model for the new workflow
 class GeneratedImage {

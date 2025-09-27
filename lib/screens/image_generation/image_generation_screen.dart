@@ -38,6 +38,8 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       TextEditingController(text: '512');
   final TextEditingController _heightController =
       TextEditingController(text: '512');
+  final TextEditingController _batchCountController =
+      TextEditingController(text: '1');
 
   String _selectedSampler = 'Euler a';
   String _selectedScheduler = "Automatic";
@@ -49,6 +51,14 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   List<ImageAsset> _availableAssets = [];
   List<ImageGeneration> _selectedAssetGenerations = [];
   bool _loadingGenerations = false;
+
+  // Seed lock state
+  bool _isSeedLocked = false;
+
+  // Batch generation state
+  int _currentBatchIndex = 0;
+  int _totalBatchCount = 0;
+  bool _isBatchGenerating = false;
 
   // Providers
   late ImageGenerationProvider imageGenerationProvider;
@@ -128,6 +138,21 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         setState(() {});
       }
     });
+    
+    // Refresh A1111 models and current checkpoint if service is running
+    if (imageGenerationProvider.isServiceRunning && 
+        imageGenerationProvider.currentBackendName == 'Automatic1111') {
+      imageGenerationProvider.refreshA1111Models().then((_) {
+        if (mounted && imageGenerationProvider.a1111Checkpoints.isNotEmpty) {
+          setState(() {
+            // Set first checkpoint as selected if none is selected
+            if (_selectedModel == _selectedModelFallbackValue) {
+              _selectedModel = imageGenerationProvider.a1111Checkpoints.first.title;
+            }
+          });
+        }
+      });
+    }
   }
 
   void _refreshAssets(ImageGenerationProvider provider) async {
@@ -224,7 +249,6 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         statusText = 'Error';
         break;
       case AIServiceStatus.stopped:
-      default:
         statusColor = Colors.red;
         statusIcon = Icons.stop_circle;
         statusText = 'Stopped';
@@ -235,12 +259,39 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       children: [
         Icon(statusIcon, color: statusColor, size: 20),
         const SizedBox(width: 8),
-        Text(
-          '${provider.currentBackendName}: $statusText',
-          style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${provider.currentBackendName}: $statusText',
+              style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
+            ),
+            // Show current checkpoint for A1111 when running
+            if (status == AIServiceStatus.running && 
+                provider.currentBackendName == 'Automatic1111' && 
+                provider.currentA1111Checkpoint != null)
+              Text(
+                'Checkpoint: ${_getCheckpointDisplayName(provider.currentA1111Checkpoint!)}',
+                style: TextStyle(
+                  color: statusColor.withOpacity(0.8), 
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+          ],
         ),
       ],
     );
+  }
+
+  /// Extract display name from checkpoint title (remove hash if present)
+  String _getCheckpointDisplayName(String checkpointTitle) {
+    // Remove hash from title like "model.safetensors [abc123]" -> "model.safetensors"
+    final hashMatch = RegExp(r'\s*\[[a-fA-F0-9]+\]$').firstMatch(checkpointTitle);
+    if (hashMatch != null) {
+      return checkpointTitle.substring(0, hashMatch.start);
+    }
+    return checkpointTitle;
   }
 
   Widget _buildAIServiceControls(ImageGenerationProvider provider) {
@@ -387,6 +438,10 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
 
           // Seed
           _buildSeedSection(),
+          const SizedBox(height: 20),
+
+          // Batch Count
+          _buildBatchSection(),
         ],
       ),
     );
@@ -563,60 +618,157 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   Widget _buildModelSelection() {
     return Consumer<ImageGenerationProvider>(
       builder: (context, provider, child) {
-        final models = provider.availableModels;
-        if (models.isNotEmpty &&
-            _selectedModel == _selectedModelFallbackValue) {
-          _selectedModel = models.first;
+        // Use A1111 checkpoints if available and server is reachable
+        List<String> models;
+        bool useA1111Models = provider.currentBackendName == 'Automatic1111' && 
+                              provider.isA1111ServerReachable && 
+                              provider.a1111Checkpoints.isNotEmpty;
+        
+        if (useA1111Models) {
+          models = provider.a1111Checkpoints.map((c) => c.title).toList();
+          // Set first checkpoint as selected if none is selected or fallback
+          if (_selectedModel == _selectedModelFallbackValue || 
+              !models.contains(_selectedModel)) {
+            _selectedModel = models.first;
+          }
+        } else {
+          models = provider.availableModels;
+          if (models.isNotEmpty && _selectedModel == _selectedModelFallbackValue) {
+            _selectedModel = models.first;
+          }
         }
-        final loras = provider.availableLoras;
-        String loraDropdownLabel = 'Click on a Lora to add to prompt';
-        if (loras.isEmpty) {
-          loraDropdownLabel = 'No Loras found';
+
+        // LoRA handling - use A1111 LoRAs if available
+        List<String> loras;
+        String loraDropdownLabel;
+        bool useA1111Loras = provider.currentBackendName == 'Automatic1111' && 
+                             provider.isA1111ServerReachable && 
+                             provider.a1111Loras.isNotEmpty;
+        
+        if (useA1111Loras) {
+          loras = provider.a1111Loras.map((l) => l.name).toList();
+          loraDropdownLabel = 'Click on a LoRA to add to prompt';
+        } else {
+          loras = provider.availableLoras;
+          loraDropdownLabel = loras.isEmpty ? 'No LoRAs found' : 'Click on a LoRA to add to prompt';
         }
 
         return Column(
           children: [
-            // Checkpoint selection
-            _buildDropdownWithLabel(
-              "Model",
-              _selectedModel,
-              models.isNotEmpty ? models : [_selectedModel],
-              (value) {
-                if (value != null && value != _selectedModel) {
-                  setState(() {
-                    _selectedModel = value;
-                  });
-                }
-              },
+            // Checkpoint selection with refresh button
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDropdownWithLabel(
+                    "Model",
+                    _selectedModel,
+                    models.isNotEmpty ? models : [_selectedModel],
+                    (value) {
+                      if (value != null && value != _selectedModel) {
+                        setState(() {
+                          _selectedModel = value;
+                        });
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Refresh button for models
+                IconButton(
+                  onPressed: provider.isLoadingA1111Models ? null : () async {
+                    if (provider.currentBackendName == 'Automatic1111') {
+                      await provider.refreshA1111Models();
+                    } else {
+                      await provider.refreshAvailableModels();
+                    }
+                  },
+                  icon: provider.isLoadingA1111Models
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, color: Colors.white54),
+                  tooltip: 'Refresh Models',
+                ),
+              ],
             ),
             const SizedBox(height: 8),
-            // Lora selection (unchanged, still static for now)
-            _buildDropdownWithLabel(
-              "Lora",
-              loraDropdownLabel,
-              [loraDropdownLabel] + loras,
-              ((value) {
-                // Add to positive prompt
-                if (value != null && value != 'No Loras found') {
-                  final loraTag = '<lora:$value:1>';
-                  final currentText = _positivePromptController.text;
-                  if (!currentText.contains(loraTag)) {
-                    String separator = '';
-                    if (currentText.isNotEmpty) {
-                      if (!currentText.trim().endsWith(',')) {
-                        separator = ', ';
-                      } else {
-                        separator = ' ';
+            // LoRA selection with refresh button
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDropdownWithLabel(
+                    "LoRA",
+                    loraDropdownLabel,
+                    [loraDropdownLabel] + loras,
+                    ((value) {
+                      // Add to positive prompt
+                      if (value != null && value != loraDropdownLabel && value.isNotEmpty) {
+                        final loraTag = '<lora:$value:1>';
+                        final currentText = _positivePromptController.text;
+                        if (!currentText.contains(loraTag)) {
+                          String separator = '';
+                          if (currentText.isNotEmpty) {
+                            if (!currentText.trim().endsWith(',')) {
+                              separator = ', ';
+                            } else {
+                              separator = ' ';
+                            }
+                          }
+                          setState(() {
+                            _positivePromptController.text =
+                                currentText + separator + loraTag;
+                          });
+                        }
                       }
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Refresh button for LoRAs
+                IconButton(
+                  onPressed: provider.isLoadingA1111Models ? null : () async {
+                    if (provider.currentBackendName == 'Automatic1111') {
+                      await provider.refreshA1111Models();
+                    } else {
+                      await provider.refreshAvailableLoras();
                     }
-                    setState(() {
-                      _positivePromptController.text =
-                          currentText + separator + loraTag;
-                    });
-                  }
-                }
-              }),
+                  },
+                  icon: provider.isLoadingA1111Models
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh, color: Colors.white54),
+                  tooltip: 'Refresh LoRAs',
+                ),
+              ],
             ),
+            // Show server status warning if A1111 server is not reachable
+            if (provider.currentBackendName == 'Automatic1111' && !provider.isA1111ServerReachable)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.orange, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'A1111 server not reachable. Using local model list.',
+                        style: TextStyle(color: Colors.orange, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         );
       },
@@ -746,7 +898,103 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        _buildNumberField('Seed', _seedController),
+        Row(
+          children: [
+            const Text('Seed'),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _seedController,
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: 'Seed',
+                  hintStyle: const TextStyle(color: Colors.white54),
+                  filled: true,
+                  fillColor: const Color(0xFF3A3A3A),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF404040)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF404040)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF0078D4)),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: () {
+                setState(() {
+                  _isSeedLocked = !_isSeedLocked;
+                });
+              },
+              icon: Icon(
+                _isSeedLocked ? Icons.lock : Icons.lock_open,
+                color: _isSeedLocked ? Colors.amber : Colors.white54,
+              ),
+              tooltip: _isSeedLocked ? 'Unlock seed (auto-randomize)' : 'Lock seed (keep current)',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBatchSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Batch Generation',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Text('Count'),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _batchCountController,
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: 'Number of images to generate',
+                  hintStyle: const TextStyle(color: Colors.white54),
+                  filled: true,
+                  fillColor: const Color(0xFF3A3A3A),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF404040)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF404040)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF0078D4)),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Each image will use a different random seed',
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: 11,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
       ],
     );
   }
@@ -908,14 +1156,28 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   Widget _buildGenerateButton(ImageGenerationProvider provider) {
     final canGenerate = provider.isServiceRunning &&
         !provider.isGenerating &&
+        !_isBatchGenerating &&
         _positivePromptController.text.trim().isNotEmpty;
+
+    final batchCount = int.tryParse(_batchCountController.text) ?? 1;
+    
+    String buttonText;
+    if (_isBatchGenerating && _totalBatchCount > 1) {
+      buttonText = 'Generating ${_currentBatchIndex + 1}/$_totalBatchCount...';
+    } else if (provider.isGenerating || _isBatchGenerating) {
+      buttonText = 'Generating...';
+    } else if (batchCount > 1) {
+      buttonText = 'Generate $batchCount Images';
+    } else {
+      buttonText = 'Generate Image';
+    }
 
     return SizedBox(
       width: double.infinity,
       height: 48,
       child: ElevatedButton.icon(
         onPressed: canGenerate ? () => _generateImage(provider) : null,
-        icon: provider.isGenerating
+        icon: (provider.isGenerating || _isBatchGenerating)
             ? const SizedBox(
                 width: 20,
                 height: 20,
@@ -926,7 +1188,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
               )
             : const Icon(Icons.auto_awesome, color: Colors.white),
         label: Text(
-          provider.isGenerating ? 'Generating...' : 'Generate Image',
+          buttonText,
           style: const TextStyle(color: Colors.white, fontSize: 16),
         ),
         style: ElevatedButton.styleFrom(
@@ -1194,41 +1456,107 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       return;
     }
 
+    // Check if asset is selected
+    if (_selectedAsset == null) {
+      _showErrorDialog('Please select an asset before generating images.');
+      return;
+    }
+
+    // Validate batch count
+    final batchCount = int.tryParse(_batchCountController.text) ?? 1;
+    if (batchCount < 1 || batchCount > 10) {
+      _showErrorDialog('Batch count must be between 1 and 10');
+      return;
+    }
+
     try {
-      final request = GenerationRequest(
-        positivePrompt: _positivePromptController.text.trim(),
-        negativePrompt: _negativePromptController.text.trim(),
-        width: int.tryParse(_widthController.text) ?? 512,
-        height: int.tryParse(_heightController.text) ?? 512,
-        sampler: _selectedSampler,
-        scheduler: _selectedScheduler,
-        steps: int.tryParse(_stepsController.text) ?? 20,
-        cfgScale: double.tryParse(_cfgController.text) ?? 7.5,
-        seed: int.tryParse(_seedController.text) ??
-            DateTime.now().millisecondsSinceEpoch,
-        model: _selectedModel,
-      );
+      // Set batch generation state
+      setState(() {
+        _isBatchGenerating = true;
+        _totalBatchCount = batchCount;
+        _currentBatchIndex = 0;
+      });
 
       // Use project name and id from widget parameters
       final projectName = widget.projectName;
       final projectId = widget.projectId;
 
-      // Check if asset is selected
-      if (_selectedAsset == null) {
-        _showErrorDialog('Please select an asset before generating images.');
-        return;
+      // Generate base seed for batch generation
+      int baseSeed;
+      if (_isSeedLocked && _seedController.text.isNotEmpty) {
+        baseSeed = int.tryParse(_seedController.text) ?? DateTime.now().millisecondsSinceEpoch;
+      } else {
+        baseSeed = DateTime.now().millisecondsSinceEpoch;
+        // Update the seed field to show the base seed
+        setState(() {
+          _seedController.text = baseSeed.toString();
+        });
       }
 
-      await provider.generateImage(request,
-          projectName: projectName,
-          projectId: projectId,
-          assetId: _selectedAsset!.id);
+      // Generate images sequentially for A1111 single-threaded service
+      for (int i = 0; i < batchCount; i++) {
+        // Update current batch index
+        if (mounted) {
+          setState(() {
+            _currentBatchIndex = i;
+          });
+        }
+        // Use different seed for each generation (unless locked to a specific seed)
+        int currentSeed;
+        if (_isSeedLocked) {
+          currentSeed = baseSeed;
+        } else {
+          // Generate a new random seed for each iteration
+          currentSeed = DateTime.now().millisecondsSinceEpoch + i * 1000;
+          // Update the seed field to show the current seed being used
+          if (mounted) {
+            setState(() {
+              _seedController.text = currentSeed.toString();
+            });
+          }
+        }
+        
+        final request = GenerationRequest(
+          positivePrompt: _positivePromptController.text.trim(),
+          negativePrompt: _negativePromptController.text.trim(),
+          width: int.tryParse(_widthController.text) ?? 512,
+          height: int.tryParse(_heightController.text) ?? 512,
+          sampler: _selectedSampler,
+          scheduler: _selectedScheduler,
+          steps: int.tryParse(_stepsController.text) ?? 20,
+          cfgScale: double.tryParse(_cfgController.text) ?? 7.5,
+          seed: currentSeed,
+          model: _selectedModel,
+        );
+
+        // Generate one image at a time and wait for completion
+        await provider.generateImage(request,
+            projectName: projectName,
+            projectId: projectId,
+            assetId: _selectedAsset!.id);
+            
+        // Small delay between generations to ensure different timestamps
+        if (i < batchCount - 1) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      }
+
+      // Reset batch generation state
+      if (mounted) {
+        setState(() {
+          _isBatchGenerating = false;
+          _totalBatchCount = 0;
+          _currentBatchIndex = 0;
+        });
+      }
 
       // Show success message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Image generation started successfully!'),
+          SnackBar(
+            content: Text(batchCount > 1 
+                ? 'Generated $batchCount images successfully!'
+                : 'Image generation completed successfully!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -1239,7 +1567,15 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         }
       }
     } catch (e) {
-      _showErrorDialog('Failed to generate image: ${e.toString()}');
+      // Reset batch generation state on error
+      if (mounted) {
+        setState(() {
+          _isBatchGenerating = false;
+          _totalBatchCount = 0;
+          _currentBatchIndex = 0;
+        });
+      }
+      _showErrorDialog('Failed to generate image(s): ${e.toString()}');
     }
   }
 
@@ -1540,6 +1876,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     _cfgController.dispose();
     _widthController.dispose();
     _heightController.dispose();
+    _batchCountController.dispose();
     super.dispose();
   }
 }

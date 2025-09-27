@@ -1,18 +1,26 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:dio/dio.dart';
 import '../../../models/sfx_generation_models.dart';
 
 class AudioDetailDialog extends StatefulWidget {
   final SfxGeneration generation;
   final SfxAsset? asset;
   final VoidCallback? onFavoriteToggle;
+  final VoidCallback? onDownload;
+  final VoidCallback? onDelete;
 
   const AudioDetailDialog({
     super.key,
     required this.generation,
     this.asset,
     this.onFavoriteToggle,
+    this.onDownload,
+    this.onDelete,
   });
 
   @override
@@ -26,6 +34,12 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   String? _errorMessage;
+  
+  // Stream subscriptions to properly dispose of listeners
+  StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+  StreamSubscription<void>? _playerCompleteSubscription;
 
   @override
   void initState() {
@@ -35,35 +49,50 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
   }
 
   void _setupAudioPlayer() {
-    _audioPlayer.onDurationChanged.listen((duration) {
-      setState(() {
-        _duration = duration;
-      });
+    _durationSubscription = _audioPlayer.onDurationChanged.listen((duration) {
+      if (mounted) {
+        setState(() {
+          _duration = duration;
+        });
+      }
     });
 
-    _audioPlayer.onPositionChanged.listen((position) {
-      setState(() {
-        _position = position;
-      });
+    _positionSubscription = _audioPlayer.onPositionChanged.listen((position) {
+      if (mounted) {
+        setState(() {
+          // Ensure position doesn't exceed duration to prevent slider bounds error
+          _position = position > _duration ? _duration : position;
+        });
+      }
     });
 
-    _audioPlayer.onPlayerStateChanged.listen((state) {
-      setState(() {
-        _isPlaying = state == PlayerState.playing;
-        _isLoading = state == PlayerState.playing && _position == Duration.zero;
-      });
+    _playerStateSubscription = _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state == PlayerState.playing;
+          _isLoading = state == PlayerState.playing && _position == Duration.zero;
+        });
+      }
     });
 
-    _audioPlayer.onPlayerComplete.listen((_) {
-      setState(() {
-        _isPlaying = false;
-        _position = Duration.zero;
-      });
+    _playerCompleteSubscription = _audioPlayer.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _position = Duration.zero;
+        });
+      }
     });
   }
 
   @override
   void dispose() {
+    // Cancel all stream subscriptions to prevent setState() after dispose
+    _durationSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _playerStateSubscription?.cancel();
+    _playerCompleteSubscription?.cancel();
+    
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -121,44 +150,55 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFF404040)),
         ),
-        child: isLargeScreen ? _buildLargeScreenLayout() : _buildMobileLayout(),
+        child: isLargeScreen ? _buildLargeScreenLayout(context) : _buildMobileLayout(context),
       ),
     );
   }
 
-  Widget _buildLargeScreenLayout() {
-    return Row(
+  Widget _buildLargeScreenLayout(BuildContext context) {
+    return Column(
       children: [
-        // Left side - Audio Player
+        // Header with action buttons
+        _buildDialogHeader(context),
+        // Main content
         Expanded(
-          flex: 2,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            child: _buildAudioPlayerView(),
-          ),
-        ),
-        // Right side - Details
-        Expanded(
-          flex: 1,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: Color(0xFF2A2A2A),
-              borderRadius: BorderRadius.only(
-                topRight: Radius.circular(16),
-                bottomRight: Radius.circular(16),
+          child: Row(
+            children: [
+              // Left side - Audio Player
+              Expanded(
+                flex: 2,
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  child: _buildAudioPlayerView(),
+                ),
               ),
-            ),
-            child: _buildDetailsPanel(),
+              // Right side - Details
+              Expanded(
+                flex: 1,
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.only(
+                      topRight: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: _buildDetailsPanel(),
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(BuildContext context) {
     return Column(
       children: [
+        // Header with action buttons
+        _buildDialogHeader(context),
         // Top - Audio Player
         Expanded(
           flex: 2,
@@ -183,6 +223,61 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDialogHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFF404040), width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Audio Details',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          // Favorite button
+          IconButton(
+            onPressed: widget.onFavoriteToggle,
+            icon: Icon(
+              widget.generation.isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: widget.generation.isFavorite ? Colors.red : Colors.white54,
+            ),
+            tooltip: widget.generation.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+          ),
+          // Download button
+          IconButton(
+            onPressed: widget.generation.status == GenerationStatus.completed 
+                ? (widget.onDownload ?? () => _downloadAudio(context))
+                : null,
+            icon: const Icon(Icons.download, color: Colors.white54),
+            tooltip: 'Download audio',
+          ),
+          // Delete button
+          IconButton(
+            onPressed: widget.onDelete ?? () => _deleteGeneration(context),
+            icon: const Icon(Icons.delete, color: Colors.red),
+            tooltip: 'Delete generation',
+          ),
+          // Close button
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close, color: Colors.white54),
+            tooltip: 'Close',
+          ),
+        ],
+      ),
     );
   }
 
@@ -254,7 +349,7 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
             // Progress Slider
             if (_duration.inMilliseconds > 0) ...[
               Slider(
-                value: _position.inMilliseconds.toDouble(),
+                value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
                 max: _duration.inMilliseconds.toDouble(),
                 onChanged: (value) {
                   _seekTo(Duration(milliseconds: value.toInt()));
@@ -316,15 +411,6 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
                         size: 32,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 20),
-                  IconButton(
-                    onPressed: widget.onFavoriteToggle,
-                    icon: Icon(
-                      widget.generation.isFavorite ? Icons.favorite : Icons.favorite_border,
-                    ),
-                    color: widget.generation.isFavorite ? Colors.red : Colors.white,
-                    iconSize: 32,
                   ),
                 ],
               ),
@@ -535,6 +621,204 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
     Clipboard.setData(ClipboardData(text: details.toString()));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('SFX generation details copied to clipboard!')),
+    );
+  }
+
+  Future<void> _downloadAudio(BuildContext context) async {
+    final audioUrl = widget.generation.audioUrl;
+    if (audioUrl == null || audioUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No audio URL available for download'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      // Generate a default filename based on generation data
+      final defaultFileName = _generateDefaultFileName();
+      
+      // Show "Save As" dialog
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Audio File',
+        fileName: defaultFileName,
+        type: FileType.custom,
+        allowedExtensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a'],
+      );
+      
+      if (outputFile == null) {
+        // User cancelled the dialog
+        return;
+      }
+      
+      // Check if file already exists and confirm overwrite
+      final outputFileObj = File(outputFile);
+      if (await outputFileObj.exists()) {
+        final shouldOverwrite = await _showOverwriteConfirmDialog(outputFileObj.path);
+        if (!shouldOverwrite) {
+          return;
+        }
+      }
+      
+      // Show downloading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Downloading $defaultFileName...'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+      
+      // Download file content using dio
+      final dio = Dio();
+      final response = await dio.get(
+        audioUrl,
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(minutes: 5), // 5 minute timeout for large files
+        ),
+      );
+      
+      // Write to selected location
+      await outputFileObj.writeAsBytes(response.data);
+      
+      // Show success message with file location
+      final fileName = outputFileObj.path.split(Platform.pathSeparator).last;
+      final directory = outputFileObj.parent.path;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saved "$fileName" to $directory'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+    } catch (e) {
+      String errorMessage = 'Error downloading audio: ';
+      if (e is DioException) {
+        switch (e.type) {
+          case DioExceptionType.connectionTimeout:
+          case DioExceptionType.receiveTimeout:
+            errorMessage += 'Download timed out. Please try again.';
+            break;
+          case DioExceptionType.connectionError:
+            errorMessage += 'Network connection error.';
+            break;
+          default:
+            errorMessage += e.message ?? 'Unknown network error';
+        }
+      } else if (e is FileSystemException) {
+        errorMessage += 'Could not save file. Check permissions and disk space.';
+      } else {
+        errorMessage += e.toString();
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  String _generateDefaultFileName() {
+    // Generate a filename based on the prompt or asset name
+    String baseName = 'sfx_audio';
+    
+    if (widget.asset != null && widget.asset!.name.isNotEmpty) {
+      baseName = widget.asset!.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+    } else if (widget.generation.parameters['prompt'] != null) {
+      final prompt = widget.generation.parameters['prompt'].toString();
+      if (prompt.isNotEmpty) {
+        // Take first few words of prompt and sanitize
+        final words = prompt.split(' ').take(3).join('_');
+        baseName = words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      }
+    }
+    
+    // Add timestamp to make filename unique
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    
+    // Use the format from generation parameters or default to mp3
+    final format = widget.generation.format ?? 'mp3';
+    
+    return '${baseName}_$timestamp.$format';
+  }
+
+  Future<bool> _showOverwriteConfirmDialog(String filePath) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'File Already Exists',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'The file "$filePath" already exists. Do you want to overwrite it?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.orange),
+            child: const Text('Overwrite'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  void _deleteGeneration(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'Delete Generation',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Are you sure you want to delete this generated audio?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // Close confirmation dialog
+              Navigator.of(context).pop(); // Close audio detail dialog
+              // TODO: Implement actual deletion logic
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Delete functionality will be implemented soon'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
     );
   }
 } 

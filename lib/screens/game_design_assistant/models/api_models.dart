@@ -8,6 +8,8 @@ class ChatRequest {
   final String? userId;
   final String? knowledgeBaseName;
   final String? sessionId;
+  final String? title;
+  final String? agentType;
   final Map<String, dynamic>? extraConfig;
 
   ChatRequest({
@@ -16,6 +18,8 @@ class ChatRequest {
     this.userId,
     this.knowledgeBaseName,
     this.sessionId,
+    this.title,
+    this.agentType,
     this.extraConfig,
   });
 
@@ -29,6 +33,8 @@ class ChatRequest {
     if (userId != null) json['user_id'] = userId;
     if (knowledgeBaseName != null) json['knowledge_base_name'] = knowledgeBaseName;
     if (sessionId != null) json['session_id'] = sessionId;
+    if (title != null) json['title'] = title;
+    if (agentType != null) json['agent_type'] = agentType;
     if (extraConfig != null) json['extra_config'] = extraConfig;
     
     return json;
@@ -195,6 +201,32 @@ class KnowledgeBaseFile {
               ? DateTime.parse(json['createdAt'])
               : DateTime.now()),
       metadata: json['metadata'],
+    );
+  }
+}
+
+class FileDownloadResponse {
+  final String downloadUrl;
+  final String fileName;
+  final int? fileSize;
+  final String? contentType;
+  final int expiresIn;
+
+  FileDownloadResponse({
+    required this.downloadUrl,
+    required this.fileName,
+    this.fileSize,
+    this.contentType,
+    this.expiresIn = 3600,
+  });
+
+  factory FileDownloadResponse.fromJson(Map<String, dynamic> json) {
+    return FileDownloadResponse(
+      downloadUrl: json['download_url'],
+      fileName: json['file_name'],
+      fileSize: json['file_size'],
+      contentType: json['content_type'],
+      expiresIn: json['expires_in'] ?? 3600,
     );
   }
 }

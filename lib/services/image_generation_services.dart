@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import '../models/image_generation_models.dart';
+import '../models/extracted_asset_models.dart';
 import '../providers/settings_provider.dart';
 
 // Service interfaces
@@ -438,6 +439,68 @@ class ApiImageAssetService implements ImageAssetService {
     }
   }
 
+  /// Extract assets from document content
+  Future<List<ExtractedAsset>> extractAssetsFromContent(String projectId, String content) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/$projectId/assets/extract',
+        data: {
+          'file_content': content,
+        },
+      );
+
+      final data = response.data as Map<String, dynamic>;
+      final assetsData = data['assets'] as List<dynamic>;
+
+      return assetsData.map((assetJson) {
+        // Create a copy of the original JSON for metadata
+        final originalJson = Map<String, dynamic>.from(assetJson);
+        
+        // Create the asset with original JSON in metadata
+        final asset = ExtractedAsset.fromJson(assetJson);
+        
+        // Merge original JSON with existing metadata (original JSON takes precedence)
+        final updatedMetadata = Map<String, dynamic>.from(asset.metadata);
+        updatedMetadata.addAll(originalJson);
+        
+        return ExtractedAsset(
+          name: asset.name,
+          description: asset.description,
+          tags: asset.tags,
+          metadata: updatedMetadata,
+        );
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to extract assets from content: $e');
+    }
+  }
+
+  /// Batch create assets from extracted data
+  Future<List<ImageAsset>> batchCreateAssets(String projectId, List<ExtractedAsset> extractedAssets) async {
+    try {
+      final assetsData = extractedAssets.map((asset) => {
+        'name': asset.name,
+        'description': asset.description,
+        'tags': asset.tags,
+        'metadata': asset.metadata,
+      }).toList();
+
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/$projectId/assets/batch-create',
+        data: {
+          'assets': assetsData,
+        },
+      );
+
+      final data = response.data as Map<String, dynamic>;
+      final createdAssetsData = data['created'] as List<dynamic>;
+
+      return createdAssetsData.map((assetJson) => _parseImageAsset(assetJson)).toList();
+    } catch (e) {
+      throw Exception('Failed to batch create assets: $e');
+    }
+  }
+
   /// Parse API response to ImageAsset model
   ImageAsset _parseImageAsset(Map<String, dynamic> json) {
     final generations = <ImageGeneration>[];
@@ -778,7 +841,7 @@ class A1111ImageGenerationService {
     _dio.options.receiveTimeout = const Duration(seconds: 60);
   }
   
-  /// Generate image using A1111 API
+  /// Generate image using A1111 API with checkpoint switching
   Future<Uint8List> generateImage(GenerationRequest request) async {
     final backend = _settingsProvider.defaultGenerationServer;
     final apiEndpoint = _settingsProvider.getEndpoint(backend);
@@ -786,6 +849,9 @@ class A1111ImageGenerationService {
     if (apiEndpoint.isEmpty) {
       throw Exception('API endpoint not configured for ${backend.displayName}');
     }
+    
+    // Check and switch checkpoint if needed
+    await _ensureCorrectCheckpoint(request.model);
     
     // Load the request template
     final payload = await _loadRequestTemplate();
@@ -826,6 +892,174 @@ class A1111ImageGenerationService {
         throw Exception('API request failed: ${e.message}');
       }
       rethrow;
+    }
+  }
+
+  /// Get available A1111 checkpoints
+  Future<List<A1111Checkpoint>> getAvailableCheckpoints() async {
+    final backend = _settingsProvider.defaultGenerationServer;
+    final apiEndpoint = _settingsProvider.getEndpoint(backend);
+    
+    if (apiEndpoint.isEmpty) {
+      throw Exception('API endpoint not configured for ${backend.displayName}');
+    }
+    
+    final url = '$apiEndpoint/sdapi/v1/sd-models';
+    
+    try {
+      final response = await _dio.get(url);
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to get checkpoints: ${response.statusCode}');
+      }
+      
+      final List<dynamic> data = response.data;
+      return data.map((json) => A1111Checkpoint.fromJson(json)).toList();
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception('Failed to get checkpoints: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Get available A1111 LoRAs
+  Future<List<A1111Lora>> getAvailableLoras() async {
+    final backend = _settingsProvider.defaultGenerationServer;
+    final apiEndpoint = _settingsProvider.getEndpoint(backend);
+    
+    if (apiEndpoint.isEmpty) {
+      throw Exception('API endpoint not configured for ${backend.displayName}');
+    }
+    
+    final url = '$apiEndpoint/sdapi/v1/loras';
+    
+    try {
+      final response = await _dio.get(url);
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to get LoRAs: ${response.statusCode}');
+      }
+      
+      final List<dynamic> data = response.data;
+      return data.map((json) => A1111Lora.fromJson(json)).toList();
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception('Failed to get LoRAs: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Get current A1111 options (including current checkpoint)
+  Future<Map<String, dynamic>> getCurrentOptions() async {
+    final backend = _settingsProvider.defaultGenerationServer;
+    final apiEndpoint = _settingsProvider.getEndpoint(backend);
+    
+    if (apiEndpoint.isEmpty) {
+      throw Exception('API endpoint not configured for ${backend.displayName}');
+    }
+    
+    final url = '$apiEndpoint/sdapi/v1/options';
+    
+    try {
+      final response = await _dio.get(url);
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to get current options: ${response.statusCode}');
+      }
+      
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception('Failed to get current options: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Get current checkpoint title
+  Future<String?> getCurrentCheckpoint() async {
+    try {
+      final options = await getCurrentOptions();
+      return options['sd_model_checkpoint'] as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Switch A1111 checkpoint
+  Future<void> switchCheckpoint(String checkpointTitle) async {
+    final backend = _settingsProvider.defaultGenerationServer;
+    final apiEndpoint = _settingsProvider.getEndpoint(backend);
+    
+    if (apiEndpoint.isEmpty) {
+      throw Exception('API endpoint not configured for ${backend.displayName}');
+    }
+    
+    final url = '$apiEndpoint/sdapi/v1/options';
+    final payload = {
+      'sd_model_checkpoint': checkpointTitle,
+    };
+    
+    try {
+      final response = await _dio.post(
+        url,
+        data: payload,
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Failed to switch checkpoint: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (e is DioException) {
+        throw Exception('Failed to switch checkpoint: ${e.message}');
+      }
+      rethrow;
+    }
+  }
+
+  /// Check if server is reachable
+  Future<bool> isServerReachable() async {
+    final backend = _settingsProvider.defaultGenerationServer;
+    final apiEndpoint = _settingsProvider.getEndpoint(backend);
+    
+    if (apiEndpoint.isEmpty) {
+      return false;
+    }
+    
+    try {
+      final response = await _dio.get(
+        '$apiEndpoint/sdapi/v1/options',
+        options: Options(
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Ensure the correct checkpoint is loaded before generation
+  Future<void> _ensureCorrectCheckpoint(String selectedCheckpointTitle) async {
+    try {
+      final currentCheckpoint = await getCurrentCheckpoint();
+      
+      if (currentCheckpoint != selectedCheckpointTitle) {
+        await switchCheckpoint(selectedCheckpointTitle);
+      }
+    } catch (e) {
+      final currentCheckpoint = await getCurrentCheckpoint();
+      throw Exception(
+        'Failed to switch checkpoint to "$selectedCheckpointTitle". '
+        'Current checkpoint: "${currentCheckpoint ?? "Unknown"}". '
+        'Error: ${e.toString()}'
+      );
     }
   }
   

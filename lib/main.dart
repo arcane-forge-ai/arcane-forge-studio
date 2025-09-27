@@ -100,20 +100,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             useApiService: ApiConfig.enabled,
           ),
         ),
-        ChangeNotifierProxyProvider<SettingsProvider, SfxGenerationProvider>(
+        ChangeNotifierProvider(
           create: (context) => SfxGenerationProvider(
             SfxAssetServiceFactory.create(
               apiBaseUrl: ApiConfig.baseUrl,
               useApiService: ApiConfig.enabled,
             ),
-            context.read<SettingsProvider>(),
-          ),
-          update: (context, settingsProvider, previous) => previous ?? SfxGenerationProvider(
-            SfxAssetServiceFactory.create(
-              apiBaseUrl: ApiConfig.baseUrl,
-              useApiService: ApiConfig.enabled,
-            ),
-            settingsProvider,
           ),
         ),
       ],

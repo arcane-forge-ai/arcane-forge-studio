@@ -126,6 +126,7 @@ class ProjectsApiService {
     String? description,
     String? gameReleaseUrl,
     String? gameFeedbackUrl,
+    String? codeMapUrl,
   }) async {
     if (_useMockMode) {
       // Update the mock project and return
@@ -135,6 +136,7 @@ class ProjectsApiService {
         description: description,
         gameReleaseUrl: gameReleaseUrl,
         gameFeedbackUrl: gameFeedbackUrl,
+        codeMapUrl: codeMapUrl,
       );
     }
 
@@ -145,6 +147,7 @@ class ProjectsApiService {
     if (description != null) body['description'] = description;
     if (gameReleaseUrl != null) body['game_release_url'] = gameReleaseUrl;
     if (gameFeedbackUrl != null) body['game_feedback_url'] = gameFeedbackUrl;
+    if (codeMapUrl != null) body['code_map_url'] = codeMapUrl;
 
     try {
       final response = await _dio.put(url, data: body);
@@ -224,6 +227,7 @@ class ProjectsApiService {
     String? gameReleaseUrl,
     String? gameFeedbackUrl,
     String? gameIntroduction,
+    String? codeMapUrl,
   }) async {
     if (_useMockMode) {
       return _mockUpdateProject(
@@ -233,6 +237,7 @@ class ProjectsApiService {
         gameReleaseUrl: gameReleaseUrl,
         gameFeedbackUrl: gameFeedbackUrl,
         gameIntroduction: gameIntroduction,
+        codeMapUrl: codeMapUrl,
       );
     }
 
@@ -247,6 +252,7 @@ class ProjectsApiService {
       requestBody['game_feedback_url'] = gameFeedbackUrl;
     if (gameIntroduction != null)
       requestBody['game_introduction'] = gameIntroduction;
+    if (codeMapUrl != null) requestBody['code_map_url'] = codeMapUrl;
 
     try {
       final response = await _dio.put(
@@ -292,6 +298,7 @@ class ProjectsApiService {
     String? gameReleaseUrl,
     String? gameFeedbackUrl,
     String? gameIntroduction,
+    String? codeMapUrl,
   }) {
     // In mock mode, just return a project with updated values
     return Project(
@@ -305,6 +312,7 @@ class ProjectsApiService {
       gameReleaseUrl: gameReleaseUrl,
       gameFeedbackUrl: gameFeedbackUrl,
       gameIntroduction: gameIntroduction,
+      codeMapUrl: codeMapUrl,
     );
   }
 }

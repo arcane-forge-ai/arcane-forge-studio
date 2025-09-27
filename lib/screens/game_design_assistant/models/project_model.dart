@@ -11,6 +11,7 @@ class Project {
   final String? gameReleaseUrl;
   final String? gameFeedbackUrl;
   final String? gameIntroduction;
+  final String? codeMapUrl;
 
   Project({
     required this.id,
@@ -25,6 +26,7 @@ class Project {
     this.gameReleaseUrl,
     this.gameFeedbackUrl,
     this.gameIntroduction,
+    this.codeMapUrl,
   });
 
   Map<String, dynamic> toJson() {
@@ -41,6 +43,7 @@ class Project {
       'gameReleaseUrl': gameReleaseUrl,
       'gameFeedbackUrl': gameFeedbackUrl,
       'gameIntroduction': gameIntroduction,
+      'codeMapUrl': codeMapUrl,
     };
   }
 
@@ -59,6 +62,7 @@ class Project {
       gameReleaseUrl: json['gameReleaseUrl'],
       gameFeedbackUrl: json['gameFeedbackUrl'],
       gameIntroduction: json['gameIntroduction'],
+      codeMapUrl: json['codeMapUrl'],
     );
   }
 
@@ -80,6 +84,7 @@ class Project {
       gameReleaseUrl: json['game_release_url'],
       gameFeedbackUrl: json['game_feedback_url'],
       gameIntroduction: json['game_introduction'],
+      codeMapUrl: json['code_map_url'],
     );
   }
 
@@ -96,6 +101,7 @@ class Project {
     String? gameReleaseUrl,
     String? gameFeedbackUrl,
     String? gameIntroduction,
+    String? codeMapUrl,
   }) {
     return Project(
       id: id ?? this.id,
@@ -110,6 +116,7 @@ class Project {
       gameReleaseUrl: gameReleaseUrl ?? this.gameReleaseUrl,
       gameFeedbackUrl: gameFeedbackUrl ?? this.gameFeedbackUrl,
       gameIntroduction: gameIntroduction ?? this.gameIntroduction,
+      codeMapUrl: codeMapUrl ?? this.codeMapUrl,
     );
   }
 }

@@ -3,15 +3,23 @@ import '../../models/feedback_models.dart' as feedback_models;
 import '../../models/feedback_analysis_models.dart';
 import '../../services/feedback_analysis_service.dart';
 import '../../services/projects_api_service.dart';
+import '../../services/mutation_api_service.dart';
+import '../../widgets/mutation_edit_dialog.dart';
 import 'package:provider/provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../controllers/menu_app_controller.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import '../../services/mutation_design_service.dart';
+import 'package:intl/intl.dart';
 
 class FeedbackAnalyzeScreen extends StatefulWidget {
   final feedback_models.AnalyzeSession session;
   final List<feedback_models.Feedback> feedbacks;
   final String projectId;
   final String projectName;
+  final String? runId; // Optional: API run ID to load existing results
 
   const FeedbackAnalyzeScreen({
     Key? key,
@@ -19,6 +27,7 @@ class FeedbackAnalyzeScreen extends StatefulWidget {
     required this.feedbacks,
     required this.projectId,
     required this.projectName,
+    this.runId,
   }) : super(key: key);
 
   @override
@@ -38,9 +47,14 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
   List<FeedbackOpportunity> _opportunities = [];
   List<MutationBrief> _mutationBriefs = [];
 
+  // Mutation brief selection
+  final Set<int> _selectedMutationBriefIds = {};
+  bool _selectAllMutationBriefs = false;
+
   // Services
   late FeedbackAnalysisService _analysisService;
   late ProjectsApiService _projectsService;
+  late MutationApiService _mutationService;
 
   @override
   void initState() {
@@ -64,15 +78,49 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
       settingsProvider: settingsProvider,
       authProvider: authProvider,
     );
+    _mutationService = MutationApiService();
   }
 
   void _initializeAnalyzeSession() async {
     if (_hasInitialized) return;
     _hasInitialized = true;
 
+    // First, try to load existing analysis if runId is provided
+    if (widget.runId != null) {
+      await _loadExistingAnalysis();
+      return;
+    }
+
     // For improvement doc mode, start analysis immediately
     if (widget.session.mode == feedback_models.AnalyzeMode.improvementDoc) {
       await _generateImprovementDocument();
+    }
+  }
+
+  Future<void> _loadExistingAnalysis() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final projectId = int.parse(widget.projectId);
+      final runDetails = await _analysisService.getFeedbackAnalysis(
+        projectId: projectId,
+        runId: widget.runId!,
+      );
+
+      setState(() {
+        _clusters = runDetails.clusters;
+        _opportunities = runDetails.opportunities;
+        _mutationBriefs = runDetails.mutationBriefs;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error loading existing analysis: $e';
+        _isLoading = false;
+      });
     }
   }
 
@@ -173,7 +221,13 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
       return _buildErrorState();
     }
 
-    if (_analysisResult == null) {
+    // Check if we have analysis results (either from new analysis or loaded existing)
+    final hasResults = _analysisResult != null || 
+                      _clusters.isNotEmpty || 
+                      _opportunities.isNotEmpty || 
+                      _mutationBriefs.isNotEmpty;
+
+    if (!hasResults) {
       return _buildInitialState();
     }
 
@@ -412,16 +466,30 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
   Widget _buildMutationBriefsTab() {
     return Container(
       color: const Color(0xFF1E1E1E),
-      child: ListView(
-        padding: const EdgeInsets.all(16),
+      child: Column(
         children: [
-          _buildSectionHeader(
-            'Mutation Briefs',
-            'Next iteration features and changes',
-            Icons.science,
+          // Action bar for mutation briefs
+          if (_mutationBriefs.isNotEmpty) _buildMutationBriefsActionBar(),
+          
+          // Mutation briefs list
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _buildSectionHeader(
+                  'Mutation Briefs',
+                  'Next iteration features and changes',
+                  Icons.science,
+                ),
+                const SizedBox(height: 16),
+                ..._mutationBriefs.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final brief = entry.value;
+                  return _buildMutationBriefCard(brief, index);
+                }),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          ..._mutationBriefs.map((brief) => _buildMutationBriefCard(brief)),
         ],
       ),
     );
@@ -647,22 +715,98 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
     );
   }
 
-  Widget _buildMutationBriefCard(MutationBrief brief) {
+  Widget _buildMutationBriefsActionBar() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Color(0xFF2A2A2A),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFF404040), width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Checkbox(
+            value: _selectAllMutationBriefs,
+            onChanged: (value) {
+              setState(() {
+                _selectAllMutationBriefs = value ?? false;
+                if (_selectAllMutationBriefs) {
+                  _selectedMutationBriefIds.addAll(
+                    List.generate(_mutationBriefs.length, (index) => index),
+                  );
+                } else {
+                  _selectedMutationBriefIds.clear();
+                }
+              });
+            },
+            activeColor: const Color(0xFF0078D4),
+          ),
+          Text(
+            'Select All (${_selectedMutationBriefIds.length} selected)',
+            style: const TextStyle(color: Colors.white),
+          ),
+          const Spacer(),
+          ElevatedButton.icon(
+            onPressed: () => _addNewMutation(),
+            icon: const Icon(Icons.add),
+            label: const Text('Add New Mutation'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4CAF50),
+              foregroundColor: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton.icon(
+            onPressed: _selectedMutationBriefIds.isNotEmpty
+                ? () => _startMutationDesign()
+                : null,
+            icon: const Icon(Icons.auto_fix_high),
+            label: const Text('Start Mutation Design'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF6B35),
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMutationBriefCard(MutationBrief brief, int index) {
+    final isSelected = _selectedMutationBriefIds.contains(index);
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF404040)),
+        border: Border.all(
+          color: isSelected ? const Color(0xFFFF6B35) : const Color(0xFF404040),
+          width: isSelected ? 2 : 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Title and metrics
+          // Checkbox and title row with actions
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Checkbox(
+                value: isSelected,
+                onChanged: (value) {
+                  setState(() {
+                    if (value ?? false) {
+                      _selectedMutationBriefIds.add(index);
+                    } else {
+                      _selectedMutationBriefIds.remove(index);
+                    }
+                    _selectAllMutationBriefs =
+                        _selectedMutationBriefIds.length == _mutationBriefs.length;
+                  });
+                },
+                activeColor: const Color(0xFFFF6B35),
+              ),
               Expanded(
                 child: Text(
                   brief.title,
@@ -673,7 +817,35 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              // Action buttons
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: () => _editMutation(brief, index),
+                    icon: const Icon(Icons.edit, size: 18),
+                    color: const Color(0xFF4CAF50),
+                    tooltip: 'Edit mutation',
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+                  IconButton(
+                    onPressed: () => _deleteMutation(brief, index),
+                    icon: const Icon(Icons.delete, size: 18),
+                    color: const Color(0xFFFF5252),
+                    tooltip: 'Delete mutation',
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                    padding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
               Column(
                 children: [
                   if (brief.impact != null)
@@ -797,6 +969,382 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
       _mutationBriefs = [];
     });
     _generateImprovementDocument();
+  }
+
+  Future<void> _startMutationDesign() async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return const AlertDialog(
+          backgroundColor: Color(0xFF2A2A2A),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Color(0xFFFF6B35)),
+              SizedBox(height: 16),
+              Text(
+                'Preparing mutation design data...',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    try {
+      // Get selected mutation briefs
+      final selectedBriefs = _selectedMutationBriefIds
+          .map((index) => _mutationBriefs[index])
+          .toList();
+      
+      // Fetch project data
+      final project = await _projectsService.getProjectById(int.parse(widget.projectId));
+      
+      // Fetch game introduction
+      final gameIntroduction = project.gameIntroduction?.isNotEmpty == true 
+          ? project.gameIntroduction! 
+          : "Not Available at this moment";
+      
+      // Fetch code map content
+      String codeMapContent = "Not Available at this moment";
+      if (project.codeMapUrl?.isNotEmpty == true) {
+        try {
+          final codeMapResponse = await http.get(Uri.parse(project.codeMapUrl!));
+          if (codeMapResponse.statusCode == 200) {
+            codeMapContent = codeMapResponse.body;
+          }
+        } catch (e) {
+          // Keep default "Not Available at this moment"
+        }
+      }
+      
+      // Load mutation design prompt
+      String mutationPrompt = "Not Available at this moment";
+      try {
+        mutationPrompt = await rootBundle.loadString('assets/requests/mutation_design_prompt.md');
+      } catch (e) {
+        // Keep default "Not Available at this moment"
+      }
+      
+      // Compose mutation brief summaries
+      final mutationBriefSummaries = selectedBriefs.map((brief) {
+        final changes = brief.changes?.join('\n- ') ?? 'No specific changes listed';
+        return """Title: ${brief.title}
+Rationale: ${brief.rationale ?? 'No rationale provided'}
+Impact: ${brief.impact ?? 'Not specified'}
+Effort: ${brief.effort ?? 'Not specified'}
+Novelty: ${brief.novelty ?? 'Not specified'}
+Changes:
+- $changes""";
+      }).join('\n\n---\n\n');
+      
+      // Compose the full message
+      final DateTime now = DateTime.now();
+      final String sessionTitle = "${DateFormat('yy-MM-dd-HH-mm').format(now)} Mutation Design";
+      
+      final String composedMessage = """=====Game Introduction=====
+$gameIntroduction
+
+=====Code Map=====
+$codeMapContent
+
+=====Mutation Brief Summaries=====
+$mutationBriefSummaries
+
+$mutationPrompt""";
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      
+      // Navigate to Game Design Assistant
+      if (mounted) {
+        final menuController = Provider.of<MenuAppController>(context, listen: false);
+        menuController.changeScreen(ScreenType.gameDesignAssistant);
+        
+        // Store the composed message and session title for the Game Design Assistant to pick up
+        MutationDesignService().setMutationDesignData(composedMessage, sessionTitle);
+        
+        // Navigate back to project dashboard so the menu controller can switch screens
+        Navigator.of(context).pop();
+      }
+      
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error preparing mutation design: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  // Mutation CRUD operations
+  Future<void> _addNewMutation() async {
+    final runId = widget.runId ?? '';
+    if (runId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No analysis run selected'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => MutationEditDialog(
+        runId: runId,
+        onSaved: (mutationData) async {
+          return await _createMutation(mutationData);
+        },
+      ),
+    );
+  }
+
+  Future<void> _editMutation(MutationBrief mutation, int index) async {
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => MutationEditDialog(
+        mutation: mutation,
+        runId: mutation.runId,
+        onSaved: (mutationData) async {
+          return await _updateMutation(mutation.id, mutationData);
+        },
+      ),
+    );
+  }
+
+  Future<void> _deleteMutation(MutationBrief mutation, int index) async {
+    final confirmed = await _showDeleteConfirmationDialog(mutation.title);
+    if (confirmed) {
+      await _performDeleteMutation(mutation.id);
+    }
+  }
+
+  Future<bool> _showDeleteConfirmationDialog(String mutationTitle) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'Delete Mutation Brief',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Are you sure you want to delete "$mutationTitle"?\n\nThis action cannot be undone.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF5252),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  Future<bool> _createMutation(Map<String, dynamic> mutationData) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF4CAF50),
+          ),
+        ),
+      );
+
+      final changes = mutationData['changes'] as List<String>?;
+      
+      await _mutationService.createMutation(
+        projectId: int.parse(widget.projectId),
+        runId: mutationData['runId'],
+        title: mutationData['title'],
+        rationale: mutationData['rationale'],
+        changes: changes,
+        impact: mutationData['impact'],
+        effort: mutationData['effort'],
+        novelty: mutationData['novelty'],
+      );
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Refresh the list
+      await _loadExistingAnalysis();
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mutation brief created successfully'),
+            backgroundColor: Color(0xFF4CAF50),
+          ),
+        );
+      }
+      
+      return true; // Success
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) Navigator.of(context).pop();
+      
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating mutation: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      
+      return false; // Failed
+    }
+  }
+
+  Future<bool> _updateMutation(int mutationId, Map<String, dynamic> mutationData) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF4CAF50),
+          ),
+        ),
+      );
+
+      final changes = mutationData['changes'] as List<String>?;
+      
+      await _mutationService.updateMutation(
+        projectId: int.parse(widget.projectId),
+        mutationId: mutationId,
+        title: mutationData['title'],
+        rationale: mutationData['rationale'],
+        changes: changes,
+        impact: mutationData['impact'],
+        effort: mutationData['effort'],
+        novelty: mutationData['novelty'],
+      );
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Refresh the list
+      await _loadExistingAnalysis();
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mutation brief updated successfully'),
+            backgroundColor: Color(0xFF4CAF50),
+          ),
+        );
+      }
+      
+      return true; // Success
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) Navigator.of(context).pop();
+      
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating mutation: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      
+      return false; // Failed
+    }
+  }
+
+  Future<void> _performDeleteMutation(int mutationId) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFFFF5252),
+          ),
+        ),
+      );
+
+      await _mutationService.deleteMutation(
+        projectId: int.parse(widget.projectId),
+        mutationId: mutationId,
+      );
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      // Refresh the list
+      await _loadExistingAnalysis();
+
+      // Clear selection if the deleted mutation was selected
+      setState(() {
+        _selectedMutationBriefIds.clear();
+        _selectAllMutationBriefs = false;
+      });
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mutation brief deleted successfully'),
+            backgroundColor: Color(0xFF4CAF50),
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) Navigator.of(context).pop();
+      
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting mutation: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override

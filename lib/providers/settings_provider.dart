@@ -3,7 +3,7 @@ import '../utils/app_constants.dart';
 import 'dart:io';
 
 class SettingsProvider extends ChangeNotifier {
-  bool _useMockMode = false; // Default to mock mode for development
+  bool _useMockMode = false; // Default to live API mode
   bool _isDarkMode = true; // Default to dark mode (current theme)
   
   // Image Generation Settings

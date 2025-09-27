@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import '../models/image_generation_models.dart';
+import '../models/extracted_asset_models.dart';
 import '../services/comfyui_service.dart';
 import '../services/comfyui_service_manager.dart';
 import '../services/image_generation_services.dart';
 import '../providers/settings_provider.dart';
 import '../utils/app_constants.dart';
+import '../widgets/create_assets_from_doc_dialog.dart';
 import 'dart:io';
 
-class ImageGenerationProvider extends ChangeNotifier {
+class ImageGenerationProvider extends ChangeNotifier implements AssetCreationProvider {
   final SettingsProvider _settingsProvider;
   final AIImageGenerationServiceManager _serviceManager = AIImageGenerationServiceManager.instance;
   final A1111ImageGenerationService _a1111Service;
@@ -23,6 +25,18 @@ class ImageGenerationProvider extends ChangeNotifier {
   List<String> get availableModels => _availableModels;
   List<String> _availableLoras = [];
   List<String> get availableLoras => _availableLoras;
+  
+  // A1111 specific state
+  List<A1111Checkpoint> _a1111Checkpoints = [];
+  List<A1111Checkpoint> get a1111Checkpoints => _a1111Checkpoints;
+  List<A1111Lora> _a1111Loras = [];
+  List<A1111Lora> get a1111Loras => _a1111Loras;
+  String? _currentA1111Checkpoint;
+  String? get currentA1111Checkpoint => _currentA1111Checkpoint;
+  bool _isLoadingA1111Models = false;
+  bool get isLoadingA1111Models => _isLoadingA1111Models;
+  bool _isA1111ServerReachable = false;
+  bool get isA1111ServerReachable => _isA1111ServerReachable;
   
   ImageGenerationProvider(
     this._settingsProvider, {
@@ -46,9 +60,9 @@ class ImageGenerationProvider extends ChangeNotifier {
   
   /// Test API connection status
   Future<void> _testApiConnection() async {
-    if (_assetService is ApiImageAssetService) {
-      try {
-        _isApiConnected = await (_assetService as ApiImageAssetService).testConnection();
+      if (_assetService is ApiImageAssetService) {
+        try {
+          _isApiConnected = await _assetService.testConnection();
       } catch (e) {
         _isApiConnected = false;
       }
@@ -114,7 +128,7 @@ class ImageGenerationProvider extends ChangeNotifier {
     
     if (_assetService is ApiImageAssetService) {
       try {
-        return await (_assetService as ApiImageAssetService).getProjectStats(_currentProjectId!);
+        return await _assetService.getProjectStats(_currentProjectId!);
       } catch (e) {
         debugPrint('Failed to get project stats: $e');
         return null;
@@ -129,7 +143,7 @@ class ImageGenerationProvider extends ChangeNotifier {
     
     if (_assetService is ApiImageAssetService) {
       try {
-        return await (_assetService as ApiImageAssetService).getProjectTags(_currentProjectId!);
+        return await _assetService.getProjectTags(_currentProjectId!);
       } catch (e) {
         debugPrint('Failed to get project tags: $e');
         return null;
@@ -154,7 +168,7 @@ class ImageGenerationProvider extends ChangeNotifier {
     
     if (_assetService is ApiImageAssetService) {
       try {
-        return await (_assetService as ApiImageAssetService).getProjectAssetsWithFilters(
+        return await _assetService.getProjectAssetsWithFilters(
           _currentProjectId!,
           limit: limit,
           offset: offset,
@@ -180,7 +194,7 @@ class ImageGenerationProvider extends ChangeNotifier {
     
     if (_assetService is ApiImageAssetService) {
       try {
-        final result = await (_assetService as ApiImageAssetService).deleteBulkAssets(
+        final result = await _assetService.deleteBulkAssets(
           _currentProjectId!,
           assetIds,
           force: force,
@@ -202,8 +216,8 @@ class ImageGenerationProvider extends ChangeNotifier {
   Future<void> markGenerationAsFavorite(String generationId) async {
     if (_assetService is ApiImageAssetService) {
       try {
-        await (_assetService as ApiImageAssetService).markGenerationFavorite(generationId);
-        await refreshAssets(); // Refresh to get updated data
+        final updatedGeneration = await _assetService.markGenerationFavorite(generationId);
+        await _refreshSingleAsset(updatedGeneration.assetId);
       } catch (e) {
         debugPrint('Failed to mark generation as favorite: $e');
         // Fallback to regular update method
@@ -218,8 +232,8 @@ class ImageGenerationProvider extends ChangeNotifier {
   Future<void> removeGenerationFavorite(String generationId) async {
     if (_assetService is ApiImageAssetService) {
       try {
-        await (_assetService as ApiImageAssetService).removeGenerationFavorite(generationId);
-        await refreshAssets(); // Refresh to get updated data
+        final updatedGeneration = await _assetService.removeGenerationFavorite(generationId);
+        await _refreshSingleAsset(updatedGeneration.assetId);
       } catch (e) {
         debugPrint('Failed to remove generation favorite: $e');
         // Fallback to regular update method
@@ -239,10 +253,10 @@ class ImageGenerationProvider extends ChangeNotifier {
         if (genIndex != -1) {
           final updatedGeneration = asset.generations[genIndex].copyWith(isFavorite: true);
           await _assetService.updateGeneration(updatedGeneration);
+          await _refreshSingleAsset(asset.id);
           break;
         }
       }
-      await refreshAssets();
     } catch (e) {
       debugPrint('Failed to mark generation as favorite locally: $e');
     }
@@ -257,10 +271,10 @@ class ImageGenerationProvider extends ChangeNotifier {
         if (genIndex != -1) {
           final updatedGeneration = asset.generations[genIndex].copyWith(isFavorite: false);
           await _assetService.updateGeneration(updatedGeneration);
+          await _refreshSingleAsset(asset.id);
           break;
         }
       }
-      await refreshAssets();
     } catch (e) {
       debugPrint('Failed to remove generation favorite locally: $e');
     }
@@ -362,7 +376,8 @@ class ImageGenerationProvider extends ChangeNotifier {
   }
 
   // Asset management methods
-  Future<void> refreshAssets() async {
+  @override
+  Future<void> refreshAssets({String? projectId}) async {
     if (_currentProjectId == null) {
       _assets = [];
       notifyListeners();
@@ -494,11 +509,30 @@ class ImageGenerationProvider extends ChangeNotifier {
     }
   }
 
+  /// Refresh a single asset from the service and update cache
+  Future<void> _refreshSingleAsset(String assetId) async {
+    try {
+      final asset = await _assetService.getAsset(assetId);
+      
+      // Update cache with fresh data
+      final index = _assets.indexWhere((a) => a.id == assetId);
+      if (index != -1) {
+        _assets[index] = asset;
+      } else {
+        _assets.add(asset);
+      }
+      
+      notifyListeners();
+    } catch (e) {
+      print('Error refreshing single asset $assetId: $e');
+    }
+  }
+
   /// Get fresh generations for a specific asset from service
   Future<List<ImageGeneration>> getAssetGenerations(String assetId, {int limit = 50}) async {
     try {
       if (_assetService is ApiImageAssetService) {
-        final result = await (_assetService as ApiImageAssetService).getAssetGenerations(
+        final result = await _assetService.getAssetGenerations(
           assetId,
           limit: limit,
         );
@@ -588,7 +622,7 @@ class ImageGenerationProvider extends ChangeNotifier {
         request.toParameters(), 
         status: GenerationStatus.generating,
       );
-      await refreshAssets(); // Refresh to get updated asset
+      await _refreshSingleAsset(assetId); // Refresh to get updated asset
 
       // Generate the image using the A1111 service
       final imageData = await _a1111Service.generateImage(request);
@@ -615,7 +649,7 @@ class ImageGenerationProvider extends ChangeNotifier {
       );
       
       await _assetService.updateGeneration(updatedGeneration);
-      await refreshAssets(); // Refresh to get updated asset
+      await _refreshSingleAsset(assetId); // Refresh to get updated asset
 
     } catch (e) {
       // Handle generation error - find and update the generation
@@ -628,7 +662,7 @@ class ImageGenerationProvider extends ChangeNotifier {
               status: GenerationStatus.failed,
             );
             await _assetService.updateGeneration(updatedGeneration);
-            await refreshAssets();
+            await _refreshSingleAsset(assetId);
           }
         } catch (updateError) {
           print('Error updating failed generation: $updateError');
@@ -737,5 +771,205 @@ class ImageGenerationProvider extends ChangeNotifier {
       _availableLoras = [];
     }
     notifyListeners();
+  }
+
+  /// Check A1111 server reachability and update state
+  Future<void> checkA1111ServerStatus() async {
+    try {
+      _isA1111ServerReachable = await _a1111Service.isServerReachable();
+    } catch (e) {
+      _isA1111ServerReachable = false;
+    }
+    notifyListeners();
+  }
+
+  /// Refresh A1111 checkpoints and LoRAs from API
+  Future<void> refreshA1111Models() async {
+    if (_isLoadingA1111Models) return;
+    
+    _isLoadingA1111Models = true;
+    notifyListeners();
+    
+    try {
+      // Check server status first
+      await checkA1111ServerStatus();
+      
+      if (!_isA1111ServerReachable) {
+        _a1111Checkpoints = [];
+        _a1111Loras = [];
+        _currentA1111Checkpoint = null;
+        return;
+      }
+
+      // Get checkpoints, LoRAs, and current checkpoint in parallel
+      final futures = [
+        _a1111Service.getAvailableCheckpoints(),
+        _a1111Service.getAvailableLoras(),
+        _a1111Service.getCurrentCheckpoint(),
+      ];
+      
+      final results = await Future.wait(futures);
+      
+      _a1111Checkpoints = results[0] as List<A1111Checkpoint>;
+      _a1111Loras = results[1] as List<A1111Lora>;
+      _currentA1111Checkpoint = results[2] as String?;
+      
+    } catch (e) {
+      _isA1111ServerReachable = false;
+      _a1111Checkpoints = [];
+      _a1111Loras = [];
+      _currentA1111Checkpoint = null;
+    } finally {
+      _isLoadingA1111Models = false;
+      notifyListeners();
+    }
+  }
+
+  /// Get current A1111 checkpoint (refresh if needed)
+  Future<void> refreshCurrentA1111Checkpoint() async {
+    try {
+      if (!_isA1111ServerReachable) {
+        await checkA1111ServerStatus();
+      }
+      
+      if (_isA1111ServerReachable) {
+        _currentA1111Checkpoint = await _a1111Service.getCurrentCheckpoint();
+        notifyListeners();
+      }
+    } catch (e) {
+      _currentA1111Checkpoint = null;
+      notifyListeners();
+    }
+  }
+
+  /// Extract assets from document content using API
+  @override
+  Future<List<ExtractedAsset>> extractAssetsFromContent(String content) async {
+    if (_currentProjectId == null) {
+      throw Exception('No project selected');
+    }
+
+    if (_assetService is ApiImageAssetService) {
+      try {
+        final result = await _assetService.extractAssetsFromContent(
+          _currentProjectId!,
+          content,
+        );
+        return result;
+      } catch (e) {
+        debugPrint('Failed to extract assets from content: $e');
+        rethrow;
+      }
+    } else {
+      // Mock implementation for local service
+      return _mockExtractAssetsFromContent(content);
+    }
+  }
+
+  /// Mock implementation for extracting assets from content
+  List<ExtractedAsset> _mockExtractAssetsFromContent(String content) {
+    // Simple mock implementation - extract potential asset names from content
+    final lines = content.split('\n');
+    final assets = <ExtractedAsset>[];
+    
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isNotEmpty && trimmed.length > 3 && trimmed.length < 100) {
+        // Simple heuristic: if line looks like it could be an asset name
+        if (RegExp(r'^[A-Z][a-zA-Z\s]+$').hasMatch(trimmed)) {
+          // Create mock original JSON response
+          final originalJson = {
+            'name': trimmed,
+            'description': 'Auto-extracted from document',
+            'tags': ['auto-generated'],
+            'metadata': {'source': 'document_extraction'},
+            'confidence': 0.8,
+            'extraction_method': 'mock_regex',
+          };
+          
+          // Merge original JSON with base metadata
+          final mergedMetadata = <String, dynamic>{
+            'source': 'document_extraction',
+          };
+          mergedMetadata.addAll(originalJson);
+          
+          assets.add(ExtractedAsset(
+            name: trimmed,
+            description: 'Auto-extracted from document',
+            tags: ['auto-generated'],
+            metadata: mergedMetadata,
+          ));
+        }
+      }
+    }
+    
+    // Limit to reasonable number of assets
+    return assets.take(10).toList();
+  }
+
+  /// Batch create assets from extracted asset data
+  @override
+  Future<void> batchCreateAssets(String projectId, List<ExtractedAsset> extractedAssets) async {
+    if (_assetService is ApiImageAssetService) {
+      try {
+        await _assetService.batchCreateAssets(
+          projectId,
+          extractedAssets,
+        );
+        
+        // Refresh assets to get the newly created ones
+        await refreshAssets();
+      } catch (e) {
+        debugPrint('Failed to batch create assets: $e');
+        rethrow;
+      }
+    } else {
+      // Mock implementation for local service
+      for (final extracted in extractedAssets) {
+        try {
+          await createAsset(extracted.name, extracted.description ?? '');
+        } catch (e) {
+          debugPrint('Failed to create asset ${extracted.name}: $e');
+        }
+      }
+    }
+  }
+
+  /// Legacy method that returns created assets (for backward compatibility)
+  Future<List<ImageAsset>> batchCreateAssetsWithReturn(List<ExtractedAsset> extractedAssets) async {
+    if (_currentProjectId == null) {
+      throw Exception('No project selected');
+    }
+
+    if (_assetService is ApiImageAssetService) {
+      try {
+        final result = await _assetService.batchCreateAssets(
+          _currentProjectId!,
+          extractedAssets,
+        );
+        
+        // Refresh assets to get the newly created ones
+        await refreshAssets();
+        
+        return result;
+      } catch (e) {
+        debugPrint('Failed to batch create assets: $e');
+        rethrow;
+      }
+    } else {
+      // Mock implementation for local service
+      final createdAssets = <ImageAsset>[];
+      
+      for (final extracted in extractedAssets) {
+        try {
+          final asset = await createAsset(extracted.name, extracted.description ?? '');
+          createdAssets.add(asset);
+        } catch (e) {
+          debugPrint('Failed to create asset ${extracted.name}: $e');
+        }
+      }
+      
+      return createdAssets;
+    }
   }
 } 

@@ -7,12 +7,16 @@ class ImageDetailDialog extends StatelessWidget {
   final ImageGeneration generation;
   final ImageAsset? asset;
   final VoidCallback? onFavoriteToggle;
+  final VoidCallback? onDownload;
+  final VoidCallback? onDelete;
 
   const ImageDetailDialog({
     super.key,
     required this.generation,
     this.asset,
     this.onFavoriteToggle,
+    this.onDownload,
+    this.onDelete,
   });
 
   @override
@@ -31,44 +35,55 @@ class ImageDetailDialog extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFF404040)),
         ),
-        child: isLargeScreen ? _buildLargeScreenLayout() : _buildMobileLayout(),
+        child: isLargeScreen ? _buildLargeScreenLayout(context) : _buildMobileLayout(context),
       ),
     );
   }
 
-  Widget _buildLargeScreenLayout() {
-    return Row(
+  Widget _buildLargeScreenLayout(BuildContext context) {
+    return Column(
       children: [
-        // Left side - Image
+        // Header with action buttons
+        _buildDialogHeader(context),
+        // Main content
         Expanded(
-          flex: 2,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            child: _buildImageView(),
-          ),
-        ),
-        // Right side - Details
-        Expanded(
-          flex: 1,
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: Color(0xFF2A2A2A),
-              borderRadius: BorderRadius.only(
-                topRight: Radius.circular(16),
-                bottomRight: Radius.circular(16),
+          child: Row(
+            children: [
+              // Left side - Image
+              Expanded(
+                flex: 2,
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  child: _buildImageView(),
+                ),
               ),
-            ),
-            child: _buildDetailsPanel(),
+              // Right side - Details
+              Expanded(
+                flex: 1,
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.only(
+                      topRight: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: _buildDetailsPanel(),
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildMobileLayout() {
+  Widget _buildMobileLayout(BuildContext context) {
     return Column(
       children: [
+        // Header with action buttons
+        _buildDialogHeader(context),
         // Top - Image
         Expanded(
           flex: 2,
@@ -93,6 +108,61 @@ class ImageDetailDialog extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDialogHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        border: Border(
+          bottom: BorderSide(color: Color(0xFF404040), width: 1),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Generation Details',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          // Favorite button
+          IconButton(
+            onPressed: onFavoriteToggle,
+            icon: Icon(
+              generation.isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: generation.isFavorite ? Colors.red : Colors.white54,
+            ),
+            tooltip: generation.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+          ),
+          // Download button
+          IconButton(
+            onPressed: generation.status == GenerationStatus.completed 
+                ? (onDownload ?? () => _downloadImage(context))
+                : null,
+            icon: const Icon(Icons.download, color: Colors.white54),
+            tooltip: 'Download image',
+          ),
+          // Delete button
+          IconButton(
+            onPressed: onDelete ?? () => _deleteGeneration(context),
+            icon: const Icon(Icons.delete, color: Colors.red),
+            tooltip: 'Delete generation',
+          ),
+          // Close button
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close, color: Colors.white54),
+            tooltip: 'Close',
+          ),
+        ],
+      ),
     );
   }
 
@@ -281,30 +351,60 @@ class ImageDetailDialog extends StatelessWidget {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
-  void _copyToClipboard(BuildContext context) {
-    final details = StringBuffer();
-    details.writeln('Generation Details:');
-    details.writeln('Created: ${_formatDateTime(generation.createdAt)}');
-    details.writeln('Status: ${generation.status.name.toUpperCase()}');
-    details.writeln('Favorite: ${generation.isFavorite ? 'Yes' : 'No'}');
-    if (asset != null) details.writeln('Asset: ${asset!.name}');
-    details.writeln();
-    details.writeln('Generation Parameters:');
-    details.writeln('Model: ${generation.parameters['model'] ?? 'Unknown'}');
-    details.writeln('Dimensions: ${generation.parameters['width']}x${generation.parameters['height']}');
-    details.writeln('Steps: ${generation.parameters['steps'] ?? 'Unknown'}');
-    details.writeln('CFG Scale: ${generation.parameters['cfg_scale'] ?? 'Unknown'}');
-    details.writeln('Sampler: ${generation.parameters['sampler'] ?? 'Unknown'}');
-    details.writeln('Seed: ${generation.parameters['seed'] ?? 'Unknown'}');
-    details.writeln();
-    details.writeln('Positive Prompt: ${generation.parameters['positive_prompt'] ?? 'No prompt'}');
-    if (generation.parameters['negative_prompt'] != null && generation.parameters['negative_prompt'].toString().isNotEmpty) {
-      details.writeln('Negative Prompt: ${generation.parameters['negative_prompt']}');
-    }
-    
-    Clipboard.setData(ClipboardData(text: details.toString()));
+
+  void _downloadImage(BuildContext context) {
+    // TODO: Implement download functionality
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Generation details copied to clipboard!')),
+      const SnackBar(
+        content: Text('Download functionality will be implemented soon'),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
+
+  void _deleteGeneration(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Text(
+          'Delete Generation',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Are you sure you want to delete this generated image?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // Close confirmation dialog
+              Navigator.of(context).pop(); // Close image detail dialog
+              // TODO: Implement actual deletion logic
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Delete functionality will be implemented soon'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
     );
   }
 } 

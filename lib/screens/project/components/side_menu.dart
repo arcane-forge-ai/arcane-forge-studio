@@ -62,7 +62,7 @@ class SideMenu extends BaseSideMenu {
       // Development - code editor, image generator, sound generator, music generator, web server
       buildSectionHeader(context, icon: Icons.code, title: "Development"),
       ListTile(
-        title: const Text("Code Editor"),
+        title: const Text("Code"),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
               .changeScreen(ScreenType.codeEditor);

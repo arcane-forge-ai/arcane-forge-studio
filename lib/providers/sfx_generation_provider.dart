@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import '../models/sfx_generation_models.dart';
+import '../models/extracted_asset_models.dart';
 import '../services/sfx_generation_services.dart';
-import '../providers/settings_provider.dart';
+import '../widgets/create_assets_from_doc_dialog.dart';
 
-class SfxGenerationProvider extends ChangeNotifier {
+class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvider {
   final SfxAssetService _assetService;
-  final SettingsProvider _settingsProvider;
 
   // Asset management
   List<SfxAsset> _assets = [];
   bool _isLoadingAssets = false;
   String? _assetsError;
+  String? _currentProjectId;
 
   // Generation state
   bool _isGenerating = false;
@@ -20,7 +21,7 @@ class SfxGenerationProvider extends ChangeNotifier {
   // UI state
   SfxAsset? _selectedAsset;
 
-  SfxGenerationProvider(this._assetService, this._settingsProvider);
+  SfxGenerationProvider(this._assetService);
 
   // Getters
   List<SfxAsset> get assets => _assets;
@@ -32,8 +33,12 @@ class SfxGenerationProvider extends ChangeNotifier {
   SfxAsset? get selectedAsset => _selectedAsset;
 
   // Asset Management
+  @override
   Future<void> refreshAssets({String? projectId}) async {
     if (projectId == null) return;
+    
+    // Store the current project ID for API calls
+    _currentProjectId = projectId;
 
     _isLoadingAssets = true;
     _assetsError = null;
@@ -51,11 +56,41 @@ class SfxGenerationProvider extends ChangeNotifier {
     }
   }
 
+  /// Set the current project context for API calls
+  Future<void> setCurrentProject(String projectId) async {
+    _currentProjectId = projectId;
+    await refreshAssets(projectId: projectId);
+  }
+
   Future<SfxAsset?> getAsset(String assetId) async {
     try {
       return await _assetService.getSfxAsset(assetId);
     } catch (e) {
       return null;
+    }
+  }
+
+  /// Refresh a single asset from the service and update cache
+  Future<void> _refreshSingleAsset(String assetId) async {
+    try {
+      final asset = await _assetService.getSfxAsset(assetId);
+      
+      // Update cache with fresh data
+      final index = _assets.indexWhere((a) => a.id == assetId);
+      if (index != -1) {
+        _assets[index] = asset;
+      } else {
+        _assets.add(asset);
+      }
+      
+      // Update selected asset if it's the one we refreshed
+      if (_selectedAsset?.id == assetId) {
+        _selectedAsset = asset;
+      }
+      
+      notifyListeners();
+    } catch (e) {
+      print('Error refreshing single SFX asset $assetId: $e');
     }
   }
 
@@ -128,14 +163,14 @@ class SfxGenerationProvider extends ChangeNotifier {
       }
 
       // Add generation to asset (server will generate the ID and handle ElevenLabs)
-      final generation = await _assetService.addSfxGeneration(
+      await _assetService.addSfxGeneration(
         assetId,
         request,
         status: GenerationStatus.generating,
       );
 
-      // Refresh assets to get updated asset with new generation
-      await refreshAssets(projectId: projectId);
+      // Refresh the specific asset to get updated generation
+      await _refreshSingleAsset(assetId);
 
       // Update selected asset if it's the one we just generated for
       if (_selectedAsset?.id == assetId) {
@@ -228,6 +263,97 @@ class SfxGenerationProvider extends ChangeNotifier {
     _assets.clear();
     _selectedAsset = null;
     notifyListeners();
+  }
+
+  /// Extract assets from document content using API
+  @override
+  Future<List<ExtractedAsset>> extractAssetsFromContent(String content) async {
+    if (_assetService is ApiSfxAssetService && _currentProjectId != null) {
+      try {
+        final result = await _assetService.extractAssetsFromContent(_currentProjectId!, content);
+        return result;
+      } catch (e) {
+        debugPrint('Failed to extract SFX assets from content via API: $e');
+        // Fall back to mock implementation if API fails
+        return _mockExtractAssetsFromContent(content);
+      }
+    } else {
+      // Mock implementation for local service or when no project ID is set
+      return _mockExtractAssetsFromContent(content);
+    }
+  }
+
+  /// Mock implementation for extracting SFX assets from content
+  List<ExtractedAsset> _mockExtractAssetsFromContent(String content) {
+    // Simple mock implementation - extract potential SFX asset names from content
+    final lines = content.split('\n');
+    final assets = <ExtractedAsset>[];
+    
+    // SFX-specific keywords to look for
+    final sfxKeywords = ['sound', 'audio', 'sfx', 'effect', 'noise', 'music', 'voice', 'ambient'];
+    
+    for (final line in lines) {
+      final trimmed = line.trim().toLowerCase();
+      if (trimmed.isNotEmpty && trimmed.length > 3 && trimmed.length < 100) {
+        // Check if line contains SFX-related keywords
+        bool containsSfxKeyword = sfxKeywords.any((keyword) => trimmed.contains(keyword));
+        
+        if (containsSfxKeyword || RegExp(r'^[A-Z][a-zA-Z\s]+$').hasMatch(line.trim())) {
+          final assetName = line.trim();
+          
+          // Create mock original JSON response
+          final originalJson = {
+            'name': assetName,
+            'description': 'Auto-extracted SFX asset from document',
+            'tags': ['auto-generated', 'sfx'],
+            'metadata': {'source': 'document_extraction', 'type': 'sfx'},
+            'confidence': 0.8,
+            'extraction_method': 'mock_regex',
+          };
+          
+          // Merge original JSON with base metadata
+          final mergedMetadata = <String, dynamic>{
+            'source': 'document_extraction',
+            'type': 'sfx',
+          };
+          mergedMetadata.addAll(originalJson);
+          
+          assets.add(ExtractedAsset(
+            name: assetName,
+            description: 'Auto-extracted SFX asset from document',
+            tags: ['auto-generated', 'sfx'],
+            metadata: mergedMetadata,
+          ));
+        }
+      }
+    }
+    
+    // Limit to reasonable number of assets
+    return assets.take(10).toList();
+  }
+
+  /// Batch create assets from extracted asset data
+  @override
+  Future<void> batchCreateAssets(String projectId, List<ExtractedAsset> extractedAssets) async {
+    if (_assetService is ApiSfxAssetService) {
+      try {
+        await _assetService.batchCreateAssets(projectId, extractedAssets);
+        // Refresh assets to get the newly created ones
+        await refreshAssets(projectId: projectId);
+      } catch (e) {
+        debugPrint('Failed to batch create SFX assets: $e');
+        rethrow;
+      }
+    } else {
+      // Mock implementation for local service
+      for (final extracted in extractedAssets) {
+        try {
+          await createAsset(projectId, extracted.name, extracted.description ?? '');
+        } catch (e) {
+          debugPrint('Failed to create SFX asset ${extracted.name}: $e');
+        }
+      }
+    }
   }
 
   @override

@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/feedback_provider.dart';
 import '../../models/feedback_models.dart' as feedback_models;
+import '../../models/feedback_analysis_models.dart';
 import 'feedback_analyze_screen.dart';
 import 'package:intl/intl.dart';
 import '../../services/projects_api_service.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/feedback_analysis_service.dart';
+import '../../services/feedback_discussion_service.dart';
+import '../../controllers/menu_app_controller.dart';
+
 
 class FeedbackScreen extends StatefulWidget {
   final String projectId;
@@ -70,6 +75,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
       // Load feedbacks after setting the URL
       await feedbackProvider.loadFeedbacks();
+      
+      // Load existing analysis runs from the API
+      await feedbackProvider.loadAnalysisRuns(int.parse(widget.projectId));
     } catch (e) {
       setState(() {
         _isLoadingProject = false;
@@ -81,7 +89,15 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (context) => FeedbackProvider(),
+      create: (context) {
+        final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final analysisService = FeedbackAnalysisService(
+          settingsProvider: settingsProvider,
+          authProvider: authProvider,
+        );
+        return FeedbackProvider(analysisService: analysisService);
+      },
       builder: (context, child) {
         return Consumer<FeedbackProvider>(
           builder: (context, provider, child) {
@@ -165,9 +181,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 const SizedBox(width: 12),
                 _buildStatCard('This Week', stats['this_week'].toString(),
                     Icons.date_range),
-                const SizedBox(width: 12),
-                _buildStatCard(
-                    'With Email', stats['with_email'].toString(), Icons.email),
+                // const SizedBox(width: 12),
+                // _buildStatCard(
+                //     'With Email', stats['with_email'].toString(), Icons.email),
               ],
               const Spacer(),
 
@@ -423,7 +439,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         ),
 
         // Analyze sessions section
-        if (provider.analyzeSessions.isNotEmpty)
+        if (provider.analyzeSessions.isNotEmpty || provider.apiAnalysisRuns.isNotEmpty)
           _buildAnalyzeSessionsSection(provider),
       ],
     );
@@ -486,6 +502,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               foregroundColor: Colors.white,
             ),
           ),
+
         ],
       ),
     );
@@ -517,20 +534,20 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                         style: TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold))),
                 Expanded(
-                    flex: 4,
+                    flex: 6,
                     child: Text('Message',
                         style: TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold))),
-                Expanded(
-                    flex: 1,
-                    child: Text('Email',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold))),
-                Expanded(
-                    flex: 1,
-                    child: Text('Notify',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold))),
+                // Expanded(
+                //     flex: 1,
+                //     child: Text('Email',
+                //         style: TextStyle(
+                //             color: Colors.white, fontWeight: FontWeight.bold))),
+                // Expanded(
+                //     flex: 1,
+                //     child: Text('Notify',
+                //         style: TextStyle(
+                //             color: Colors.white, fontWeight: FontWeight.bold))),
               ],
             ),
           ),
@@ -580,41 +597,41 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                           ),
                         ),
                         Expanded(
-                          flex: 4,
+                          flex: 6,
                           child: Text(
-                            feedback.message.length > 100
-                                ? '${feedback.message.substring(0, 100)}...'
+                            feedback.message.length > 150
+                                ? '${feedback.message.substring(0, 150)}...'
                                 : feedback.message,
                             style: const TextStyle(color: Colors.white),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Expanded(
-                          flex: 1,
-                          child: Text(
-                            feedback.email ?? 'No email',
-                            style: TextStyle(
-                              color: feedback.email != null
-                                  ? Colors.white70
-                                  : Colors.white38,
-                              fontSize: 12,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Expanded(
-                          flex: 1,
-                          child: Icon(
-                            feedback.wantNotify
-                                ? Icons.notifications_active
-                                : Icons.notifications_off,
-                            color: feedback.wantNotify
-                                ? const Color(0xFF4CAF50)
-                                : Colors.white38,
-                            size: 16,
-                          ),
-                        ),
+                        // Expanded(
+                        //   flex: 1,
+                        //   child: Text(
+                        //     feedback.email ?? 'No email',
+                        //     style: TextStyle(
+                        //       color: feedback.email != null
+                        //           ? Colors.white70
+                        //           : Colors.white38,
+                        //       fontSize: 12,
+                        //     ),
+                        //     overflow: TextOverflow.ellipsis,
+                        //   ),
+                        // ),
+                        // Expanded(
+                        //   flex: 1,
+                        //   child: Icon(
+                        //     feedback.wantNotify
+                        //         ? Icons.notifications_active
+                        //         : Icons.notifications_off,
+                        //     color: feedback.wantNotify
+                        //         ? const Color(0xFF4CAF50)
+                        //         : Colors.white38,
+                        //     size: 16,
+                        //   ),
+                        // ),
                       ],
                     ),
                     onTap: () => _showFeedbackDetails(context, feedback),
@@ -640,15 +657,35 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Past Analyze Sessions',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              const Text(
+                'Past Analyze Sessions',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              if (provider.isLoadingAnalysisRuns)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0078D4)),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
+          
+          // Show API analysis runs first (most recent)
+          ...provider.apiAnalysisRuns
+              .map((run) => _buildApiAnalysisRunItem(run)),
+              
+          // Show local analyze sessions
           ...provider.analyzeSessions
               .map((session) => _buildAnalyzeSessionItem(session)),
         ],
@@ -696,6 +733,59 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
             onPressed: () => _openAnalyzeSession(session),
             child: const Text('Open'),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApiAnalysisRunItem(FeedbackRunSummary run) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF404040),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.analytics,
+            color: run.status == 'completed' 
+                ? const Color(0xFF4CAF50) 
+                : run.status == 'failed'
+                    ? Colors.red
+                    : const Color(0xFF0078D4),
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Analysis Run - ${run.status}',
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  'Run ID: ${run.id} • ${DateFormat('MMM dd, yyyy HH:mm').format(run.createdAt)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                if (run.errorMessage != null)
+                  Text(
+                    'Error: ${run.errorMessage}',
+                    style: const TextStyle(color: Colors.red, fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+          ),
+          if (run.status == 'completed')
+            TextButton(
+              onPressed: () => _openApiAnalysisRun(run),
+              child: const Text('Open'),
+            ),
         ],
       ),
     );
@@ -766,29 +856,176 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
 
   void _startAnalyzeSession(BuildContext context, FeedbackProvider provider,
       feedback_models.AnalyzeMode mode) {
-    final selectedFeedbacks =
-        provider.getFeedbacksByIds(_selectedFeedbackIds.toList());
+    if (mode == feedback_models.AnalyzeMode.freeDiscuss) {
+      // Show topic input dialog for free discussion
+      _showFreeDiscussionDialog(context, provider);
+    } else {
+      // Use the original flow for improvement analysis
+      final selectedFeedbacks =
+          provider.getFeedbacksByIds(_selectedFeedbackIds.toList());
 
-    final session = provider.createAnalyzeSession(
-      projectId: widget.projectId,
-      mode: mode,
-      title: mode == feedback_models.AnalyzeMode.freeDiscuss
-          ? 'Free Discussion - ${DateFormat('MMM dd, HH:mm').format(DateTime.now())}'
-          : 'Improvement Analysis - ${DateFormat('MMM dd, HH:mm').format(DateTime.now())}',
-      feedbackIds: _selectedFeedbackIds.toList(),
-    );
+      final session = provider.createAnalyzeSession(
+        projectId: widget.projectId,
+        mode: mode,
+        title: 'Improvement Analysis - ${DateFormat('MMM dd, HH:mm').format(DateTime.now())}',
+        feedbackIds: _selectedFeedbackIds.toList(),
+      );
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => FeedbackAnalyzeScreen(
-          session: session,
-          feedbacks: selectedFeedbacks,
-          projectId: widget.projectId,
-          projectName: widget.projectName,
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => FeedbackAnalyzeScreen(
+            session: session,
+            feedbacks: selectedFeedbacks,
+            projectId: widget.projectId,
+            projectName: widget.projectName,
+          ),
         ),
-      ),
+      );
+    }
+  }
+
+  void _showFreeDiscussionDialog(BuildContext context, FeedbackProvider provider) {
+    final TextEditingController topicController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF2A2A2A),
+          title: const Row(
+            children: [
+              Icon(Icons.chat, color: Color(0xFF0078D4)),
+              SizedBox(width: 8),
+              Text(
+                'Free Discussion Topic',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'What would you like to discuss about the selected ${_selectedFeedbackIds.length} feedback(s)?',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF404040),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '💡 Tips for better discussions:',
+                        style: TextStyle(
+                          color: Colors.amber,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        '• Frame as a specific question (e.g., "How can we improve the onboarding experience?")',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      Text(
+                        '• Be specific about what aspect you want to focus on',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      Text(
+                        '• Ask for actionable recommendations when possible',
+                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: topicController,
+                  maxLines: 3,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'e.g., "How can we address the difficulty concerns mentioned in these feedbacks?"',
+                    hintStyle: const TextStyle(color: Colors.white54),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF404040)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF404040)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFF0078D4)),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFF1E1E1E),
+                  ),
+                  autofocus: true,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final topic = topicController.text.trim();
+                if (topic.isNotEmpty) {
+                  Navigator.of(dialogContext).pop();
+                  _startFreeDiscussion(context, provider, topic);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0078D4),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Start Discussion'),
+            ),
+          ],
+        );
+      },
     );
   }
+
+  void _startFreeDiscussion(BuildContext context, FeedbackProvider provider, String topic) {
+    final selectedFeedbacks = provider.getFeedbacksByIds(_selectedFeedbackIds.toList());
+    
+    // Set the feedback discussion data in the service
+    final discussionService = FeedbackDiscussionService();
+    discussionService.setFeedbackDiscussionData(
+      topic: topic,
+      feedbacks: selectedFeedbacks,
+      projectId: widget.projectId,
+      projectName: widget.projectName,
+    );
+    
+    // Navigate to Game Design Assistant using MenuAppController (same pattern as mutation design)
+    if (mounted) {
+      final menuController = Provider.of<MenuAppController>(context, listen: false);
+      menuController.changeScreen(ScreenType.gameDesignAssistant);
+      
+      // // Navigate back to project dashboard so the menu controller can switch screens
+      // Navigator.of(context).pop();
+    }
+  }
+
+
 
   void _openAnalyzeSession(feedback_models.AnalyzeSession session) {
     final provider = Provider.of<FeedbackProvider>(context, listen: false);
@@ -801,6 +1038,30 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
           feedbacks: feedbacks,
           projectId: widget.projectId,
           projectName: widget.projectName,
+        ),
+      ),
+    );
+  }
+
+  void _openApiAnalysisRun(FeedbackRunSummary run) {
+    // Create a temporary session for the API run
+    final tempSession = feedback_models.AnalyzeSession(
+      id: run.id,
+      projectId: widget.projectId,
+      mode: feedback_models.AnalyzeMode.improvementDoc,
+      title: 'Analysis Run - ${DateFormat('MMM dd, yyyy').format(run.createdAt)}',
+      createdAt: run.createdAt,
+      feedbackIds: [], // We don't have the original feedback IDs
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FeedbackAnalyzeScreen(
+          session: tempSession,
+          feedbacks: [], // We'll load the results from the API instead
+          projectId: widget.projectId,
+          projectName: widget.projectName,
+          runId: run.id, // Pass the API run ID to load existing results
         ),
       ),
     );

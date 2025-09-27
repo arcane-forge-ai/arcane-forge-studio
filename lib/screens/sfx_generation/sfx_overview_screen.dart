@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sfx_generation_provider.dart';
-
 import '../../models/sfx_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
-
+import '../../widgets/create_assets_from_doc_dialog.dart';
 import 'widgets/sfx_asset_detail_screen.dart';
 import 'dart:io';
 
@@ -124,6 +123,19 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
           ),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0078D4),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+        const SizedBox(width: 12),
+        ElevatedButton.icon(
+          onPressed: () => _showCreateAssetsFromDocDialog(context, provider),
+          icon: const Icon(Icons.auto_fix_high, color: Colors.white),
+          label: const Text(
+            'Create Assets from Doc',
+            style: TextStyle(color: Colors.white),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF00A86B),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
         ),
@@ -981,6 +993,21 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showCreateAssetsFromDocDialog(
+      BuildContext context, SfxGenerationProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => CreateAssetsFromDocDialog(
+        projectId: widget.projectId,
+        provider: provider,
+        assetType: 'sfx',
+        onAssetsCreated: () {
+          provider.refreshAssets(projectId: widget.projectId);
+        },
       ),
     );
   }

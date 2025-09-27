@@ -1,24 +1,34 @@
 import 'package:flutter/material.dart';
 import '../models/feedback_models.dart' as feedback_models;
+import '../models/feedback_analysis_models.dart';
 import '../services/feedback_service.dart';
+import '../services/feedback_analysis_service.dart';
 
 class FeedbackProvider extends ChangeNotifier {
   final FeedbackService _feedbackService;
+  final FeedbackAnalysisService? _analysisService;
 
   List<feedback_models.Feedback> _feedbacks = [];
   List<feedback_models.AnalyzeSession> _analyzeSessions = [];
+  List<FeedbackRunSummary> _apiAnalysisRuns = []; // API analysis runs
   bool _isLoading = false;
+  bool _isLoadingAnalysisRuns = false;
   String? _error;
   String? _feedbackUrl;
   bool _useMockData = false; // Default to false since we're using project URLs
 
-  FeedbackProvider({FeedbackService? feedbackService})
-      : _feedbackService = feedbackService ?? FeedbackService();
+  FeedbackProvider({
+    FeedbackService? feedbackService,
+    FeedbackAnalysisService? analysisService,
+  })  : _feedbackService = feedbackService ?? FeedbackService(),
+        _analysisService = analysisService;
 
   // Getters
   List<feedback_models.Feedback> get feedbacks => _feedbacks;
   List<feedback_models.AnalyzeSession> get analyzeSessions => _analyzeSessions;
+  List<FeedbackRunSummary> get apiAnalysisRuns => _apiAnalysisRuns;
   bool get isLoading => _isLoading;
+  bool get isLoadingAnalysisRuns => _isLoadingAnalysisRuns;
   String? get error => _error;
   String? get feedbackUrl => _feedbackUrl;
   bool get useMockData => _useMockData;
@@ -65,6 +75,50 @@ class FeedbackProvider extends ChangeNotifier {
   /// Refresh feedbacks
   Future<void> refreshFeedbacks() async {
     await loadFeedbacks();
+  }
+
+  /// Load existing analysis runs from the API
+  Future<void> loadAnalysisRuns(int projectId) async {
+    if (_analysisService == null) {
+      return; // No analysis service available
+    }
+
+    _setLoadingAnalysisRuns(true);
+
+    try {
+      final response = await _analysisService!.listFeedbackAnalysisRuns(
+        projectId: projectId,
+        status: 'completed', // Only load completed runs
+      );
+      
+      _apiAnalysisRuns = response.runs;
+      notifyListeners();
+    } catch (e) {
+      print('Error loading analysis runs: $e');
+      // Don't set error for this as it's not critical
+    } finally {
+      _setLoadingAnalysisRuns(false);
+    }
+  }
+
+  /// Get detailed analysis run with results
+  Future<FeedbackRunDetailResponse?> getAnalysisRunDetails({
+    required int projectId,
+    required String runId,
+  }) async {
+    if (_analysisService == null) {
+      return null;
+    }
+
+    try {
+      return await _analysisService!.getFeedbackAnalysis(
+        projectId: projectId,
+        runId: runId,
+      );
+    } catch (e) {
+      print('Error loading analysis run details: $e');
+      return null;
+    }
   }
 
   /// Create a new analyze session
@@ -167,12 +221,19 @@ class FeedbackProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _setLoadingAnalysisRuns(bool loading) {
+    _isLoadingAnalysisRuns = loading;
+    notifyListeners();
+  }
+
   /// Clear all data
   void clear() {
     _feedbacks.clear();
     _analyzeSessions.clear();
+    _apiAnalysisRuns.clear();
     _error = null;
     _isLoading = false;
+    _isLoadingAnalysisRuns = false;
     notifyListeners();
   }
 }

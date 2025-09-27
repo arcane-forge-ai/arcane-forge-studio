@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:io';
 import '../../providers/image_generation_provider.dart';
-
 import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
-
+import '../../widgets/create_assets_from_doc_dialog.dart';
 import 'widgets/asset_detail_screen.dart';
-import 'dart:io';
 
 class ImageOverviewScreen extends StatefulWidget {
   final String projectId;
@@ -123,6 +122,19 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           ),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0078D4),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+        ),
+        const SizedBox(width: 12),
+        ElevatedButton.icon(
+          onPressed: () => _showCreateAssetsFromDocDialog(context, provider),
+          icon: const Icon(Icons.auto_fix_high, color: Colors.white),
+          label: const Text(
+            'Create Assets from Doc',
+            style: TextStyle(color: Colors.white),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF00A86B),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
         ),
@@ -979,9 +991,25 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
+  void _showCreateAssetsFromDocDialog(
+      BuildContext context, ImageGenerationProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => CreateAssetsFromDocDialog(
+        projectId: widget.projectId,
+        provider: provider,
+        assetType: 'image',
+        onAssetsCreated: () {
+          provider.refreshAssets();
+        },
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 }
+

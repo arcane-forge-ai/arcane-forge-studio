@@ -416,6 +416,15 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
                         ),
                         const Spacer(),
                         InkWell(
+                          onTap: () => _toggleFavorite(generation),
+                          child: Icon(
+                            generation.isFavorite ? Icons.favorite : Icons.favorite_border,
+                            color: generation.isFavorite ? Colors.red : Colors.white54,
+                            size: 16,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        InkWell(
                           onTap: () => _showGenerationContextMenu(generation),
                           child: const Icon(
                             Icons.more_vert,
