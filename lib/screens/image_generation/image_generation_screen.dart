@@ -1354,22 +1354,8 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child:
-                            generation.status == GenerationStatus.completed &&
-                                    generation.imagePath.isNotEmpty
-                                ? Image.file(
-                                    File(generation.imagePath),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Container(
-                                        color: const Color(0xFF3A3A3A),
-                                        child: const Icon(
-                                          Icons.broken_image,
-                                          color: Colors.white54,
-                                          size: 24,
-                                        ),
-                                      );
-                                    },
-                                  )
+                            generation.status == GenerationStatus.completed
+                                ? _buildGenerationThumbnailImage(generation)
                                 : Container(
                                     color: const Color(0xFF3A3A3A),
                                     child: const Icon(
@@ -1442,6 +1428,70 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         return const Icon(Icons.schedule, color: Colors.orange, size: 24);
       case GenerationStatus.failed:
         return const Icon(Icons.error, color: Colors.red, size: 24);
+    }
+  }
+
+  Widget _buildGenerationThumbnailImage(ImageGeneration generation) {
+    // Prefer online URL, fallback to local file
+    final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
+    final bool hasLocalFile = generation.imagePath.isNotEmpty;
+    
+    if (hasOnlineUrl) {
+      return Image.network(
+        generation.imageUrl!,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to local file if network fails
+          if (hasLocalFile) {
+            return Image.file(
+              File(generation.imagePath),
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  color: const Color(0xFF3A3A3A),
+                  child: const Icon(
+                    Icons.broken_image,
+                    color: Colors.white54,
+                    size: 24,
+                  ),
+                );
+              },
+            );
+          }
+          return Container(
+            color: const Color(0xFF3A3A3A),
+            child: const Icon(
+              Icons.broken_image,
+              color: Colors.white54,
+              size: 24,
+            ),
+          );
+        },
+      );
+    } else if (hasLocalFile) {
+      return Image.file(
+        File(generation.imagePath),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: const Color(0xFF3A3A3A),
+            child: const Icon(
+              Icons.broken_image,
+              color: Colors.white54,
+              size: 24,
+            ),
+          );
+        },
+      );
+    } else {
+      return Container(
+        color: const Color(0xFF3A3A3A),
+        child: const Icon(
+          Icons.folder_outlined,
+          color: Colors.white54,
+          size: 24,
+        ),
+      );
     }
   }
 

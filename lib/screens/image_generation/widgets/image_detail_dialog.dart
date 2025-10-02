@@ -132,6 +132,49 @@ class ImageDetailDialog extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          // Copy Generation ID button
+          Tooltip(
+            message: 'Copy Generation ID',
+            child: InkWell(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: generation.id));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Generation ID copied to clipboard'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3A3A),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0xFF404040)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.fingerprint, size: 14, color: Colors.white54),
+                    const SizedBox(width: 4),
+                    Text(
+                      generation.id.length > 8 
+                          ? '${generation.id.substring(0, 8)}...' 
+                          : generation.id,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           // Favorite button
           IconButton(
             onPressed: onFavoriteToggle,
@@ -176,30 +219,62 @@ class ImageDetailDialog extends StatelessWidget {
     if (generation.parameters.containsKey('height')) {
       height = generation.parameters['height'] ?? 512;
     }
+    
+    // Use online URL if available, otherwise use local file
+    final Widget imageWidget = generation.imageUrl != null && generation.imageUrl!.isNotEmpty
+        ? Image.network(
+            generation.imageUrl!,
+            width: width.toDouble(),
+            height: height.toDouble(),
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback to local file if network image fails
+              if (generation.imagePath.isNotEmpty) {
+                return Image.file(
+                  File(generation.imagePath),
+                  width: width.toDouble(),
+                  height: height.toDouble(),
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return _buildErrorImage(width, height);
+                  },
+                );
+              }
+              return _buildErrorImage(width, height);
+            },
+          )
+        : generation.imagePath.isNotEmpty
+            ? Image.file(
+                File(generation.imagePath),
+                width: width.toDouble(),
+                height: height.toDouble(),
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return _buildErrorImage(width, height);
+                },
+              )
+            : _buildErrorImage(width, height);
+    
     return Center(
       child: SingleChildScrollView(
         scrollDirection: Axis.vertical,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: Image.file(
-            File(generation.imagePath),
-            width: width.toDouble(),
-            height: height.toDouble(),
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                width: width.toDouble(),
-                height: height.toDouble(),
-                color: Colors.blue.withOpacity(0.2),
-                child: const Icon(
-                  Icons.broken_image,
-                  color: Colors.blue,
-                  size: 60,
-                ),
-              );
-            },
-          ),
+          child: imageWidget,
         ),
+      ),
+    );
+  }
+  
+  Widget _buildErrorImage(int width, int height) {
+    return Container(
+      width: width.toDouble(),
+      height: height.toDouble(),
+      color: Colors.blue.withOpacity(0.2),
+      child: const Icon(
+        Icons.broken_image,
+        color: Colors.blue,
+        size: 60,
       ),
     );
   }
@@ -226,6 +301,18 @@ class ImageDetailDialog extends StatelessWidget {
             _buildDetailItem('Status', generation.status.name.toUpperCase()),
             _buildDetailItem('Favorite', generation.isFavorite ? 'Yes' : 'No'),
             if (asset != null) _buildDetailItem('Asset', asset!.name),
+          ]),
+          
+          const SizedBox(height: 20),
+          
+          // Technical Details (Debug Info)
+          _buildDetailSection('Technical Details', [
+            _buildCopyableDetailItem('Generation ID', generation.id),
+            _buildCopyableDetailItem('Asset ID', generation.assetId),
+            if (generation.imagePath.isNotEmpty)
+              _buildCopyableDetailItem('Local Path', generation.imagePath),
+            if (generation.imageUrl != null && generation.imageUrl!.isNotEmpty)
+              _buildCopyableDetailItem('Image URL', generation.imageUrl!),
           ]),
           
           const SizedBox(height: 20),
@@ -345,6 +432,65 @@ class ImageDetailDialog extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildCopyableDetailItem(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label:',
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          InkWell(
+            onTap: () => _copyToClipboard(value, label),
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3A3A3A),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF404040)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      value,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.copy,
+                    size: 14,
+                    color: Colors.white54,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
   }
 
   String _formatDateTime(DateTime dateTime) {

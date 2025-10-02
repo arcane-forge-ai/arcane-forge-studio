@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/image_generation_provider.dart';
 import '../../../models/image_generation_models.dart';
@@ -193,42 +194,96 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
             : null
         : null;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF3A3A3A),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          _buildStatItem(
-            icon: Icons.image,
-            label: 'Total',
-            value: '$totalGenerations',
-            color: Colors.blue,
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3A3A3A),
+            borderRadius: BorderRadius.circular(8),
           ),
-          const SizedBox(width: 24),
-          _buildStatItem(
-            icon: Icons.check_circle,
-            label: 'Completed',
-            value: '$completedGenerations',
-            color: Colors.green,
+          child: Row(
+            children: [
+              _buildStatItem(
+                icon: Icons.image,
+                label: 'Total',
+                value: '$totalGenerations',
+                color: Colors.blue,
+              ),
+              const SizedBox(width: 24),
+              _buildStatItem(
+                icon: Icons.check_circle,
+                label: 'Completed',
+                value: '$completedGenerations',
+                color: Colors.green,
+              ),
+              const SizedBox(width: 24),
+              _buildStatItem(
+                icon: Icons.star,
+                label: 'Favorite',
+                value: favoriteGeneration != null ? '1' : '0',
+                color: Colors.amber,
+              ),
+              const SizedBox(width: 24),
+              _buildStatItem(
+                icon: Icons.calendar_today,
+                label: 'Created',
+                value: _formatDate(_asset.createdAt),
+                color: Colors.white70,
+              ),
+            ],
           ),
-          const SizedBox(width: 24),
-          _buildStatItem(
-            icon: Icons.star,
-            label: 'Favorite',
-            value: favoriteGeneration != null ? '1' : '0',
-            color: Colors.amber,
+        ),
+        const SizedBox(height: 12),
+        // Debug info section
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3A3A3A),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF505050)),
           ),
-          const SizedBox(width: 24),
-          _buildStatItem(
-            icon: Icons.calendar_today,
-            label: 'Created',
-            value: _formatDate(_asset.createdAt),
-            color: Colors.white70,
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+              const SizedBox(width: 8),
+              const Text(
+                'Asset ID:',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _asset.id,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                onPressed: () => _copyToClipboard(_asset.id, 'Asset ID'),
+                icon: const Icon(Icons.copy, size: 16, color: Colors.white54),
+                tooltip: 'Copy Asset ID',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied to clipboard'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -445,36 +500,64 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   }
 
   Widget _buildGenerationThumbnail(ImageGeneration generation) {
-    if (generation.status == GenerationStatus.completed && 
-        generation.imagePath.isNotEmpty && 
-        File(generation.imagePath).existsSync()) {
-      return Stack(
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            child: Image.file(
-              File(generation.imagePath),
-              fit: BoxFit.cover,
-              width: double.infinity,
-              height: double.infinity,
-              errorBuilder: (context, error, stackTrace) {
-                return _buildErrorThumbnail();
-              },
+    if (generation.status == GenerationStatus.completed) {
+      // Prefer online URL, fallback to local file
+      final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
+      final bool hasLocalFile = generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
+      
+      if (hasOnlineUrl || hasLocalFile) {
+        return Stack(
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: hasOnlineUrl
+                  ? Image.network(
+                      generation.imageUrl!,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorBuilder: (context, error, stackTrace) {
+                        // Fallback to local file if network fails
+                        if (hasLocalFile) {
+                          return Image.file(
+                            File(generation.imagePath),
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            errorBuilder: (context, error, stackTrace) {
+                              return _buildErrorThumbnail();
+                            },
+                          );
+                        }
+                        return _buildErrorThumbnail();
+                      },
+                    )
+                  : Image.file(
+                      File(generation.imagePath),
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _buildErrorThumbnail();
+                      },
+                    ),
             ),
-          ),
-          if (generation.isFavorite)
-            const Positioned(
-              top: 8,
-              right: 8,
-              child: Icon(
-                Icons.star,
-                color: Colors.amber,
-                size: 20,
+            if (generation.isFavorite)
+              const Positioned(
+                top: 8,
+                right: 8,
+                child: Icon(
+                  Icons.star,
+                  color: Colors.amber,
+                  size: 20,
+                ),
               ),
-            ),
-        ],
-      );
-    } else if (generation.status == GenerationStatus.generating) {
+          ],
+        );
+      }
+    }
+    
+    if (generation.status == GenerationStatus.generating) {
       return _buildGeneratingThumbnail();
     } else if (generation.status == GenerationStatus.failed) {
       return _buildErrorThumbnail();

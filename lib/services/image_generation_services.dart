@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:flutter/services.dart';
 import '../models/image_generation_models.dart';
 import '../models/extracted_asset_models.dart';
@@ -19,6 +20,7 @@ abstract class ImageAssetService {
   Future<ImageGeneration> addGeneration(String assetId, Map<String, dynamic> parameters, {GenerationStatus status = GenerationStatus.pending});
   Future<ImageGeneration> updateGeneration(ImageGeneration generation);
   Future<ImageGeneration> getGeneration(String generationId);
+  Future<Map<String, dynamic>> uploadGenerationImage(String generationId, Uint8List imageData, String filename);
 }
 
 abstract class ModelService {
@@ -347,21 +349,21 @@ class ApiImageAssetService implements ImageAssetService {
   /// Upload an image file for a generation
   Future<Map<String, dynamic>> uploadGenerationImage(String generationId, Uint8List imageData, String filename) async {
     try {
+      // Create multipart file with proper content type
+      final multipartFile = MultipartFile.fromBytes(
+        imageData,
+        filename: filename,
+        contentType: MediaType('image', 'png'),
+      );
+      
       final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(
-          imageData,
-          filename: filename,
-        ),
+        'file': multipartFile,
       });
 
+      // Don't manually set Content-Type header - let Dio handle it automatically with proper boundary
       final response = await _dio.post(
         '$_baseUrl/api/v1/generations/$generationId/upload',
         data: formData,
-        options: Options(
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        ),
       );
 
       return response.data as Map<String, dynamic>;
@@ -530,6 +532,7 @@ class ApiImageAssetService implements ImageAssetService {
       id: json['id'] as String,
       assetId: json['asset_id'] as String,
       imagePath: json['image_path'] as String? ?? '',
+      imageUrl: json['image_url'] as String?,
       parameters: Map<String, dynamic>.from(json['parameters'] as Map? ?? {}),
       createdAt: DateTime.parse(json['created_at'] as String),
       status: _parseGenerationStatus(json['status'] as String),
@@ -688,6 +691,19 @@ class MockImageAssetService implements ImageAssetService {
     }
     
     return generation;
+  }
+
+  @override
+  Future<Map<String, dynamic>> uploadGenerationImage(String generationId, Uint8List imageData, String filename) async {
+    await Future.delayed(Duration(milliseconds: 500));
+    
+    // Mock implementation - just return a mock response
+    return {
+      'image_path': 'mock/$generationId/$filename',
+      'image_url': 'https://mock-storage.example.com/$generationId/$filename',
+      'file_size': imageData.length,
+      'format': 'png',
+    };
   }
 
   void _generateMockAssets(String projectId) {

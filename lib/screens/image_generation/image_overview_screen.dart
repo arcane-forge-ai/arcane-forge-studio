@@ -465,15 +465,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             ClipRRect(
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(12)),
-              child: Image.file(
-                File(generation.imagePath),
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-                errorBuilder: (context, error, stackTrace) {
-                  return _buildEmptyThumbnail(asset);
-                },
-              ),
+              child: _buildGenerationImage(generation, asset),
             ),
             if (generation.isFavorite)
               const Positioned(
@@ -487,6 +479,48 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               ),
           ],
         ),
+      );
+    } else {
+      return _buildEmptyThumbnail(asset);
+    }
+  }
+  
+  Widget _buildGenerationImage(ImageGeneration generation, ImageAsset asset) {
+    // Prefer online URL, fallback to local file
+    final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
+    final bool hasLocalFile = generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
+    
+    if (hasOnlineUrl) {
+      return Image.network(
+        generation.imageUrl!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to local file if network fails
+          if (hasLocalFile) {
+            return Image.file(
+              File(generation.imagePath),
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              errorBuilder: (context, error, stackTrace) {
+                return _buildEmptyThumbnail(asset);
+              },
+            );
+          }
+          return _buildEmptyThumbnail(asset);
+        },
+      );
+    } else if (hasLocalFile) {
+      return Image.file(
+        File(generation.imagePath),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          return _buildEmptyThumbnail(asset);
+        },
       );
     } else {
       return _buildEmptyThumbnail(asset);

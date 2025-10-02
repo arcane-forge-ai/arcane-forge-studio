@@ -642,10 +642,18 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
       final imageFile = File('${assetDir.path}/${generation.id}.png');
       await imageFile.writeAsBytes(imageData);
 
-      // Update the generation with completed status and image path
+      // Upload the image to Supabase
+      final uploadResult = await _assetService.uploadGenerationImage(
+        generation.id,
+        imageData,
+        '${generation.id}.png',
+      );
+
+      // Update the generation with completed status, local path and online URL
       final updatedGeneration = generation.copyWith(
         status: GenerationStatus.completed,
         imagePath: imageFile.path,
+        imageUrl: uploadResult['image_url'],
       );
       
       await _assetService.updateGeneration(updatedGeneration);

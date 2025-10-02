@@ -63,6 +63,7 @@ class ImageGeneration {
   final String id;
   final String assetId;
   final String imagePath;
+  final String? imageUrl; // Online URL from Supabase
   final Map<String, dynamic> parameters;
   final DateTime createdAt;
   final GenerationStatus status;
@@ -72,6 +73,7 @@ class ImageGeneration {
     required this.id,
     required this.assetId,
     required this.imagePath,
+    this.imageUrl,
     required this.parameters,
     required this.createdAt,
     required this.status,
@@ -82,6 +84,7 @@ class ImageGeneration {
     String? id,
     String? assetId,
     String? imagePath,
+    String? imageUrl,
     Map<String, dynamic>? parameters,
     DateTime? createdAt,
     GenerationStatus? status,
@@ -91,6 +94,7 @@ class ImageGeneration {
       id: id ?? this.id,
       assetId: assetId ?? this.assetId,
       imagePath: imagePath ?? this.imagePath,
+      imageUrl: imageUrl ?? this.imageUrl,
       parameters: parameters ?? this.parameters,
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
