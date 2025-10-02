@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:dio/dio.dart';
+import 'dart:io';
 import '../game_design_assistant/models/api_models.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
 import '../game_design_assistant/providers/project_provider.dart';
@@ -327,7 +329,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 Expanded(flex: 3, child: Text('File Name', style: TextStyle(fontWeight: FontWeight.bold))),
                 Expanded(flex: 1, child: Text('Type', style: TextStyle(fontWeight: FontWeight.bold))),
                 Expanded(flex: 2, child: Text('Date Added', style: TextStyle(fontWeight: FontWeight.bold))),
-                SizedBox(width: 48), // Space for action button
+                SizedBox(width: 100), // Space for action buttons
               ],
             ),
           ),
@@ -411,11 +413,20 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
             ),
           ),
           
-          // Action button
-          IconButton(
-            onPressed: () => _deleteFile(file),
-            icon: Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: 'Delete file',
+          // Action buttons
+          Row(
+            children: [
+              IconButton(
+                onPressed: () => _downloadFile(file),
+                icon: Icon(Icons.download, color: Colors.green),
+                tooltip: 'Download file',
+              ),
+              IconButton(
+                onPressed: () => _deleteFile(file),
+                icon: Icon(Icons.delete_outline, color: Colors.red),
+                tooltip: 'Delete file',
+              ),
+            ],
           ),
         ],
       ),
@@ -483,5 +494,115 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     }
   }
 
+  Future<void> _downloadFile(KnowledgeBaseFile file) async {
+    try {
+      final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
+      
+      // Wait a bit if the project is still being initialized
+      String? projectId = projectProvider.currentProject?.id;
+      if (projectId == null) {
+        // Wait a moment for the provider to initialize
+        await Future.delayed(const Duration(milliseconds: 100));
+        projectId = projectProvider.currentProject?.id;
+      }
+      
+      final finalProjectId = projectId ?? '1';
+      
+      // Show loading indicator
+      _showSuccessSnackBar('Getting download link...');
+      
+      // Get download URL from API
+      final downloadResponse = await _chatApiService.getFileDownloadUrl(finalProjectId, file.id);
+      
+      if (downloadResponse == null) {
+        _showErrorSnackBar('Failed to get download URL');
+        return;
+      }
+      
+      // Show "Save As" dialog
+      String? outputFile = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save ${downloadResponse.fileName}',
+        fileName: downloadResponse.fileName,
+        type: FileType.any,
+      );
+      
+      if (outputFile == null) {
+        // User cancelled the dialog
+        return;
+      }
+      
+      // Check if file already exists and confirm overwrite
+      final outputFileObj = File(outputFile);
+      if (await outputFileObj.exists()) {
+        final shouldOverwrite = await _showOverwriteConfirmDialog(outputFileObj.path);
+        if (!shouldOverwrite) {
+          return;
+        }
+      }
+      
+      // Show downloading indicator
+      _showSuccessSnackBar('Downloading ${downloadResponse.fileName}...');
+      
+      // Download file content using dio
+      final dio = Dio();
+      final response = await dio.get(
+        downloadResponse.downloadUrl,
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(minutes: 5), // 5 minute timeout for large files
+        ),
+      );
+      
+      // Write to selected location
+      await outputFileObj.writeAsBytes(response.data);
+      
+      // Show success message with file location
+      final fileName = outputFileObj.path.split(Platform.pathSeparator).last;
+      final directory = outputFileObj.parent.path;
+      _showSuccessSnackBar('Saved "$fileName" to $directory');
+      
+    } catch (e) {
+      String errorMessage = 'Error downloading file: ';
+      if (e is DioException) {
+        switch (e.type) {
+          case DioExceptionType.connectionTimeout:
+          case DioExceptionType.receiveTimeout:
+            errorMessage += 'Download timed out. Please try again.';
+            break;
+          case DioExceptionType.connectionError:
+            errorMessage += 'Network connection error.';
+            break;
+          default:
+            errorMessage += e.message ?? 'Unknown network error';
+        }
+      } else if (e is FileSystemException) {
+        errorMessage += 'Could not save file. Check permissions and disk space.';
+      } else {
+        errorMessage += e.toString();
+      }
+      _showErrorSnackBar(errorMessage);
+    }
+  }
+
+  Future<bool> _showOverwriteConfirmDialog(String filePath) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('File Already Exists'),
+        content: Text('The file "$filePath" already exists. Do you want to overwrite it?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.orange),
+            child: const Text('Overwrite'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
 
 } 

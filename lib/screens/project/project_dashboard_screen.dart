@@ -9,6 +9,14 @@ import '../development/command_line_screen.dart';
 import '../game_design_assistant/game_design_assistant_screen.dart';
 import '../game_design_assistant/providers/project_provider.dart';
 import '../knowledge_base/knowledge_base_screen.dart';
+import '../image_generation/image_overview_screen.dart';
+import '../image_generation/image_generation_screen.dart';
+import '../sfx_generation/sfx_generation_screen.dart';
+import '../sfx_generation/sfx_overview_screen.dart';
+import '../music_generation/music_generation_screen.dart';
+import '../music_generation/music_overview_screen.dart';
+import '../feedback/feedback_screen.dart';
+import 'release_info_screen.dart';
 
 class ProjectDashboardScreen extends StatelessWidget {
   final String projectId;
@@ -49,7 +57,8 @@ class ProjectDashboardScreen extends StatelessWidget {
                       return ChangeNotifierProvider(
                         create: (context) {
                           final provider = ProjectProvider();
-                          provider.initializeWithProject(projectId, projectName);
+                          provider.initializeWithProject(
+                              projectId, projectName);
                           return provider;
                         },
                         child: KnowledgeBaseScreen(),
@@ -58,13 +67,42 @@ class ProjectDashboardScreen extends StatelessWidget {
                       return ChangeNotifierProvider(
                         create: (context) {
                           final provider = ProjectProvider();
-                          provider.initializeWithProject(projectId, projectName);
+                          provider.initializeWithProject(
+                              projectId, projectName);
                           return provider;
                         },
                         child: GameDesignAssistantScreen(),
                       );
                     case ScreenType.codeEditor:
                       return CommandLineScreen();
+                    case ScreenType.imageGenerationOverview:
+                      return ImageOverviewScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.imageGenerationGeneration:
+                      return ImageGenerationScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.soundGenerator:
+                    case ScreenType.sfxGenerationGeneration:
+                      return SfxGenerationScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.sfxGenerationOverview:
+                      return SfxOverviewScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.musicGenerator:
+                    case ScreenType.musicGenerationGeneration:
+                      return MusicGenerationScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.musicGenerationOverview:
+                      return MusicOverviewScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.feedbacks:
+                      return FeedbackScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.versions:
+                      return ReleaseInfoScreen(
+                        projectId: projectId,
+                        projectName: projectName,
+                      );
                     default:
                       return DashboardScreen();
                   }

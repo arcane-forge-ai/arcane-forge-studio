@@ -33,27 +33,32 @@ class ChatApiService {
   }
 
   /// Get current mock mode setting
-  bool get _useMockMode => _settingsProvider?.useMockMode ?? true;
+  bool get _useMockMode => _settingsProvider?.useMockMode ?? false;
 
   /// Send chat message via HTTP API (non-streaming)
   Future<ChatResponse> sendChatMessage(ChatRequest request) async {
+    print('ChatApiService: Mock mode = $_useMockMode');
     if (_useMockMode) {
+      print('ChatApiService: Using mock response');
       return _mockChatResponse(request);
     }
 
     final url = '${_dio.options.baseUrl}/chat';
     final requestBody = request.toJson();
+    print('ChatApiService: Making real API call to $url');
 
     try {
       final response = await _dio.post('/chat', data: requestBody);
+      print('ChatApiService: API call successful, status: ${response.statusCode}');
       return ChatResponse.fromJson(response.data);
     } catch (e) {
       print('Chat API Error: $e');
       print('Request URL: $url');
       print('Request Body: $requestBody');
       print('Headers: ${_dio.options.headers}');
-      // Fallback to mock response on error
-      return _mockChatResponse(request);
+      
+      // Don't fallback to mock - rethrow the error so we can see what's wrong
+      rethrow;
     }
   }
 
@@ -184,6 +189,32 @@ class ChatApiService {
     }
   }
 
+  /// Get download URL for a file
+  Future<FileDownloadResponse?> getFileDownloadUrl(String projectId, int fileId) async {
+    if (_useMockMode) {
+      await Future.delayed(const Duration(seconds: 1)); // Simulate API call
+      return FileDownloadResponse(
+        downloadUrl: 'https://example.com/mock-download-url',
+        fileName: 'mock_file.pdf',
+        fileSize: 1024000,
+        contentType: 'application/pdf',
+        expiresIn: 3600,
+      );
+    }
+
+    final url = '${_dio.options.baseUrl}/projects/$projectId/files/$fileId/download';
+
+    try {
+      final response = await _dio.get('/projects/$projectId/files/$fileId/download');
+      return FileDownloadResponse.fromJson(response.data);
+    } catch (e) {
+      print('File Download URL Error: $e');
+      print('Request URL: $url');
+      print('Headers: ${_dio.options.headers}');
+      return null;
+    }
+  }
+
   /// Get chat sessions for a project
   Future<List<ChatSession>> getChatSessions(int projectId) async {
     if (_useMockMode) {
@@ -200,7 +231,7 @@ class ChatApiService {
       print('Chat Sessions API Error: $e');
       print('Request URL: $url');
       print('Headers: ${_dio.options.headers}');
-      return _mockChatSessions(projectId);
+      rethrow;
     }
   }
 
@@ -244,7 +275,7 @@ class ChatApiService {
       print('Chat History API Error: $e');
       print('Request URL: $url');
       print('Headers: ${_dio.options.headers}');
-      return _mockChatHistory(sessionId);
+      rethrow;
     }
   }
 

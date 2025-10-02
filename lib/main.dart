@@ -4,7 +4,14 @@ import 'package:arcane_forge/screens/projects/projects_dashboard_screen.dart';
 import 'package:arcane_forge/screens/game_design_assistant/providers/project_provider.dart';
 import 'package:arcane_forge/providers/settings_provider.dart';
 import 'package:arcane_forge/providers/auth_provider.dart';
+import 'package:arcane_forge/providers/image_generation_provider.dart';
+import 'package:arcane_forge/providers/sfx_generation_provider.dart';
+import 'package:arcane_forge/services/sfx_generation_services.dart';
+import 'package:arcane_forge/providers/music_generation_provider.dart';
+import 'package:arcane_forge/services/music_generation_services.dart';
 import 'package:arcane_forge/screens/login/login_screen.dart';
+import 'package:arcane_forge/services/comfyui_service_manager.dart';
+import 'package:arcane_forge/utils/app_constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -46,8 +53,35 @@ void main() async {
   runApp(MyApp());
 }
 
-class MyApp extends StatelessWidget {
-  // This widget is the root of your application.
+class MyApp extends StatefulWidget {
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+          // Dispose AI image generation service when app closes
+      AIImageGenerationServiceManager.instance.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Only dispose when app is actually terminating
+    if (state == AppLifecycleState.detached) {
+              AIImageGenerationServiceManager.instance.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -56,6 +90,34 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (context) => ProjectProvider()),
         ChangeNotifierProvider(create: (context) => SettingsProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
+        ChangeNotifierProxyProvider<SettingsProvider, ImageGenerationProvider>(
+          create: (context) => ImageGenerationProvider(
+            context.read<SettingsProvider>(),
+            apiBaseUrl: ApiConfig.baseUrl,
+            useApiService: ApiConfig.enabled,
+          ),
+          update: (context, settingsProvider, previous) => previous ?? ImageGenerationProvider(
+            settingsProvider,
+            apiBaseUrl: ApiConfig.baseUrl,
+            useApiService: ApiConfig.enabled,
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => SfxGenerationProvider(
+            SfxAssetServiceFactory.create(
+              apiBaseUrl: ApiConfig.baseUrl,
+              useApiService: ApiConfig.enabled,
+            ),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => MusicGenerationProvider(
+            MusicAssetServiceFactory.create(
+              apiBaseUrl: ApiConfig.baseUrl,
+              useApiService: ApiConfig.enabled,
+            ),
+          ),
+        ),
       ],
       child: Builder(
         builder: (context) => MaterialApp(

@@ -5,6 +5,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
+import 'package:dio/dio.dart';
 import 'dart:io';
 
 import 'models/chat_message.dart' as app_models;
@@ -17,6 +18,9 @@ import 'services/langchain_message_parser.dart';
 import 'widgets/chat_history_sidebar.dart';
 import '../../providers/settings_provider.dart';
 import '../../utils/app_constants.dart' as app_utils;
+import '../../services/mutation_design_service.dart';
+import '../../services/feedback_discussion_service.dart';
+import '../../models/feedback_models.dart' as feedback_models;
 
 /// Game Design Assistant Screen using Flutter Gen AI Chat UI
 class GameDesignAssistantScreen extends StatefulWidget {
@@ -79,6 +83,12 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
     _initializeExampleQuestions();
     _addWelcomeMessage();
     _chatController.setScrollController(_scrollController);
+    
+    // Check for pending mutation design data
+    _checkForMutationDesignData();
+    
+    // Check for pending feedback discussion data
+    _checkForFeedbackDiscussionData();
   }
 
   @override
@@ -193,6 +203,213 @@ Ask me anything about game design, or try one of the example questions below!
     );
   }
 
+  /// Check for pending mutation design data and automatically send it
+  void _checkForMutationDesignData() {
+    final mutationService = MutationDesignService();
+    if (mutationService.hasPendingMutationDesign) {
+      // Use a post-frame callback to ensure the UI is ready
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _sendMutationDesignMessage(
+          mutationService.pendingMessage!,
+          mutationService.pendingTitle!,
+        );
+      });
+    }
+  }
+
+  /// Check for pending feedback discussion data and automatically send it
+  void _checkForFeedbackDiscussionData() {
+    final discussionService = FeedbackDiscussionService();
+    if (discussionService.hasPendingFeedbackDiscussion) {
+      // Use a post-frame callback to ensure the UI is ready
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _sendFeedbackDiscussionMessage(
+          discussionService.pendingTopic!,
+          discussionService.pendingFeedbacks!,
+          discussionService.pendingProjectId!,
+          discussionService.pendingProjectName!,
+        );
+      });
+    }
+  }
+
+  /// Send the mutation design message with custom title
+  Future<void> _sendMutationDesignMessage(String message, String title) async {
+    // Clear the mutation design data since we're using it now
+    MutationDesignService().clearMutationDesignData();
+    
+    // Create and send the user message
+    final userMessage = ChatMessage(
+      text: message,
+      user: _currentUser,
+      createdAt: DateTime.now(),
+    );
+    
+    // Send the message with custom title
+    await _sendMessageWithTitle(userMessage, title);
+  }
+
+  /// Send the feedback discussion message with RAG agent
+  Future<void> _sendFeedbackDiscussionMessage(
+    String topic,
+    List<feedback_models.Feedback> feedbacks,
+    String projectId,
+    String projectName,
+  ) async {
+    // Clear the feedback discussion data since we're using it now
+    FeedbackDiscussionService().clearFeedbackDiscussionData();
+    
+    // Format the message using the service
+    final discussionService = FeedbackDiscussionService();
+    final formattedMessage = discussionService.formatFeedbacksForChat(feedbacks, topic);
+    
+    // Create and send the user message
+    final userMessage = ChatMessage(
+      text: formattedMessage,
+      user: _currentUser,
+      createdAt: DateTime.now(),
+    );
+    
+    // Send the message with custom title and RAG agent
+    final sessionTitle = 'Feedback Discussion: $topic';
+    await _sendMessageWithTitle(userMessage, sessionTitle, agentType: 'rag');
+  }
+
+  /// Send a message with custom session title
+  Future<void> _sendMessageWithTitle(ChatMessage message, String customTitle, {String? agentType}) async {
+    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // FIRST: Add the user's message to the chat immediately
+    _chatController.addMessage(message);
+    
+    // Get project ID and user ID if available - let API handle defaults if missing
+    int? projectId;
+    String? userId;
+    
+    // Only include project ID if we have a valid current project
+    if (projectProvider.currentProject?.id != null) {
+      projectId = int.tryParse(projectProvider.currentProject!.id!);
+    }
+    
+    // Only include user ID if we have a valid authenticated user
+    final authUserId = authProvider.userId;
+    if (authUserId.isNotEmpty && authUserId != app_utils.AppConstants.visitorUserId) {
+      userId = authUserId;
+    }
+
+    // Generate unique ID for the AI message
+    final messageId = _uuid.v4();
+    
+    // Create AI message for the UI
+    final aiMessage = ChatMessage(
+      text: '', // Start with empty text for streaming
+      user: _aiUser,
+      createdAt: DateTime.now(),
+      customProperties: {'id': messageId},
+    );
+
+    // Add empty AI message to chat for the response
+    _chatController.addMessage(aiMessage);
+
+    // Update state
+    setState(() {
+      _streamingMessageId = messageId;
+      _isGenerating = true;
+    });
+
+    try {
+      // Convert flutter_gen_ai_chat_ui message to app message format
+      final appMessages = [
+        app_models.ChatMessage(
+          id: _uuid.v4(),
+          role: 'user',
+          content: message.text,
+          timestamp: message.createdAt,
+          projectId: projectProvider.currentProject?.id,
+        ),
+      ];
+
+      // Create chat request with custom title - API will handle defaults for missing projectId/userId
+      final request = ChatRequest(
+        message: appMessages.last.content, // Send the latest user message
+        projectId: projectId, // Only included if available
+        userId: userId, // Only included if available
+        knowledgeBaseName: projectProvider.knowledgeBaseName,
+        sessionId: _currentSessionId, // Use current session ID for this conversation (may be null for first message)
+        title: customTitle, // Custom session title for mutation design
+        agentType: agentType, // Agent type (rag for feedback discussions)
+        extraConfig: {
+          'message_history': appMessages.take(appMessages.length - 1).map((m) => {
+            'role': m.role,
+            'content': m.content,
+            'timestamp': m.timestamp.toIso8601String(),
+          }).toList(),
+        },
+      );
+
+      // Use HTTP request instead of WebSocket streaming (backend doesn't support WebSocket)
+      final response = await _chatApiService.sendChatMessage(request);
+      String fullResponse = response.content;
+      
+      // Store the session ID from the response for subsequent messages
+      if (response.sessionId.isNotEmpty) {
+        setState(() {
+          _currentSessionId = response.sessionId;
+        });
+      }
+      
+      // Update the message with the complete response
+      final updatedMessage = aiMessage.copyWith(text: fullResponse);
+      _chatController.updateMessage(updatedMessage);
+
+      // Store the final response and check for extractable documents
+      _lastAiResponse = fullResponse;
+      final hasDocument = DocumentExtractor.hasExtractableDocument(fullResponse);
+      
+      // Update state to show/hide save button
+      setState(() {
+        _lastResponseHasDocument = hasDocument;
+      });
+
+      // Refresh the chat history sidebar to show any new sessions created by the API
+      _refreshChatHistory?.call();
+
+    } catch (e) {
+      // Handle error - similar to the original _sendMessage method
+      print('GameDesignAssistant: Error in sendMessageWithTitle: $e');
+      print('GameDesignAssistant: Error type: ${e.runtimeType}');
+      if (e is DioException) {
+        print('GameDesignAssistant: DioException details:');
+        print('  - Status code: ${e.response?.statusCode}');
+        print('  - Response data: ${e.response?.data}');
+        print('  - Request data: ${e.requestOptions.data}');
+      }
+      
+      final errorMessage = 'Sorry, I encountered an error: ${e.toString()}';
+      final updatedMessage = aiMessage.copyWith(text: errorMessage);
+      _chatController.updateMessage(updatedMessage);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sending message: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      // Reset generating state
+      if (mounted) {
+        setState(() {
+          _isGenerating = false;
+          _streamingMessageId = '';
+        });
+      }
+    }
+  }
+
   /// Send a message to the chat API
   Future<void> _sendMessage(ChatMessage message) async {
     final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
@@ -293,6 +510,15 @@ Ask me anything about game design, or try one of the example questions below!
 
     } catch (e) {
       // Handle error
+      print('GameDesignAssistant: Error in _sendMessage: $e');
+      print('GameDesignAssistant: Error type: ${e.runtimeType}');
+      if (e is DioException) {
+        print('GameDesignAssistant: DioException details:');
+        print('  - Status code: ${e.response?.statusCode}');
+        print('  - Response data: ${e.response?.data}');
+        print('  - Request data: ${e.requestOptions.data}');
+      }
+      
       final errorMessage = aiMessage.copyWith(
         text: "Sorry, I encountered an error: ${e.toString()}",
       );
@@ -303,6 +529,17 @@ Ask me anything about game design, or try one of the example questions below!
         _lastResponseHasDocument = false;
         _lastAiResponse = null;
       });
+      
+      // Show error snackbar for regular send message too
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sending message: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     } finally {
       // Reset streaming state
       if (mounted) {

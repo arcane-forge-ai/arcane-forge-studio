@@ -23,6 +23,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
   Project? _project;
   bool _isLoading = true;
   String? _errorMessage;
+  bool _isSaving = false;
+  final TextEditingController _introductionController = TextEditingController();
 
   @override
   void initState() {
@@ -47,9 +49,10 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
       }
 
       final project = await _apiService.getProjectById(projectId);
-      
+
       setState(() {
         _project = project;
+        _introductionController.text = project.gameIntroduction ?? '';
         _isLoading = false;
       });
     } catch (e) {
@@ -58,6 +61,48 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  void _openGameIntroductionEditor() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => GameIntroductionEditorScreen(
+          project: _project!,
+          onSave: (updatedIntroduction) async {
+            try {
+              setState(() => _isSaving = true);
+
+              await _apiService.updateProject(
+                projectId: widget.projectId,
+                gameIntroduction:
+                    updatedIntroduction.isEmpty ? null : updatedIntroduction,
+              );
+
+              setState(() {
+                _project = _project?.copyWith(
+                  gameIntroduction:
+                      updatedIntroduction.isEmpty ? null : updatedIntroduction,
+                );
+                _introductionController.text = updatedIntroduction;
+                _isSaving = false;
+              });
+
+              _showSnackBar('Game introduction updated successfully');
+            } catch (e) {
+              setState(() => _isSaving = false);
+              _showSnackBar('Failed to update introduction: ${e.toString()}');
+            }
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -76,15 +121,25 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 const Spacer(),
-                ElevatedButton.icon(
-                  onPressed: _loadProject,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text("Refresh"),
-                ),
+                if (_isSaving)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 16.0),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: _loadProject,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text("Refresh"),
+                  ),
               ],
             ),
             const SizedBox(height: defaultPadding),
-            
+
             // Content
             Expanded(
               child: _buildContent(),
@@ -168,9 +223,12 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                             ),
                             Text(
                               'Project ID: ${_project!.id}',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.grey[600],
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
                             ),
                           ],
                         ),
@@ -186,9 +244,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: defaultPadding),
-          
+
           // Metadata Cards
           Row(
             children: [
@@ -203,7 +261,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               Expanded(
                 child: _buildMetadataCard(
                   'Last Updated',
-                  _project!.updatedAt != null 
+                  _project!.updatedAt != null
                       ? _formatDateTime(_project!.updatedAt!)
                       : 'Never',
                   Icons.update,
@@ -211,9 +269,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               ),
             ],
           ),
-          
+
           const SizedBox(height: defaultPadding),
-          
+
           Row(
             children: [
               Expanded(
@@ -228,13 +286,16 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                 child: _buildMetadataCard(
                   'Knowledge Base',
                   _project!.hasKnowledgeBase ? 'Available' : 'Not Set Up',
-                  _project!.hasKnowledgeBase ? Icons.check_circle : Icons.cancel,
-                  color: _project!.hasKnowledgeBase ? Colors.green : Colors.orange,
+                  _project!.hasKnowledgeBase
+                      ? Icons.check_circle
+                      : Icons.cancel,
+                  color:
+                      _project!.hasKnowledgeBase ? Colors.green : Colors.orange,
                 ),
               ),
             ],
           ),
-          
+
           // Dataset ID if available
           if (_project!.difyDatasetId != null) ...[
             const SizedBox(height: defaultPadding),
@@ -244,7 +305,77 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               Icons.dataset,
             ),
           ],
+
+          const SizedBox(height: defaultPadding),
+
+          // Game Introduction Card (moved to bottom)
+          _buildGameIntroductionCard(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildGameIntroductionCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(defaultPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.description,
+                  size: 24,
+                  color: primaryColor,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Game Introduction',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const Spacer(),
+                Tooltip(
+                  message: 'Edit in full screen',
+                  child: IconButton(
+                    onPressed: _openGameIntroductionEditor,
+                    icon: const Icon(Icons.edit),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: _openGameIntroductionEditor,
+              child: Container(
+                width: double.infinity,
+                height: 240, // Fixed height for ~10 lines
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: SingleChildScrollView(
+                  child: Text(
+                    _project?.gameIntroduction?.isNotEmpty == true
+                        ? _project!.gameIntroduction!
+                        : 'No game introduction provided. Click here to add one.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: _project?.gameIntroduction?.isNotEmpty == true
+                              ? null
+                              : Colors.grey[600],
+                          fontStyle:
+                              _project?.gameIntroduction?.isNotEmpty == true
+                                  ? null
+                                  : FontStyle.italic,
+                        ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -272,8 +403,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Colors.grey[600],
-                  ),
+                        color: Colors.grey[600],
+                      ),
                 ),
               ],
             ),
@@ -281,8 +412,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
             Text(
               value,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+                    fontWeight: FontWeight.w500,
+                  ),
             ),
           ],
         ),
@@ -293,4 +424,251 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} at ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
-} 
+
+  @override
+  void dispose() {
+    _introductionController.dispose();
+    super.dispose();
+  }
+}
+
+class GameIntroductionEditorScreen extends StatefulWidget {
+  final Project project;
+  final Function(String) onSave;
+
+  const GameIntroductionEditorScreen({
+    Key? key,
+    required this.project,
+    required this.onSave,
+  }) : super(key: key);
+
+  @override
+  State<GameIntroductionEditorScreen> createState() =>
+      _GameIntroductionEditorScreenState();
+}
+
+class _GameIntroductionEditorScreenState
+    extends State<GameIntroductionEditorScreen> {
+  late TextEditingController _controller;
+  bool _hasChanges = false;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller =
+        TextEditingController(text: widget.project.gameIntroduction ?? '');
+    _controller.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() {
+    final hasChanges =
+        _controller.text != (widget.project.gameIntroduction ?? '');
+    if (hasChanges != _hasChanges) {
+      setState(() {
+        _hasChanges = hasChanges;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    if (!_hasChanges || _isSaving) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      await widget.onSave(_controller.text.trim());
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      setState(() => _isSaving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving: ${e.toString()}')),
+        );
+      }
+    }
+  }
+
+  Future<bool> _onWillPop() async {
+    if (!_hasChanges) return true;
+
+    final shouldPop = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard Changes?'),
+        content: const Text(
+            'You have unsaved changes. Are you sure you want to go back?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+
+    return shouldPop ?? false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Edit Game Introduction'),
+          actions: [
+            if (_isSaving)
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else
+              TextButton(
+                onPressed: _hasChanges ? _save : null,
+                child: Text(
+                  'Save',
+                  style: TextStyle(
+                    color: _hasChanges ? primaryColor : Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(defaultPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Project info
+              Row(
+                children: [
+                  Icon(Icons.folder_open, color: primaryColor, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.project.name,
+                      style: Theme.of(context).textTheme.titleMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Instructions
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline,
+                        color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Write a detailed introduction about your game. This will be used for feedback analysis and other features.',
+                        style: TextStyle(
+                            color: Colors.blue.shade700, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Text field
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: InputDecoration(
+                    hintText:
+                        'Enter a detailed introduction about your game...\n\nDescribe the gameplay, story, features, target audience, and any other relevant information.',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: Colors.grey.shade400),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide:
+                          const BorderSide(color: primaryColor, width: 2),
+                    ),
+                    filled: true,
+                    fillColor: Theme.of(context).cardColor.withOpacity(0.04),
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Character count and actions
+              Row(
+                children: [
+                  Text(
+                    '${_controller.text.length} characters',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[600],
+                        ),
+                  ),
+                  const Spacer(),
+                  if (_hasChanges) ...[
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _controller.text =
+                              widget.project.gameIntroduction ?? '';
+                        });
+                      },
+                      child: const Text('Reset'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _isSaving ? null : _save,
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Save Changes'),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onTextChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+}
