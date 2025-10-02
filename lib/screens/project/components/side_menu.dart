@@ -126,12 +126,34 @@ class SideMenu extends BaseSideMenu {
           ),
         ],
       ),
-      ListTile(
-        title: const Text("Music Generator"),
-        onTap: () {
-          Provider.of<MenuAppController>(context, listen: false)
-              .changeScreen(ScreenType.musicGenerator);
-        },
+      ExpansionTile(
+        title: const Text("Music Generation"),
+        leading: const Icon(Icons.music_note),
+        initiallyExpanded: true,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 16.0),
+            child: ListTile(
+              title: const Text("Overview"),
+              leading: const Icon(Icons.queue_music, size: 20),
+              onTap: () {
+                Provider.of<MenuAppController>(context, listen: false)
+                    .changeScreen(ScreenType.musicGenerationOverview);
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 16.0),
+            child: ListTile(
+              title: const Text("Generation"),
+              leading: const Icon(Icons.music_note, size: 20),
+              onTap: () {
+                Provider.of<MenuAppController>(context, listen: false)
+                    .changeScreen(ScreenType.musicGenerationGeneration);
+              },
+            ),
+          ),
+        ],
       ),
       ListTile(
           title: const Text("Web Server"),

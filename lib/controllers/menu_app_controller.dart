@@ -13,6 +13,8 @@ enum ScreenType {
   sfxGenerationOverview,
   sfxGenerationGeneration,
   musicGenerator,
+  musicGenerationOverview,
+  musicGenerationGeneration,
   webServer,
   versions,
   stats,

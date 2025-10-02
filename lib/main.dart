@@ -7,6 +7,8 @@ import 'package:arcane_forge/providers/auth_provider.dart';
 import 'package:arcane_forge/providers/image_generation_provider.dart';
 import 'package:arcane_forge/providers/sfx_generation_provider.dart';
 import 'package:arcane_forge/services/sfx_generation_services.dart';
+import 'package:arcane_forge/providers/music_generation_provider.dart';
+import 'package:arcane_forge/services/music_generation_services.dart';
 import 'package:arcane_forge/screens/login/login_screen.dart';
 import 'package:arcane_forge/services/comfyui_service_manager.dart';
 import 'package:arcane_forge/utils/app_constants.dart';
@@ -103,6 +105,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(
           create: (context) => SfxGenerationProvider(
             SfxAssetServiceFactory.create(
+              apiBaseUrl: ApiConfig.baseUrl,
+              useApiService: ApiConfig.enabled,
+            ),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => MusicGenerationProvider(
+            MusicAssetServiceFactory.create(
               apiBaseUrl: ApiConfig.baseUrl,
               useApiService: ApiConfig.enabled,
             ),

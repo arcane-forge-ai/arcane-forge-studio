@@ -13,6 +13,8 @@ import '../image_generation/image_overview_screen.dart';
 import '../image_generation/image_generation_screen.dart';
 import '../sfx_generation/sfx_generation_screen.dart';
 import '../sfx_generation/sfx_overview_screen.dart';
+import '../music_generation/music_generation_screen.dart';
+import '../music_generation/music_overview_screen.dart';
 import '../feedback/feedback_screen.dart';
 import 'release_info_screen.dart';
 
@@ -85,6 +87,13 @@ class ProjectDashboardScreen extends StatelessWidget {
                           projectId: projectId, projectName: projectName);
                     case ScreenType.sfxGenerationOverview:
                       return SfxOverviewScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.musicGenerator:
+                    case ScreenType.musicGenerationGeneration:
+                      return MusicGenerationScreen(
+                          projectId: projectId, projectName: projectName);
+                    case ScreenType.musicGenerationOverview:
+                      return MusicOverviewScreen(
                           projectId: projectId, projectName: projectName);
                     case ScreenType.feedbacks:
                       return FeedbackScreen(
