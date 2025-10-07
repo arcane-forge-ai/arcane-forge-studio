@@ -45,7 +45,6 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
     return Consumer<MusicGenerationProvider>(
       builder: (context, provider, child) {
         return Scaffold(
-          backgroundColor: const Color(0xFF1E1E1E),
           body: Column(
             children: [
               _buildHeader(context, provider),

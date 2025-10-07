@@ -35,8 +35,12 @@ class ImageAssetServiceFactory {
   static ImageAssetService create({
     String? apiBaseUrl,
     bool useApiService = false,
+    SettingsProvider? settingsProvider,
   }) {
-    if (useApiService && apiBaseUrl != null) {
+    if (useApiService && settingsProvider != null) {
+      return ApiImageAssetService(settingsProvider: settingsProvider);
+    } else if (useApiService && apiBaseUrl != null) {
+      // Fallback for backward compatibility
       return ApiImageAssetService(baseUrl: apiBaseUrl);
     }
     return MockImageAssetService();
@@ -46,16 +50,30 @@ class ImageAssetServiceFactory {
 // API implementation using FastAPI backend
 class ApiImageAssetService implements ImageAssetService {
   final Dio _dio;
-  final String _baseUrl;
+  final String? _staticBaseUrl;
+  final SettingsProvider? _settingsProvider;
   
   ApiImageAssetService({
-    required String baseUrl,
+    String? baseUrl,
+    SettingsProvider? settingsProvider,
     Dio? dio,
-  }) : _baseUrl = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl,
+  }) : _staticBaseUrl = baseUrl != null && baseUrl.endsWith('/') 
+           ? baseUrl.substring(0, baseUrl.length - 1) 
+           : baseUrl,
+       _settingsProvider = settingsProvider,
        _dio = dio ?? Dio() {
     _dio.options.connectTimeout = const Duration(seconds: 30);
     _dio.options.receiveTimeout = const Duration(seconds: 60);
     _dio.options.headers['Content-Type'] = 'application/json';
+  }
+  
+  /// Get the current base URL, reading from SettingsProvider if available
+  String get _baseUrl {
+    if (_settingsProvider != null) {
+      final url = _settingsProvider.apiBaseUrl;
+      return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+    }
+    return _staticBaseUrl ?? 'http://localhost:8000';
   }
 
   @override

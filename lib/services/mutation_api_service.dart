@@ -1,15 +1,16 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/feedback_analysis_models.dart';
+import '../providers/settings_provider.dart';
+import '../utils/app_constants.dart';
 
 class MutationApiService {
-  // Get configuration from environment variables with fallback defaults
-  static String get baseUrl =>
-      dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
-
+  final SettingsProvider? _settingsProvider;
   final Dio _dio;
 
-  MutationApiService() : _dio = Dio(BaseOptions(baseUrl: '$baseUrl/api/v1')) {
+  MutationApiService({SettingsProvider? settingsProvider})
+      : _settingsProvider = settingsProvider,
+        _dio = Dio() {
     // Add interceptor for request/response logging
     _dio.interceptors.add(LogInterceptor(
       requestBody: true,
@@ -18,6 +19,15 @@ class MutationApiService {
       responseHeader: false,
     ));
   }
+  
+  /// Get API base URL from settings provider with fallback to environment or default
+  String get baseUrl =>
+      _settingsProvider?.apiBaseUrl ??
+      dotenv.env['API_BASE_URL'] ??
+      ApiConfig.defaultBaseUrl;
+  
+  /// Get full API URL with version
+  String get _apiUrl => '$baseUrl/api/v1';
 
   /// Create a new mutation brief
   Future<MutationBrief> createMutation({
@@ -31,7 +41,7 @@ class MutationApiService {
     String? novelty,
     Map<String, dynamic>? metadata,
   }) async {
-    final url = '/projects/$projectId/mutations';
+    final url = '$_apiUrl/projects/$projectId/mutations';
     
     final data = {
       'run_id': runId,
@@ -63,7 +73,7 @@ class MutationApiService {
     required int projectId,
     required int mutationId,
   }) async {
-    final url = '/projects/$projectId/mutations/$mutationId';
+    final url = '$_apiUrl/projects/$projectId/mutations/$mutationId';
 
     try {
       final response = await _dio.get(url);
@@ -91,7 +101,7 @@ class MutationApiService {
     String? novelty,
     Map<String, dynamic>? metadata,
   }) async {
-    final url = '/projects/$projectId/mutations/$mutationId';
+    final url = '$_apiUrl/projects/$projectId/mutations/$mutationId';
     
     final data = <String, dynamic>{};
     if (title != null) data['title'] = title;
@@ -121,7 +131,7 @@ class MutationApiService {
     required int projectId,
     required int mutationId,
   }) async {
-    final url = '/projects/$projectId/mutations/$mutationId';
+    final url = '$_apiUrl/projects/$projectId/mutations/$mutationId';
 
     try {
       final response = await _dio.delete(url);

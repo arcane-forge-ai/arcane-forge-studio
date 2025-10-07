@@ -150,7 +150,7 @@ class _ReleaseInfoScreenState extends State<ReleaseInfoScreen> {
     
     if (url.startsWith('/')) {
       // Remove trailing slash from base URL if present, then add the relative path
-      final baseUrl = ProjectsApiService.baseUrl.replaceAll(RegExp(r'/$'), '');
+      final baseUrl = _projectsApiService.baseUrl.replaceAll(RegExp(r'/$'), '');
       return '$baseUrl/api/v1$url';
     }
     

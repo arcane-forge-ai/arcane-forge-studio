@@ -14,6 +14,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Local state for pending changes
   late bool _mockMode;
   late bool _darkMode;
+  late String _apiBaseUrl;
   late ImageGenerationBackend _defaultBackend;
   late Map<ImageGenerationBackend, String> _commands;
   late Map<ImageGenerationBackend, String> _workingDirectories;
@@ -21,26 +22,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late Map<ImageGenerationBackend, String> _healthCheckEndpoints;
   
   // Controllers for text fields
+  final TextEditingController _apiBaseUrlController = TextEditingController();
   final Map<ImageGenerationBackend, TextEditingController> _commandControllers = {};
   final Map<ImageGenerationBackend, TextEditingController> _workingDirControllers = {};
   final Map<ImageGenerationBackend, TextEditingController> _endpointControllers = {};
   final Map<ImageGenerationBackend, TextEditingController> _healthCheckEndpointControllers = {};
   
   bool _hasUnsavedChanges = false;
+  bool _hasInitialized = false;
+
+  /// Check if we're in development mode
+  bool get _isDevelopmentMode {
+    const environment = String.fromEnvironment('FLUTTER_ENV', defaultValue: 'development');
+    return environment.toLowerCase() == 'development';
+  }
 
   @override
   void initState() {
     super.initState();
-    _initializeFromProvider();
+    // Initialize will happen in build method after provider is available
   }
 
-  void _initializeFromProvider() {
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    
+  void _initializeFromProvider(SettingsProvider settingsProvider) {
     // Initialize local state from provider
-    _mockMode = settingsProvider.useMockMode;
+    _mockMode = settingsProvider.useMockMode; // Still initialize for consistency
     _darkMode = settingsProvider.isDarkMode;
+    _apiBaseUrl = settingsProvider.apiBaseUrl;
     _defaultBackend = settingsProvider.defaultGenerationServer;
+    
+    // Initialize API base URL controller
+    _apiBaseUrlController.text = _apiBaseUrl;
     
     // Initialize maps
     _commands = {};
@@ -70,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void dispose() {
     // Dispose controllers
+    _apiBaseUrlController.dispose();
     for (final controller in _commandControllers.values) {
       controller.dispose();
     }
@@ -93,33 +105,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  bool _hasChanges() {
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    
-    if (_mockMode != settingsProvider.useMockMode ||
-        _darkMode != settingsProvider.isDarkMode ||
-        _defaultBackend != settingsProvider.defaultGenerationServer) {
-      return true;
-    }
-    
-    for (final backend in ImageGenerationBackend.values) {
-      if (_commands[backend] != settingsProvider.getStartCommand(backend) ||
-          _workingDirectories[backend] != settingsProvider.getWorkingDirectory(backend) ||
-          _endpoints[backend] != settingsProvider.getEndpoint(backend) ||
-          _healthCheckEndpoints[backend] != settingsProvider.getHealthCheckEndpoint(backend)) {
-        return true;
-      }
-    }
-    
-    return false;
-  }
-
   void _saveSettings() {
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
     
     // Save all settings
-    settingsProvider.setMockMode(_mockMode);
+    if (!_isDevelopmentMode) {
+      settingsProvider.setMockMode(_mockMode);
+    }
     settingsProvider.setThemeMode(_darkMode);
+    settingsProvider.setApiBaseUrl(_apiBaseUrl);
     settingsProvider.setDefaultGenerationServer(_defaultBackend);
     
     for (final backend in ImageGenerationBackend.values) {
@@ -142,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _resetSettings() {
+  void _resetSettings(BuildContext context, SettingsProvider settingsProvider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -156,9 +150,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              _initializeFromProvider();
+              _initializeFromProvider(settingsProvider);
               setState(() {
                 _hasUnsavedChanges = false;
+                _hasInitialized = true; // Keep as initialized since we're just resetting
               });
               
               ScaffoldMessenger.of(context).showSnackBar(
@@ -180,6 +175,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final settingsProvider = Provider.of<SettingsProvider>(context);
+
+    // Show loading screen while settings are being loaded
+    if (settingsProvider.isLoading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Settings'),
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Loading settings...',
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black54,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Initialize local state from provider (only after loading is complete and not already initialized)
+    if (!_hasInitialized) {
+      _initializeFromProvider(settingsProvider);
+      _hasInitialized = true;
+    }
 
     return Container(
       decoration: BoxDecoration(
@@ -222,7 +253,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const Spacer(),
                   TextButton(
-                    onPressed: _resetSettings,
+                    onPressed: () => _resetSettings(context, settingsProvider),
                     child: const Text('Discard'),
                   ),
                   const SizedBox(width: 8),
@@ -252,6 +283,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            // Environment indicator
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: _isDevelopmentMode
+                    ? Colors.orange.withOpacity(0.2)
+                    : Colors.green.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _isDevelopmentMode ? Colors.orange : Colors.green,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _isDevelopmentMode ? Icons.build : Icons.production_quantity_limits,
+                    size: 16,
+                    color: _isDevelopmentMode ? Colors.orange : Colors.green,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _isDevelopmentMode ? 'Development Mode' : 'Production Mode',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _isDevelopmentMode ? Colors.orange : Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             Text(
               'Configure application preferences and behavior',
               style: TextStyle(
@@ -264,32 +329,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // API Settings Section
             _buildSettingsSection(
               context,
-              title: 'API Settings',
+              title: 'Backend API Configuration',
               icon: Icons.api,
               children: [
-                        Card(
-                      child: SwitchListTile(
-                        title: const Text('Mock API Mode'),
-                        subtitle: Text(
-                              _mockMode
-                              ? 'Using mock data for development'
-                              : 'Using live API endpoints',
-                        ),
-                            value: _mockMode,
-                        onChanged: (bool value) {
-                              setState(() {
-                                _mockMode = value;
-                              });
-                              // Auto-save for switches
-                              Provider.of<SettingsProvider>(context, listen: false).setMockModeAutoSave(value);
-                            },
-                            secondary: Icon(
-                              _mockMode ? Icons.science : Icons.cloud,
-                              color: _mockMode ? Colors.orange : Colors.green,
-                            ),
-                          ),
-                ),
-                const SizedBox(height: 16),
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -299,13 +341,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Row(
                           children: [
                             Icon(
-                              Icons.info_outline,
+                              Icons.link,
                               color: colorScheme.primary,
                               size: 20,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              'Mock Mode Information',
+                              'API Base URL',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: colorScheme.primary,
@@ -314,21 +356,101 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ],
                         ),
                         const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _apiBaseUrlController,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter the API base URL...',
+                            contentPadding: EdgeInsets.all(12),
+                          ),
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                          onChanged: (value) {
+                            _apiBaseUrl = value;
+                            _markAsChanged();
+                          },
+                        ),
+                        const SizedBox(height: 8),
                         Text(
-                          '• Mock mode uses simulated data for development and testing\n'
-                          '• Live mode connects to actual API endpoints\n'
-                                  '• Changes apply after saving settings\n'
-                          '• Mock responses include realistic game design content',
+                          'Example: http://localhost:8000',
                           style: TextStyle(
-                            fontSize: 14,
-                            color: isDark ? Colors.white70 : Colors.black54,
-                            height: 1.5,
+                            fontSize: 12,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                            fontStyle: FontStyle.italic,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+                // Only show Mock API Mode setting when in development mode
+                if (_isDevelopmentMode)
+                  Card(
+                    child: SwitchListTile(
+                      title: const Text('Mock API Mode'),
+                      subtitle: Text(
+                        _mockMode
+                            ? 'Using mock data for development (no backend needed)'
+                            : 'Connecting to backend API at configured URL',
+                      ),
+                      value: _mockMode,
+                      onChanged: (bool value) {
+                        setState(() {
+                          _mockMode = value;
+                        });
+                        // Auto-save for switches (only when not in development mode)
+                        if (!_isDevelopmentMode) {
+                          Provider.of<SettingsProvider>(context, listen: false).setMockModeAutoSave(value);
+                        }
+                      },
+                      secondary: Icon(
+                        _mockMode ? Icons.science : Icons.cloud_done,
+                        color: _mockMode ? Colors.orange : Colors.green,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                // Only show "How It Works" explanation when Mock Mode setting is visible
+                if (_isDevelopmentMode)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: colorScheme.primary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'How It Works',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '• API Base URL: Your backend server address (applied immediately after saving)\n'
+                            '• Mock Mode OFF: Connects to real backend API for projects, chat, and asset generation\n'
+                            '• Mock Mode ON: Uses simulated data for development and testing (no backend required)\n'
+                            '• Recommended: Use Mock Mode during development, turn OFF for production',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isDark ? Colors.white70 : Colors.black54,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
             

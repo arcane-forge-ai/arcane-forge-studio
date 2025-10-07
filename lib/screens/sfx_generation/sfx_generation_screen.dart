@@ -118,7 +118,6 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     return Consumer<SfxGenerationProvider>(
       builder: (context, provider, child) {
         return Scaffold(
-          backgroundColor: const Color(0xFF1E1E1E),
           body: Column(
             children: [
               _buildHeader(context, provider),
@@ -133,12 +132,16 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
   }
 
   Widget _buildHeader(BuildContext context, SfxGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        color: Color(0xFF2A2A2A),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
         border: Border(
-          bottom: BorderSide(color: Color(0xFF404040), width: 1),
+          bottom: BorderSide(
+            color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+            width: 1,
+          ),
         ),
       ),
       child: Row(

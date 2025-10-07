@@ -55,12 +55,11 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E1E),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF2A2A2A),
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
         title: Text(_currentAsset.name),
-        foregroundColor: Colors.white,
         actions: [
           IconButton(
             onPressed: _refreshAsset,
@@ -93,8 +92,9 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
   }
 
   Widget _buildAssetInfo() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
-      color: const Color(0xFF2A2A2A),
+      color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(

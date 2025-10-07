@@ -45,7 +45,6 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     return Consumer<ImageGenerationProvider>(
       builder: (context, provider, child) {
         return Scaffold(
-          backgroundColor: const Color(0xFF1E1E1E),
           body: Column(
             children: [
               _buildHeader(context, provider),
@@ -60,12 +59,16 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   }
 
   Widget _buildHeader(BuildContext context, ImageGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        color: Color(0xFF2A2A2A),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
         border: Border(
-          bottom: BorderSide(color: Color(0xFF404040), width: 1),
+          bottom: BorderSide(
+            color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+            width: 1,
+          ),
         ),
       ),
       child: Column(
@@ -73,17 +76,15 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.folder_outlined,
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 size: 28,
               ),
               const SizedBox(width: 12),
-              const Text(
+              Text(
                 'Image Assets',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -173,6 +174,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   }
 
   Widget _buildSearchField() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return TextField(
       controller: _searchController,
       onChanged: (value) {
@@ -180,13 +182,18 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           _searchQuery = value.toLowerCase();
         });
       },
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       decoration: InputDecoration(
         hintText: 'Search assets by name or description...',
-        hintStyle: const TextStyle(color: Colors.white54),
-        prefixIcon: const Icon(Icons.search, color: Colors.white54),
+        hintStyle: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+        ),
+        prefixIcon: Icon(
+          Icons.search,
+          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+        ),
         filled: true,
-        fillColor: const Color(0xFF3A3A3A),
+        fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
@@ -196,17 +203,18 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   }
 
   Widget _buildFilterDropdown() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF3A3A3A),
+        color: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200,
         borderRadius: BorderRadius.circular(8),
       ),
       child: DropdownButton<String>(
         value: _filterType,
-        dropdownColor: const Color(0xFF3A3A3A),
+        dropdownColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200,
         underline: Container(),
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         items: const [
           DropdownMenuItem(value: 'All', child: Text('All Assets')),
           DropdownMenuItem(value: 'HasGenerations', child: Text('With Images')),
@@ -225,7 +233,10 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   Widget _buildRefreshButton(ImageGenerationProvider provider) {
     return IconButton(
       onPressed: () => provider.refreshAssets(),
-      icon: const Icon(Icons.refresh, color: Colors.white54),
+      icon: Icon(
+        Icons.refresh,
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+      ),
       tooltip: 'Refresh Assets',
     );
   }
@@ -346,12 +357,16 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   }
 
   Widget _buildAssetCard(ImageAsset asset, ImageGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
-      color: const Color(0xFF2A2A2A),
+      color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
       elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFF404040), width: 1),
+        side: BorderSide(
+          color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+          width: 1,
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -364,9 +379,9 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               flex: 3,
               child: Container(
                 width: double.infinity,
-                decoration: const BoxDecoration(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                  color: Color(0xFF3A3A3A),
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  color: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200,
                 ),
                 child: _buildAssetThumbnailWithFuture(asset, provider),
               ),
@@ -381,8 +396,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                   children: [
                     Text(
                       asset.name,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -392,8 +407,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                     const SizedBox(height: 4),
                     Text(
                       asset.description,
-                      style: const TextStyle(
-                        color: Colors.white70,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                         fontSize: 11,
                       ),
                       maxLines: 2,
@@ -633,39 +648,55 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
 
   void _showAssetContextMenu(
       ImageAsset asset, ImageGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
           'Asset Actions',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.info, color: Colors.white54),
-              title: const Text('View Details',
-                  style: TextStyle(color: Colors.white)),
+              leading: Icon(
+                Icons.info,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
+              title: Text(
+                'View Details',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              ),
               onTap: () {
                 Navigator.of(context).pop();
                 _showAssetDetail(asset, provider);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.edit, color: Colors.white54),
-              title: const Text('Edit Asset',
-                  style: TextStyle(color: Colors.white)),
+              leading: Icon(
+                Icons.edit,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
+              title: Text(
+                'Edit Asset',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              ),
               onTap: () {
                 Navigator.of(context).pop();
                 _showEditAssetDialog(asset, provider);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.auto_awesome, color: Colors.white54),
-              title: const Text('Generate Images',
-                  style: TextStyle(color: Colors.white)),
+              leading: Icon(
+                Icons.auto_awesome,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
+              title: Text(
+                'Generate Images',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              ),
               onTap: () {
                 Navigator.of(context).pop();
                 _navigateToGeneration(asset);
@@ -673,8 +704,10 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('Delete Asset',
-                  style: TextStyle(color: Colors.red)),
+              title: const Text(
+                'Delete Asset',
+                style: TextStyle(color: Colors.red),
+              ),
               onTap: () {
                 Navigator.of(context).pop();
                 _confirmDeleteAsset(asset, provider);
@@ -699,28 +732,33 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
       BuildContext context, ImageGenerationProvider provider) {
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
           'Create New Asset',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
                 labelText: 'Asset Name',
-                labelStyle: const TextStyle(color: Colors.white70),
+                labelStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
                 hintText: 'e.g., Main Character Portrait',
-                hintStyle: const TextStyle(color: Colors.white54),
+                hintStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
                 filled: true,
-                fillColor: const Color(0xFF3A3A3A),
+                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -730,15 +768,19 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: descriptionController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               maxLines: 3,
               decoration: InputDecoration(
                 labelText: 'Description',
-                labelStyle: const TextStyle(color: Colors.white70),
+                labelStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
                 hintText: 'Describe what this asset represents...',
-                hintStyle: const TextStyle(color: Colors.white54),
+                hintStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
                 filled: true,
-                fillColor: const Color(0xFF3A3A3A),
+                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -806,26 +848,29 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     final nameController = TextEditingController(text: asset.name);
     final descriptionController =
         TextEditingController(text: asset.description);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
           'Edit Asset',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
                 labelText: 'Asset Name',
-                labelStyle: const TextStyle(color: Colors.white70),
+                labelStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
                 filled: true,
-                fillColor: const Color(0xFF3A3A3A),
+                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -835,13 +880,15 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: descriptionController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               maxLines: 3,
               decoration: InputDecoration(
                 labelText: 'Description',
-                labelStyle: const TextStyle(color: Colors.white70),
+                labelStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
                 filled: true,
-                fillColor: const Color(0xFF3A3A3A),
+                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -915,17 +962,20 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   }
 
   void _confirmDeleteAsset(ImageAsset asset, ImageGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
           'Delete Asset',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Text(
           'Are you sure you want to delete "${asset.name}"? This will also delete all ${asset.generations.length} generated images for this asset.',
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+          ),
         ),
         actions: [
           TextButton(
@@ -970,17 +1020,20 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
 
   void _showClearAllDialog(
       BuildContext context, ImageGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
           'Clear All Assets',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
-        content: const Text(
+        content: Text(
           'Are you sure you want to delete all image assets? This action cannot be undone.',
-          style: TextStyle(color: Colors.white70),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+          ),
         ),
         actions: [
           TextButton(

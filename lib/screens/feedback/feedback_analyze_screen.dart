@@ -78,7 +78,9 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
       settingsProvider: settingsProvider,
       authProvider: authProvider,
     );
-    _mutationService = MutationApiService();
+    _mutationService = MutationApiService(
+      settingsProvider: settingsProvider,
+    );
   }
 
   void _initializeAnalyzeSession() async {
@@ -179,7 +181,6 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1E1E1E),
       appBar: AppBar(
         backgroundColor: const Color(0xFF2A2A2A),
         title: Column(

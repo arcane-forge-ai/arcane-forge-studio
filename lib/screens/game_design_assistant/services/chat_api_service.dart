@@ -5,9 +5,9 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:async';
 import '../models/api_models.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../utils/app_constants.dart';
 
 class ChatApiService {
-  static const String _baseUrl = 'http://localhost:8000';
   static const String _apiVersion = 'v1';
   static const bool _useStreamingByDefault = false; // MVP: Set to false for non-streaming
   
@@ -26,7 +26,6 @@ class ChatApiService {
   ChatApiService({SettingsProvider? settingsProvider}) 
       : _settingsProvider = settingsProvider,
         _dio = Dio() {
-    _dio.options.baseUrl = '$_baseUrl/api/$_apiVersion';
     _dio.options.headers['Content-Type'] = 'application/json';
     _dio.options.connectTimeout = const Duration(seconds: 10);
     _dio.options.receiveTimeout = const Duration(seconds: 30);
@@ -34,6 +33,12 @@ class ChatApiService {
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? false;
+  
+  /// Get API base URL from settings provider with fallback to default
+  String get _baseUrl => _settingsProvider?.apiBaseUrl ?? ApiConfig.defaultBaseUrl;
+  
+  /// Get full API URL with version
+  String get _apiUrl => '$_baseUrl/api/$_apiVersion';
 
   /// Send chat message via HTTP API (non-streaming)
   Future<ChatResponse> sendChatMessage(ChatRequest request) async {
@@ -43,7 +48,7 @@ class ChatApiService {
       return _mockChatResponse(request);
     }
 
-    final url = '${_dio.options.baseUrl}/chat';
+    final url = '$_apiUrl/chat';
     final requestBody = request.toJson();
     print('ChatApiService: Making real API call to $url');
 
@@ -127,7 +132,7 @@ class ChatApiService {
       return _mockKnowledgeBaseFiles();
     }
 
-    final url = '${_dio.options.baseUrl}/projects/$projectId/files';
+    final url = '$_apiUrl/projects/$projectId/files';
 
     try {
       final response = await _dio.get('/projects/$projectId/files');
@@ -149,7 +154,7 @@ class ChatApiService {
       return true;
     }
 
-    final url = '${_dio.options.baseUrl}/projects/$projectId/files';
+    final url = '$_apiUrl/projects/$projectId/files';
 
     try {
       final formData = FormData.fromMap({
@@ -176,7 +181,7 @@ class ChatApiService {
       return true;
     }
 
-    final url = '${_dio.options.baseUrl}/projects/$projectId/files/$fileId';
+    final url = '$_apiUrl/projects/$projectId/files/$fileId';
 
     try {
       final response = await _dio.delete('/projects/$projectId/files/$fileId');
@@ -202,7 +207,7 @@ class ChatApiService {
       );
     }
 
-    final url = '${_dio.options.baseUrl}/projects/$projectId/files/$fileId/download';
+    final url = '$_apiUrl/projects/$projectId/files/$fileId/download';
 
     try {
       final response = await _dio.get('/projects/$projectId/files/$fileId/download');
@@ -221,10 +226,10 @@ class ChatApiService {
       return _mockChatSessions(projectId);
     }
 
-    final url = '${_dio.options.baseUrl}/projects/$projectId/chat/sessions';
+    final url = '$_apiUrl/projects/$projectId/chat/sessions';
 
     try {
-      final response = await _dio.get('/projects/$projectId/chat/sessions');
+      final response = await _dio.get(url);
       final List<dynamic> sessions = response.data;
       return sessions.map((item) => ChatSession.fromJson(item)).toList();
     } catch (e) {
@@ -241,7 +246,7 @@ class ChatApiService {
       return _mockCreateChatSession(projectId, userId, sessionId: sessionId);
     }
 
-    final url = '${_dio.options.baseUrl}/projects/$projectId/chat/sessions';
+    final url = '$_apiUrl/projects/$projectId/chat/sessions';
     final request = ChatSessionCreateRequest(userId: userId, sessionId: sessionId);
     final requestBody = request.toJson();
 
@@ -266,10 +271,10 @@ class ChatApiService {
       return _mockChatHistory(sessionId);
     }
 
-    final url = '${_dio.options.baseUrl}/chat/sessions/$sessionId/messages';
+    final url = '$_apiUrl/chat/sessions/$sessionId/messages';
 
     try {
-      final response = await _dio.get('/chat/sessions/$sessionId/messages');
+      final response = await _dio.get(url);
       return ChatHistoryResponse.fromJson(response.data);
     } catch (e) {
       print('Chat History API Error: $e');

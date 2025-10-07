@@ -46,7 +46,6 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
     return Consumer<SfxGenerationProvider>(
       builder: (context, provider, child) {
         return Scaffold(
-          backgroundColor: const Color(0xFF1E1E1E),
           body: Column(
             children: [
               _buildHeader(context, provider),
@@ -61,12 +60,16 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
   }
 
   Widget _buildHeader(BuildContext context, SfxGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        color: Color(0xFF2A2A2A),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
         border: Border(
-          bottom: BorderSide(color: Color(0xFF404040), width: 1),
+          bottom: BorderSide(
+            color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+            width: 1,
+          ),
         ),
       ),
       child: Column(
@@ -347,12 +350,16 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
   }
 
   Widget _buildAssetCard(SfxAsset asset, SfxGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
-      color: const Color(0xFF2A2A2A),
+      color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
       elevation: 4,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFF404040), width: 1),
+        side: BorderSide(
+          color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+          width: 1,
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -603,13 +610,14 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
   }
 
   void _showAssetContextMenu(SfxAsset asset, SfxGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
           'Asset Actions',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,

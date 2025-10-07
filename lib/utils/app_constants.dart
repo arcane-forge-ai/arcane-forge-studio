@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Centralized application constants and utilities
 class AppConstants {
@@ -139,17 +140,16 @@ class DateUtils {
 
 // API Configuration
 class ApiConfig {
-  static const String defaultBaseUrl = 'http://localhost:8000';
+  static const String defaultBaseUrl = 'http://arcane-forge-service.dev.arcaneforge.ai';
   static const bool useApiService = true; // Set to false to use mock service
   
   // Environment-based configuration
   static String get baseUrl {
-    const apiUrl = String.fromEnvironment('API_BASE_URL', defaultValue: defaultBaseUrl);
-    return apiUrl;
+    return dotenv.env['API_BASE_URL'] ?? defaultBaseUrl;
   }
   
   static bool get enabled {
-    const useApi = bool.fromEnvironment('USE_API_SERVICE', defaultValue: useApiService);
-    return useApi;
+    final useApiString = dotenv.env['USE_API_SERVICE']?.toLowerCase();
+    return useApiString == 'true' || useApiService;
   }
 } 

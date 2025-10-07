@@ -227,7 +227,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                                   .textTheme
                                   .bodySmall
                                   ?.copyWith(
-                                    color: Colors.grey[600],
+                                    color: Theme.of(context).brightness == Brightness.dark
+                                        ? Colors.grey[400]
+                                        : Colors.grey[600],
                                   ),
                             ),
                           ],
@@ -352,9 +354,15 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                 height: 240, // Fixed height for ~10 lines
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey.shade800.withOpacity(0.3)
+                      : Colors.grey.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey.shade700
+                        : Colors.grey.shade300,
+                  ),
                 ),
                 child: SingleChildScrollView(
                   child: Text(
@@ -364,7 +372,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: _project?.gameIntroduction?.isNotEmpty == true
                               ? null
-                              : Colors.grey[600],
+                              : Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
                           fontStyle:
                               _project?.gameIntroduction?.isNotEmpty == true
                                   ? null
@@ -403,7 +411,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: Colors.grey[600],
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey[400]
+                            : Colors.grey[600],
                       ),
                 ),
               ],
@@ -571,20 +581,35 @@ class _GameIntroductionEditorScreenState
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.blue.shade900.withOpacity(0.3)
+                      : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.blue.shade700
+                        : Colors.blue.shade200,
+                  ),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline,
-                        color: Colors.blue.shade700, size: 20),
+                    Icon(
+                      Icons.info_outline,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.blue.shade300
+                          : Colors.blue.shade700,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Write a detailed introduction about your game. This will be used for feedback analysis and other features.',
                         style: TextStyle(
-                            color: Colors.blue.shade700, fontSize: 12),
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.blue.shade300
+                              : Colors.blue.shade700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],
@@ -607,7 +632,11 @@ class _GameIntroductionEditorScreenState
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.grey.shade400),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.grey.shade700
+                            : Colors.grey.shade400,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -615,7 +644,9 @@ class _GameIntroductionEditorScreenState
                           const BorderSide(color: primaryColor, width: 2),
                     ),
                     filled: true,
-                    fillColor: Theme.of(context).cardColor.withOpacity(0.04),
+                    fillColor: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey.shade900.withOpacity(0.2)
+                        : Theme.of(context).cardColor.withOpacity(0.04),
                     contentPadding: const EdgeInsets.all(16),
                   ),
                   style: Theme.of(context).textTheme.bodyMedium,
@@ -630,7 +661,9 @@ class _GameIntroductionEditorScreenState
                   Text(
                     '${_controller.text.length} characters',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
                         ),
                   ),
                   const Spacer(),

@@ -56,6 +56,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   }
 
   Future<void> _loadProjectAndFeedbacks(FeedbackProvider? provider) async {
+    if (!mounted) return;
+    
     setState(() {
       _isLoadingProject = true;
       _projectError = null;
@@ -69,6 +71,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
           provider ?? Provider.of<FeedbackProvider>(context, listen: false);
       feedbackProvider.setFeedbackUrl(project.gameFeedbackUrl);
 
+      if (!mounted) return;
+      
       setState(() {
         _isLoadingProject = false;
       });
@@ -79,6 +83,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       // Load existing analysis runs from the API
       await feedbackProvider.loadAnalysisRuns(int.parse(widget.projectId));
     } catch (e) {
+      if (!mounted) return;
+      
       setState(() {
         _isLoadingProject = false;
         _projectError = e.toString();
@@ -109,9 +115,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               });
             }
 
-            return Scaffold(
-              backgroundColor: const Color(0xFF1E1E1E),
-              body: Column(
+        return Scaffold(
+          body: Column(
                 children: [
                   _buildHeader(context, provider),
                   Expanded(

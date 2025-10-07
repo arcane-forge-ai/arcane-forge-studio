@@ -11,6 +11,48 @@ class SideMenu extends BaseSideMenu {
     String? projectName,
   }) : super(key: key, subtitle: projectName);
 
+  // Helper method to build a menu item with a "Coming Soon" badge
+  Widget _buildComingSoonMenuItem(
+    BuildContext context, {
+    required String title,
+    required ScreenType screenType,
+    IconData? icon,
+  }) {
+    return ListTile(
+      title: Row(
+        children: [
+          Text(title),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Colors.orange,
+                width: 1,
+              ),
+            ),
+            child: Text(
+              'COMING SOON',
+              style: TextStyle(
+                color: Colors.orange.shade700,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+      leading: icon != null ? Icon(icon) : null,
+      onTap: () {
+        Provider.of<MenuAppController>(context, listen: false)
+            .changeScreen(screenType);
+      },
+    );
+  }
+
   @override
   List<Widget> buildMenuItems(BuildContext context) {
     return [
@@ -36,6 +78,7 @@ class SideMenu extends BaseSideMenu {
       buildSectionHeader(context, icon: Icons.dashboard, title: "Overview"),
       ListTile(
         title: const Text("Project Home"),
+        leading: const Icon(Icons.home),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
               .changeScreen(ScreenType.projectHome);
@@ -43,6 +86,7 @@ class SideMenu extends BaseSideMenu {
       ),
       ListTile(
         title: const Text("Knowledge Base"),
+        leading: const Icon(Icons.library_books),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
               .changeScreen(ScreenType.knowledgeBase);
@@ -53,6 +97,7 @@ class SideMenu extends BaseSideMenu {
       buildSectionHeader(context, icon: Icons.lightbulb, title: "Idealization"),
       ListTile(
         title: const Text("Game Design Assistant"),
+        leading: const Icon(Icons.psychology),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
               .changeScreen(ScreenType.gameDesignAssistant);
@@ -61,13 +106,6 @@ class SideMenu extends BaseSideMenu {
 
       // Development - code editor, image generator, sound generator, music generator, web server
       buildSectionHeader(context, icon: Icons.code, title: "Development"),
-      ListTile(
-        title: const Text("Code"),
-        onTap: () {
-          Provider.of<MenuAppController>(context, listen: false)
-              .changeScreen(ScreenType.codeEditor);
-        },
-      ),
       ExpansionTile(
         title: const Text("Image Generation"),
         leading: const Icon(Icons.image),
@@ -155,32 +193,39 @@ class SideMenu extends BaseSideMenu {
           ),
         ],
       ),
-      ListTile(
-          title: const Text("Web Server"),
-          onTap: () {
-            Provider.of<MenuAppController>(context, listen: false)
-                .changeScreen(ScreenType.webServer);
-          }),
+      _buildComingSoonMenuItem(
+        context,
+        title: "Code",
+        screenType: ScreenType.codeEditor,
+        icon: Icons.code,
+      ),
+      // ListTile(
+      //     title: const Text("Web Server"),
+      //     onTap: () {
+      //       Provider.of<MenuAppController>(context, listen: false)
+      //           .changeScreen(ScreenType.webServer);
+      //     }),
 
       // Production - Release Info, Stats, Feedbacks
       buildSectionHeader(context,
           icon: Icons.production_quantity_limits, title: "Production"),
       ListTile(
         title: const Text("Release Info"),
+        leading: const Icon(Icons.rocket_launch),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
               .changeScreen(ScreenType.versions);
         },
       ),
-      ListTile(
-        title: const Text("Stats"),
-        onTap: () {
-          Provider.of<MenuAppController>(context, listen: false)
-              .changeScreen(ScreenType.stats);
-        },
+      _buildComingSoonMenuItem(
+        context,
+        title: "Stats",
+        screenType: ScreenType.stats,
+        icon: Icons.analytics_outlined,
       ),
       ListTile(
         title: const Text("Feedbacks"),
+        leading: const Icon(Icons.feedback),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
               .changeScreen(ScreenType.feedbacks);

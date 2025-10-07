@@ -11,12 +11,10 @@ import 'package:arcane_forge/providers/music_generation_provider.dart';
 import 'package:arcane_forge/services/music_generation_services.dart';
 import 'package:arcane_forge/screens/login/login_screen.dart';
 import 'package:arcane_forge/services/comfyui_service_manager.dart';
-import 'package:arcane_forge/utils/app_constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
@@ -93,28 +91,36 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProxyProvider<SettingsProvider, ImageGenerationProvider>(
           create: (context) => ImageGenerationProvider(
             context.read<SettingsProvider>(),
-            apiBaseUrl: ApiConfig.baseUrl,
-            useApiService: ApiConfig.enabled,
           ),
           update: (context, settingsProvider, previous) => previous ?? ImageGenerationProvider(
             settingsProvider,
-            apiBaseUrl: ApiConfig.baseUrl,
-            useApiService: ApiConfig.enabled,
           ),
         ),
-        ChangeNotifierProvider(
+        ChangeNotifierProxyProvider<SettingsProvider, SfxGenerationProvider>(
           create: (context) => SfxGenerationProvider(
             SfxAssetServiceFactory.create(
-              apiBaseUrl: ApiConfig.baseUrl,
-              useApiService: ApiConfig.enabled,
+              useApiService: !context.read<SettingsProvider>().useMockMode,
+              settingsProvider: context.read<SettingsProvider>(),
+            ),
+          ),
+          update: (context, settingsProvider, previous) => previous ?? SfxGenerationProvider(
+            SfxAssetServiceFactory.create(
+              useApiService: !settingsProvider.useMockMode,
+              settingsProvider: settingsProvider,
             ),
           ),
         ),
-        ChangeNotifierProvider(
+        ChangeNotifierProxyProvider<SettingsProvider, MusicGenerationProvider>(
           create: (context) => MusicGenerationProvider(
             MusicAssetServiceFactory.create(
-              apiBaseUrl: ApiConfig.baseUrl,
-              useApiService: ApiConfig.enabled,
+              useApiService: !context.read<SettingsProvider>().useMockMode,
+              settingsProvider: context.read<SettingsProvider>(),
+            ),
+          ),
+          update: (context, settingsProvider, previous) => previous ?? MusicGenerationProvider(
+            MusicAssetServiceFactory.create(
+              useApiService: !settingsProvider.useMockMode,
+              settingsProvider: settingsProvider,
             ),
           ),
         ),
@@ -259,13 +265,33 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               thickness: 1,
             ),
           ),
-          themeMode: context.watch<SettingsProvider>().isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: Consumer<AuthProvider>(
-            builder: (context, auth, child) {
-              if (auth.isAuthenticated || auth.isVisitor) {
-                return const ProjectsDashboardScreen();
+          themeMode: context.watch<SettingsProvider>().isLoading
+              ? ThemeMode.system // Use system theme while loading
+              : (context.watch<SettingsProvider>().isDarkMode ? ThemeMode.dark : ThemeMode.light),
+          home: Consumer<SettingsProvider>(
+            builder: (context, settingsProvider, child) {
+              if (settingsProvider.isLoading) {
+                return const Scaffold(
+                  body: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('Loading application...'),
+                      ],
+                    ),
+                  ),
+                );
               }
-              return const LoginScreen();
+              return Consumer<AuthProvider>(
+                builder: (context, auth, child) {
+                  if (auth.isAuthenticated || auth.isVisitor) {
+                    return const ProjectsDashboardScreen();
+                  }
+                  return const LoginScreen();
+                },
+              );
             },
           ),
         ),

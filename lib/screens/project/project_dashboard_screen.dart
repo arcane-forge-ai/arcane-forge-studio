@@ -5,7 +5,6 @@ import '../../responsive.dart';
 import '../dashboard/dashboard_screen.dart';
 import 'components/side_menu.dart';
 import 'components/project_home_screen.dart';
-import '../development/command_line_screen.dart';
 import '../game_design_assistant/game_design_assistant_screen.dart';
 import '../game_design_assistant/providers/project_provider.dart';
 import '../knowledge_base/knowledge_base_screen.dart';
@@ -17,6 +16,7 @@ import '../music_generation/music_generation_screen.dart';
 import '../music_generation/music_overview_screen.dart';
 import '../feedback/feedback_screen.dart';
 import 'release_info_screen.dart';
+import '../shared/coming_soon_screen.dart';
 
 class ProjectDashboardScreen extends StatelessWidget {
   final String projectId;
@@ -74,7 +74,11 @@ class ProjectDashboardScreen extends StatelessWidget {
                         child: GameDesignAssistantScreen(),
                       );
                     case ScreenType.codeEditor:
-                      return CommandLineScreen();
+                      return const ComingSoonScreen(
+                        featureName: 'Code Editor',
+                        icon: Icons.code,
+                        description: 'An integrated code editor for game development is coming soon. You\'ll be able to write and test code directly within the platform.',
+                      );
                     case ScreenType.imageGenerationOverview:
                       return ImageOverviewScreen(
                           projectId: projectId, projectName: projectName);
@@ -102,6 +106,12 @@ class ProjectDashboardScreen extends StatelessWidget {
                       return ReleaseInfoScreen(
                         projectId: projectId,
                         projectName: projectName,
+                      );
+                    case ScreenType.stats:
+                      return const ComingSoonScreen(
+                        featureName: 'Analytics & Stats',
+                        icon: Icons.analytics_outlined,
+                        description: 'Comprehensive analytics and statistics for your game project will be available soon. Track performance, user engagement, and more.',
                       );
                     default:
                       return DashboardScreen();

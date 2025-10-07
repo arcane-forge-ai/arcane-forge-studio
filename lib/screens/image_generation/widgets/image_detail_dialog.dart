@@ -23,6 +23,7 @@ class ImageDetailDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final isLargeScreen = screenSize.width > 800;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -31,9 +32,11 @@ class ImageDetailDialog extends StatelessWidget {
         width: isLargeScreen ? screenSize.width * 0.9 : screenSize.width,
         height: isLargeScreen ? screenSize.height * 0.9 : screenSize.height,
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF404040)),
+          border: Border.all(
+            color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+          ),
         ),
         child: isLargeScreen ? _buildLargeScreenLayout(context) : _buildMobileLayout(context),
       ),
@@ -62,9 +65,11 @@ class ImageDetailDialog extends StatelessWidget {
                 flex: 1,
                 child: Container(
                   padding: const EdgeInsets.all(20),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF2A2A2A),
-                    borderRadius: BorderRadius.only(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF2A2A2A)
+                        : Colors.grey.shade100,
+                    borderRadius: const BorderRadius.only(
                       topRight: Radius.circular(16),
                       bottomRight: Radius.circular(16),
                     ),
@@ -97,9 +102,11 @@ class ImageDetailDialog extends StatelessWidget {
           flex: 1,
           child: Container(
             padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: Color(0xFF2A2A2A),
-              borderRadius: BorderRadius.only(
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF2A2A2A)
+                  : Colors.grey.shade100,
+              borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(16),
                 bottomRight: Radius.circular(16),
               ),
@@ -112,21 +119,25 @@ class ImageDetailDialog extends StatelessWidget {
   }
 
   Widget _buildDialogHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         border: Border(
-          bottom: BorderSide(color: Color(0xFF404040), width: 1),
+          bottom: BorderSide(
+            color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+            width: 1,
+          ),
         ),
       ),
       child: Row(
         children: [
-          const Text(
+          Text(
             'Generation Details',
             style: TextStyle(
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.bold,
             ),

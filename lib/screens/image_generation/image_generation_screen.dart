@@ -173,7 +173,6 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     return Consumer<ImageGenerationProvider>(
       builder: (context, provider, child) {
         return Scaffold(
-          backgroundColor: const Color(0xFF1E1E1E),
           body: Column(
             children: [
               _buildHeader(context, provider),
@@ -188,27 +187,29 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildHeader(BuildContext context, ImageGenerationProvider provider) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        color: Color(0xFF2A2A2A),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
         border: Border(
-          bottom: BorderSide(color: Color(0xFF404040), width: 1),
+          bottom: BorderSide(
+            color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+            width: 1,
+          ),
         ),
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.auto_awesome,
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onSurface,
             size: 28,
           ),
           const SizedBox(width: 12),
-          const Text(
+          Text(
             'AI Image Generation',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -410,11 +411,9 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Generation Parameters',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -453,10 +452,10 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       children: [
         Row(
           children: [
-            const Text(
+            Text(
               'Target Asset',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
@@ -480,24 +479,32 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFF3A3A3A),
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF3A3A3A)
+                : Colors.grey.shade200,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: _selectedAsset == null
                   ? Colors.red.withOpacity(0.5)
-                  : const Color(0xFF404040),
+                  : Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF404040)
+                      : Colors.grey.shade400,
               width: 1,
             ),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<ImageAsset?>(
               value: _selectedAsset,
-              hint: const Text(
+              hint: Text(
                 'Select an asset...',
-                style: TextStyle(color: Colors.white54),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
               ),
-              dropdownColor: const Color(0xFF3A3A3A),
-              style: const TextStyle(color: Colors.white),
+              dropdownColor: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF3A3A3A)
+                  : Colors.grey.shade200,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               items: [
                 const DropdownMenuItem<ImageAsset?>(
                   value: null,
@@ -779,9 +786,12 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Dimensions',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         Row(
@@ -803,9 +813,12 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Quality',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         Row(
@@ -877,10 +890,12 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       children: [
         Row(
           children: [
-            const Text(
+            Text(
               'Seed',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const Spacer(),
             TextButton(
@@ -905,20 +920,32 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             Expanded(
               child: TextField(
                 controller: _seedController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   hintText: 'Seed',
-                  hintStyle: const TextStyle(color: Colors.white54),
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  ),
                   filled: true,
-                  fillColor: const Color(0xFF3A3A3A),
+                  fillColor: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF3A3A3A)
+                      : Colors.grey.shade100,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF404040)),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF404040)
+                          : Colors.grey.shade400,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF404040)),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF404040)
+                          : Colors.grey.shade400,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -950,9 +977,12 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Batch Generation',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         Row(
@@ -962,20 +992,32 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             Expanded(
               child: TextField(
                 controller: _batchCountController,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   hintText: 'Number of images to generate',
-                  hintStyle: const TextStyle(color: Colors.white54),
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  ),
                   filled: true,
-                  fillColor: const Color(0xFF3A3A3A),
+                  fillColor: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF3A3A3A)
+                      : Colors.grey.shade100,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF404040)),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF404040)
+                          : Colors.grey.shade400,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF404040)),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF404040)
+                          : Colors.grey.shade400,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -1001,12 +1043,13 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
 
   Widget _buildDropdownWithItems(
       String label, String value, List<String> items, ValueChanged onChanged) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return DropdownButton<String>(
       value: value,
       isExpanded: true,
-      dropdownColor: const Color(0xFF3A3A3A),
+      dropdownColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
       underline: Container(),
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
       items: items
           .map((sampler) => DropdownMenuItem<String>(
                 value: sampler,
@@ -1031,9 +1074,15 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFF3A3A3A),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? const Color(0xFF3A3A3A)
+                  : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF404040)),
+              border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF404040)
+                    : Colors.grey.shade400,
+              ),
             ),
             child: _buildDropdownWithItems(label, value, items, onChanged),
           ),
@@ -1048,30 +1097,42 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         Text(label),
         SizedBox(width: 12),
         Expanded(
-          child: TextField(
-            controller: controller,
-            style: const TextStyle(color: Colors.white),
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              hintText: label,
-              hintStyle: const TextStyle(color: Colors.white54),
-              filled: true,
-              fillColor: const Color(0xFF3A3A3A),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF404040)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF404040)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Color(0xFF0078D4)),
+            child: TextField(
+                controller: controller,
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: label,
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                  filled: true,
+                  fillColor: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFF3A3A3A)
+                      : Colors.grey.shade100,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF404040)
+                          : Colors.grey.shade400,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF404040)
+                          : Colors.grey.shade400,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: Color(0xFF0078D4)),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
       ],
     );
   }
@@ -1082,11 +1143,9 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Prompts',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -1122,26 +1181,40 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       children: [
         Text(
           label,
-          style:
-              const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           maxLines: 4,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: Colors.white54),
+            hintStyle: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+            ),
             filled: true,
-            fillColor: const Color(0xFF3A3A3A),
+            fillColor: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF3A3A3A)
+                : Colors.grey.shade100,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF404040)),
+              borderSide: BorderSide(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF404040)
+                    : Colors.grey.shade400,
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF404040)),
+              borderSide: BorderSide(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF404040)
+                    : Colors.grey.shade400,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -1209,11 +1282,9 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Recent Generations',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1273,9 +1344,9 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.image_outlined,
-              color: Colors.white54,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
               size: 48,
             ),
             const SizedBox(height: 16),
@@ -1283,7 +1354,9 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             _selectedAsset != null 
                 ? 'No images generated for "${_selectedAsset!.name}"'
                 : 'No images generated yet',
-            style: TextStyle(color: Colors.white54),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
@@ -1291,7 +1364,10 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             _selectedAsset != null
                 ? 'Generate your first image for this asset'
                 : 'Select an asset and generate your first image',
-            style: TextStyle(color: Colors.white38, fontSize: 12),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+              fontSize: 12,
+            ),
             textAlign: TextAlign.center,
           ),
           ],
@@ -1373,15 +1449,15 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                asset?.name ?? 'Unknown Asset',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                              child:                         Text(
+                          asset?.name ?? 'Unknown Asset',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                             ),
                             if (generation.isFavorite)
                               const Icon(
@@ -1394,8 +1470,8 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                         const SizedBox(height: 4),
                         Text(
                           _formatGenerationInfo(generation),
-                          style: const TextStyle(
-                            color: Colors.white70,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                             fontSize: 12,
                           ),
                         ),
@@ -1630,17 +1706,20 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   void _showErrorDialog(String message) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
           'Error',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Text(
           message,
-          style: const TextStyle(color: Colors.white70),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+          ),
         ),
         actions: [
           TextButton(
@@ -1658,28 +1737,33 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   void _showCreateAssetDialog() {
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        title: Text(
           'Create New Asset',
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
                 labelText: 'Asset Name',
-                labelStyle: const TextStyle(color: Colors.white70),
+                labelStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
                 hintText: 'e.g., Main Character Portrait',
-                hintStyle: const TextStyle(color: Colors.white54),
+                hintStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
                 filled: true,
-                fillColor: const Color(0xFF3A3A3A),
+                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -1689,15 +1773,19 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: descriptionController,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               maxLines: 3,
               decoration: InputDecoration(
                 labelText: 'Description',
-                labelStyle: const TextStyle(color: Colors.white70),
+                labelStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
                 hintText: 'Describe what this asset represents...',
-                hintStyle: const TextStyle(color: Colors.white54),
+                hintStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                ),
                 filled: true,
-                fillColor: const Color(0xFF3A3A3A),
+                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,

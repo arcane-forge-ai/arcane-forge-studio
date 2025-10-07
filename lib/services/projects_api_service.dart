@@ -6,9 +6,7 @@ import '../providers/auth_provider.dart';
 import '../utils/app_constants.dart';
 
 class ProjectsApiService {
-  // Get configuration from environment variables with fallback defaults
-  static String get baseUrl =>
-      dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
+  // Get default configuration from environment variables or constants
   static String get defaultUserId =>
       dotenv.env['DEFAULT_USER_ID'] ?? AppConstants.visitorUserId;
 
@@ -24,6 +22,12 @@ class ProjectsApiService {
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? true;
+  
+  /// Get API base URL from settings provider, with fallback to environment or default
+  String get baseUrl => 
+      _settingsProvider?.apiBaseUrl ?? 
+      dotenv.env['API_BASE_URL'] ?? 
+      ApiConfig.defaultBaseUrl;
 
   Future<List<Project>> getProjects({String? userId}) async {
     if (_useMockMode) {

@@ -2,10 +2,9 @@ import 'package:dio/dio.dart';
 import '../models/feedback_analysis_models.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
+import '../utils/app_constants.dart';
 
 class FeedbackAnalysisService {
-  static String get baseUrl => 'http://localhost:8000';
-
   final SettingsProvider? _settingsProvider;
   final Dio _dio;
 
@@ -14,7 +13,6 @@ class FeedbackAnalysisService {
     AuthProvider? authProvider,
   })  : _settingsProvider = settingsProvider,
         _dio = Dio() {
-    _dio.options.baseUrl = '$baseUrl/api/v1';
     _dio.options.headers['Content-Type'] = 'application/json';
     _dio.options.connectTimeout = const Duration(seconds: 30);
     _dio.options.receiveTimeout =
@@ -23,6 +21,12 @@ class FeedbackAnalysisService {
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? true;
+  
+  /// Get API base URL from settings provider with fallback to default
+  String get baseUrl => _settingsProvider?.apiBaseUrl ?? ApiConfig.defaultBaseUrl;
+  
+  /// Get full API URL with version
+  String get _apiUrl => '$baseUrl/api/v1';
 
   /// Create a new feedback analysis
   Future<FeedbackAnalysisResult> createFeedbackAnalysis({
@@ -35,7 +39,7 @@ class FeedbackAnalysisService {
           projectId, gameIntroduction, feedbacks);
     }
 
-    final url = '/projects/$projectId/feedback/analysis';
+    final url = '$_apiUrl/projects/$projectId/feedback/analysis';
     final requestBody = {
       'game_introduction': gameIntroduction,
       'feedbacks': feedbacks,
@@ -69,7 +73,7 @@ class FeedbackAnalysisService {
       return _mockGetClusters(projectId, runId);
     }
 
-    final url = '/projects/$projectId/feedback/clusters';
+    final url = '$_apiUrl/projects/$projectId/feedback/clusters';
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -101,7 +105,7 @@ class FeedbackAnalysisService {
       return _mockGetOpportunities(projectId, runId);
     }
 
-    final url = '/projects/$projectId/feedback/opportunities';
+    final url = '$_apiUrl/projects/$projectId/feedback/opportunities';
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -133,7 +137,7 @@ class FeedbackAnalysisService {
       return _mockGetMutationBriefs(projectId, runId);
     }
 
-    final url = '/projects/$projectId/feedback/mutation-briefs';
+    final url = '$_apiUrl/projects/$projectId/feedback/mutation-briefs';
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -191,7 +195,7 @@ class FeedbackAnalysisService {
       return _mockListFeedbackAnalysisRuns(projectId, status, limit, offset);
     }
 
-    final url = '/projects/$projectId/feedback/analysis';
+    final url = '$_apiUrl/projects/$projectId/feedback/analysis';
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -223,7 +227,7 @@ class FeedbackAnalysisService {
       return _mockGetFeedbackAnalysis(projectId, runId);
     }
 
-    final url = '/projects/$projectId/feedback/analysis/$runId';
+    final url = '$_apiUrl/projects/$projectId/feedback/analysis/$runId';
 
     try {
       final response = await _dio.get(url);

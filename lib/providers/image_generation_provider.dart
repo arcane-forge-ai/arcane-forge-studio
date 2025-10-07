@@ -39,18 +39,17 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   bool get isA1111ServerReachable => _isA1111ServerReachable;
   
   ImageGenerationProvider(
-    this._settingsProvider, {
-    String? apiBaseUrl,
-    bool useApiService = false,
-  }) : _a1111Service = A1111ImageGenerationService(_settingsProvider) {
+    this._settingsProvider,
+  ) : _a1111Service = A1111ImageGenerationService(_settingsProvider) {
     // Initialize the asset service using the factory
+    // Read API settings from SettingsProvider for dynamic updates
     _assetService = ImageAssetServiceFactory.create(
-      apiBaseUrl: apiBaseUrl,
-      useApiService: useApiService,
+      useApiService: !_settingsProvider.useMockMode, // Use API when NOT in mock mode
+      settingsProvider: _settingsProvider, // Pass provider for dynamic URL reading
     );
     
     // Test API connection if using API service
-    if (useApiService && apiBaseUrl != null && _assetService is ApiImageAssetService) {
+    if (!_settingsProvider.useMockMode && _assetService is ApiImageAssetService) {
       _testApiConnection();
     }
   }
