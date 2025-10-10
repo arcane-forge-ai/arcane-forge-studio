@@ -31,6 +31,14 @@ class ProjectDashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Ensure we start with project home screen when entering a project
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = Provider.of<MenuAppController>(context, listen: false);
+      if (controller.currentScreen != ScreenType.projectHome) {
+        controller.changeScreen(ScreenType.projectHome);
+      }
+    });
+
     return Scaffold(
       key: _scaffoldKey,
       drawer: SideMenu(projectName: projectName),
