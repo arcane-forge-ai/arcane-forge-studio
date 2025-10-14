@@ -14,6 +14,7 @@ abstract class SfxAssetService {
   Future<SfxGeneration> addSfxGeneration(String assetId, SfxGenerationRequest request, {GenerationStatus status = GenerationStatus.pending});
   Future<SfxGeneration> getSfxGeneration(String generationId);
   Future<void> setFavoriteSfxGeneration(String assetId, String generationId);
+  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo);
 }
 
 /// Service factory to create the appropriate SFX asset service
@@ -238,6 +239,27 @@ class ApiSfxAssetService implements SfxAssetService {
       await _dio.put('$_baseUrl/api/v1/sfx-assets/$assetId/favorite/$generationId');
     } catch (e) {
       throw Exception('Failed to set favorite SFX generation: $e');
+    }
+  }
+
+  @override
+  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/$projectId/sfx-assets/generate-prompt',
+        data: {
+          'asset_info': assetInfo,
+          'generator_info': generatorInfo,
+        },
+      );
+      final data = response.data as Map<String, dynamic>;
+      final prompt = data['prompt'] as String?;
+      if (prompt == null || prompt.isEmpty) {
+        throw Exception('Empty prompt received from server');
+      }
+      return prompt;
+    } catch (e) {
+      throw Exception('Failed to generate SFX prompt: $e');
     }
   }
 
@@ -501,6 +523,16 @@ class MockSfxAssetService implements SfxAssetService {
       
       _mockAssets[assetIndex] = _mockAssets[assetIndex].copyWith(generations: updatedGenerations);
     }
+  }
+
+  @override
+  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    final name = (assetInfo['name'] ?? 'sound effect').toString();
+    final duration = (generatorInfo['duration_seconds'] ?? 2.0).toString();
+    final influence = ((generatorInfo['prompt_influence'] ?? 0.5) as num).toDouble();
+    final influencePct = (influence * 100).round();
+    return 'A clean, production-ready $name, ${duration}s, minimal background noise, ${influencePct}% adherence to description, crisp transients, natural decay, game-ready.';
   }
 
   void _generateMockAssets(String projectId) {

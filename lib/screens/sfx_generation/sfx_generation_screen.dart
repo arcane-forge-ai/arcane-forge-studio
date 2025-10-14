@@ -42,6 +42,7 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
   int _currentBatchIndex = 0;
   int _totalBatchCount = 0;
   bool _isBatchGenerating = false;
+  bool _isPromptGenerating = false;
 
   // Providers
   late SfxGenerationProvider sfxGenerationProvider;
@@ -345,6 +346,31 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: ElevatedButton.icon(
+            onPressed: _isPromptGenerating ? null : _generateAutoPrompt,
+            icon: _isPromptGenerating
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Icon(Icons.bolt, color: Colors.white),
+            label: Text(
+              _isPromptGenerating ? 'Generating prompt...' : 'Generate Prompt with AI',
+              style: const TextStyle(color: Colors.white),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         // Prompt
         _buildFormSection(
           'Prompt',
@@ -924,6 +950,59 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
         });
       }
       _showErrorDialog('Failed to generate SFX: ${e.toString()}');
+    }
+  }
+
+  Future<void> _generateAutoPrompt() async {
+    if (_selectedAsset == null) {
+      _showErrorDialog('Please select an asset before generating a prompt');
+      return;
+    }
+
+    setState(() {
+      _isPromptGenerating = true;
+    });
+
+    try {
+      final assetInfo = {
+        'id': _selectedAsset!.id,
+        'name': _selectedAsset!.name,
+        'description': _selectedAsset!.description,
+      };
+
+      final duration = double.tryParse(_durationController.text) ?? 2.0;
+      final generatorInfo = {
+        'name': 'elevenlabs',
+        'duration_seconds': duration,
+        'prompt_influence': _promptInfluence,
+        'negative_prompt': _negativePromptController.text.trim().isEmpty ? null : _negativePromptController.text.trim(),
+      };
+
+      final prompt = await sfxGenerationProvider.generateAutoPrompt(
+        projectId: widget.projectId,
+        assetInfo: assetInfo,
+        generatorInfo: generatorInfo,
+      );
+
+      if (mounted) {
+        setState(() {
+          _promptController.text = prompt;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Prompt generated.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _showErrorDialog('Failed to generate prompt: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPromptGenerating = false;
+        });
+      }
     }
   }
 
