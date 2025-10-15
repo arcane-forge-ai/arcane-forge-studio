@@ -60,7 +60,10 @@ class ProjectDashboardScreen extends StatelessWidget {
                 builder: (context, controller, child) {
                   switch (controller.currentScreen) {
                     case ScreenType.projectHome:
-                      return ProjectHomeScreen(projectId: projectId);
+                      return ProjectHomeScreen(
+                        key: ValueKey('project_home_$projectId'),
+                        projectId: projectId,
+                      );
                     case ScreenType.knowledgeBase:
                       return ChangeNotifierProvider(
                         create: (context) {

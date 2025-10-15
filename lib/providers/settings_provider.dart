@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
+
+import '../models/download_models.dart';
+import '../services/a1111_installer_service.dart';
 import '../utils/app_constants.dart';
 import '../services/settings_persistence_service.dart';
+import 'package:dio/dio.dart';
 
 class SettingsProvider extends ChangeNotifier {
   bool _useMockMode = false; // Default to live API mode
@@ -15,6 +20,15 @@ class SettingsProvider extends ChangeNotifier {
 
   // Image Generation Settings
   ImageGenerationBackend _defaultGenerationServer = ImageGenerationConstants.defaultBackend;
+
+  // A1111 installer state
+  InstallerStatus a1111Status = InstallerStatus.idle;
+  double? a1111Progress; // 0..1 when downloading
+  int? a1111Received;
+  int? a1111Total;
+  String? a1111Error;
+  CancelToken? _a1111CancelToken;
+  final A1111InstallerService _installer = A1111InstallerService();
 
   SettingsProvider() {
     // Initialize late fields with defaults first
@@ -37,6 +51,18 @@ class SettingsProvider extends ChangeNotifier {
 
     // Load settings from storage asynchronously
     _loadSettingsFromStorage();
+    
+    // Check if A1111 is already installed
+    _checkA1111Installation();
+  }
+  
+  Future<void> _checkA1111Installation() async {
+    final packagesDir = Directory('packages');
+    final isInstalled = await _installer.isInstalled(packagesDir);
+    if (isInstalled) {
+      a1111Status = InstallerStatus.completed;
+      notifyListeners();
+    }
   }
 
   /// Asynchronously load settings from storage and update the provider
@@ -246,6 +272,62 @@ class SettingsProvider extends ChangeNotifier {
       _defaultGenerationServer = backend;
       notifyListeners();
     }
+  }
+
+  // A1111 install controls
+  Future<void> startA1111Install({String? urlOverride}) async {
+    if (a1111Status == InstallerStatus.downloading || a1111Status == InstallerStatus.extracting) {
+      return;
+    }
+
+    a1111Status = InstallerStatus.downloading;
+    a1111Progress = 0;
+    a1111Received = 0;
+    a1111Total = null;
+    a1111Error = null;
+    notifyListeners();
+
+    final url = urlOverride ?? ImageGenerationConstants.a1111ZipUrl;
+    final packagesDir = Directory('packages');
+    _a1111CancelToken = CancelToken();
+
+    try {
+      await _installer.downloadAndInstall(
+        url: url,
+        baseDir: packagesDir,
+        cancelToken: _a1111CancelToken,
+        onProgress: (progress) {
+          final oldStatus = a1111Status;
+          
+          // Update state silently (no notifyListeners during download progress)
+          a1111Status = progress.status;
+          a1111Progress = progress.fraction;
+          a1111Received = progress.receivedBytes;
+          a1111Total = progress.totalBytes;
+          a1111Error = progress.message;
+          
+          // Only notify on actual status changes (downloading -> extracting -> completed/error)
+          // Settings screen will poll for progress updates when active
+          if (oldStatus != a1111Status) {
+            notifyListeners();
+          }
+        },
+      );
+
+      if (a1111Status == InstallerStatus.completed) {
+        setWorkingDirectory(ImageGenerationBackend.automatic1111, 'packages/automatic1111/');
+      }
+    } catch (e) {
+      a1111Status = InstallerStatus.error;
+      a1111Error = e.toString();
+      notifyListeners();
+    } finally {
+      _a1111CancelToken = null;
+    }
+  }
+
+  void cancelA1111Install() {
+    _a1111CancelToken?.cancel('User cancelled');
   }
 
   // Auto-save version of setDefaultGenerationServer

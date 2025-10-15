@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../utils/app_constants.dart';
+import '../../models/download_models.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -30,6 +32,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   
   bool _hasUnsavedChanges = false;
   bool _hasInitialized = false;
+  bool _a1111SnackShown = false;
+  Timer? _progressPollTimer;
 
   /// Check if we're in development mode
   bool get _isDevelopmentMode {
@@ -41,6 +45,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     // Initialize will happen in build method after provider is available
+    
+    // Start polling timer for A1111 download progress updates
+    // Only updates UI when downloading is active
+    _progressPollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        final provider = Provider.of<SettingsProvider>(context, listen: false);
+        if (provider.a1111Status == InstallerStatus.downloading) {
+          setState(() {}); // Trigger rebuild to show updated progress
+        }
+      }
+    });
   }
 
   void _initializeFromProvider(SettingsProvider settingsProvider) {
@@ -80,6 +95,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    // Cancel polling timer
+    _progressPollTimer?.cancel();
+    
     // Dispose controllers
     _apiBaseUrlController.dispose();
     for (final controller in _commandControllers.values) {
@@ -617,6 +635,158 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (backend == ImageGenerationBackend.automatic1111)
+                  Consumer<SettingsProvider>(
+                    builder: (context, sp, _) {
+                      // Show success snackbar once
+                      if (sp.a1111Status == InstallerStatus.completed && !_a1111SnackShown) {
+                        _a1111SnackShown = true;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('A1111 installed successfully'),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 3),
+                            ),
+                          );
+                        });
+                      }
+
+                      Widget content;
+                      switch (sp.a1111Status) {
+                        case InstallerStatus.downloading:
+                          final percent = sp.a1111Progress != null
+                              ? (sp.a1111Progress! * 100).clamp(0, 100).toStringAsFixed(0)
+                              : null;
+                          content = Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.download, color: colorScheme.primary),
+                                  const SizedBox(width: 8),
+                                  const Text('Downloading A1111 from Supabase'),
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: sp.cancelA1111Install,
+                                    child: const Text('Cancel'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              LinearProgressIndicator(value: sp.a1111Progress),
+                              const SizedBox(height: 8),
+                              Text(
+                                percent != null
+                                    ? '$percent%'
+                                    : 'Downloading...',
+                                style: TextStyle(color: colorScheme.primary),
+                              ),
+                            ],
+                          );
+                          break;
+                        case InstallerStatus.extracting:
+                          content = Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.archive_outlined, color: colorScheme.primary),
+                                  const SizedBox(width: 8),
+                                  const Text('Extracting A1111...'),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              const LinearProgressIndicator(),
+                            ],
+                          );
+                          break;
+                        case InstallerStatus.completed:
+                          content = Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.check_circle, color: Colors.green),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text('A1111 is installed'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Location: ./packages/automatic1111/',
+                                style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
+                              ),
+                            ],
+                          );
+                          break;
+                        case InstallerStatus.error:
+                          content = Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.error, color: Colors.red),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text('Installation failed'),
+                                  ),
+                                  ElevatedButton.icon(
+                                    onPressed: () => sp.startA1111Install(),
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('Retry'),
+                                  ),
+                                ],
+                              ),
+                              if (sp.a1111Error != null) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Error: ${sp.a1111Error}',
+                                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                                ),
+                              ],
+                            ],
+                          );
+                          break;
+                        case InstallerStatus.idle:
+                          content = Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.cloud_download, color: colorScheme.primary),
+                                  const SizedBox(width: 8),
+                                  const Expanded(
+                                    child: Text('Download and install Automatic1111 from Supabase'),
+                                  ),
+                                  ElevatedButton.icon(
+                                    onPressed: () => sp.startA1111Install(),
+                                    icon: const Icon(Icons.download),
+                                    label: const Text('Download'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Downloads to ./packages/, installs to ./packages/automatic1111/',
+                                style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
+                              ),
+                            ],
+                          );
+                      }
+
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: content,
+                        ),
+                      );
+                    },
+                  ),
+                if (backend == ImageGenerationBackend.automatic1111)
+                  const SizedBox(height: 16),
                 // Start Command
                 Text(
                   'Start Command',
