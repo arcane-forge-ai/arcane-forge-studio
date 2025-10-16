@@ -79,9 +79,9 @@ Create `_askAIForModelRecommendation()` method:
 - Check if asset is selected (show warning if not)
 - Open chat panel if not already open
 - Auto-generate and send message with:
-  - Asset details (name, description)
-  - Current setup (model, dimensions, prompts)
-  - Request for model/LoRA recommendations and prompt suggestions
+- Asset details (name, description)
+- Current setup (model, dimensions, prompts)
+- Request for model/LoRA recommendations and prompt suggestions
 
 ### 5. Implement Chat Message Sending
 
@@ -128,11 +128,11 @@ Update layout to prevent overflow:
 ### 8. Styling and UX
 
 - Bottom panel (not modal):
-  - Fixed 400px height
-  - Spans full width below all columns
-  - Top border separator
-  - Close button (X) to hide panel
-  - "New Discussion" button to start fresh session
+- Fixed 400px height
+- Spans full width below all columns
+- Top border separator
+- Close button (X) to hide panel
+- "New Discussion" button to start fresh session
 - Message styling consistent with game_design_assistant_screen.dart
 - Loading indicator while AI responds
 - Input field with "Ask about your image generation..." hint
