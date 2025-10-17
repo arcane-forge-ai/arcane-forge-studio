@@ -52,3 +52,7 @@ app.*.map.json
 
 # Arcane Forge Output
 output/
+
+# Downloaded Packages
+packages/*
+!packages/.keep

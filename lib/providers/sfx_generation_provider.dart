@@ -136,6 +136,19 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
     }
   }
 
+  /// Generate an optimized prompt for SFX generation
+  Future<String> generateAutoPrompt({
+    required String projectId,
+    required Map<String, dynamic> assetInfo,
+    required Map<String, dynamic> generatorInfo,
+  }) async {
+    try {
+      return await _assetService.generateAutoPrompt(projectId, assetInfo, generatorInfo);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   // Asset Selection
   void selectAsset(SfxAsset? asset) {
     _selectedAsset = asset;

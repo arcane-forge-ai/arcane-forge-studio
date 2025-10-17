@@ -50,12 +50,14 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
 
       final project = await _apiService.getProjectById(projectId);
 
+      if (!mounted) return;
       setState(() {
         _project = project;
         _introductionController.text = project.gameIntroduction ?? '';
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;
@@ -85,6 +87,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                     updatedIntroduction.isEmpty ? null : updatedIntroduction,
               );
 
+              if (!mounted) return;
               setState(() {
                 _project = _project?.copyWith(
                   gameIntroduction:
@@ -96,6 +99,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
 
               _showSnackBar('Game introduction updated successfully');
             } catch (e) {
+              if (!mounted) return;
               setState(() => _isSaving = false);
               _showSnackBar('Failed to update introduction: ${e.toString()}');
             }

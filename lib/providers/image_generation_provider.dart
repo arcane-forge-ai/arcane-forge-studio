@@ -135,6 +135,25 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
     }
     return null;
   }
+
+  /// Generate an optimized prompt for the current project/image asset
+  Future<String> generateAutoPrompt({
+    required Map<String, dynamic> assetInfo,
+    required Map<String, dynamic> generatorInfo,
+  }) async {
+    if (_currentProjectId == null) {
+      throw Exception('No project selected');
+    }
+    try {
+      return await _assetService.generateAutoPrompt(
+        _currentProjectId!,
+        assetInfo,
+        generatorInfo,
+      );
+    } catch (e) {
+      rethrow;
+    }
+  }
   
   /// Get project tags (API only)
   Future<List<Map<String, dynamic>>?> getProjectTags() async {

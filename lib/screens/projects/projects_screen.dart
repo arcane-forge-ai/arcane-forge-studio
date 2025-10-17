@@ -107,6 +107,61 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     }
   }
 
+  Future<void> _editProject(Project project) async {
+    // Clear focus to prevent keyboard issues
+    FocusScope.of(context).unfocus();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => _EditProjectDialog(project: project),
+    );
+
+    if (result != null) {
+      try {
+        setState(() {
+          _isLoading = true;
+        });
+
+        final updatedProject = await _getProjectsApiService().updateProject(
+          projectId: project.id,
+          name: result['name'],
+          description: result['description'],
+        );
+
+        setState(() {
+          // Update the project in the local list
+          final index = _projects.indexWhere((p) => p.id == project.id);
+          if (index != -1) {
+            _projects[index] = updatedProject;
+          }
+          _isLoading = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Project "${updatedProject.name}" updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update project: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _deleteProject(Project project) async {
     // Clear focus to prevent keyboard issues
     FocusScope.of(context).unfocus();
@@ -381,7 +436,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   }
 
   Widget _buildProjectCard(Project project) {
-    final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
@@ -424,17 +478,29 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    PopupMenuButton<String>(
+                      PopupMenuButton<String>(
                       icon: Icon(
                         Icons.more_vert,
                         color: isDark ? Colors.white70 : Colors.black54,
                       ),
                       onSelected: (value) {
-                        if (value == 'delete') {
+                        if (value == 'edit') {
+                          _editProject(project);
+                        } else if (value == 'delete') {
                           _deleteProject(project);
                         }
                       },
                       itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit),
+                              SizedBox(width: 8),
+                              Text('Edit Project'),
+                            ],
+                          ),
+                        ),
                         const PopupMenuItem(
                           value: 'delete',
                           child: Row(
@@ -500,19 +566,93 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
+}
 
-    if (difference.inDays == 0) {
-      return 'Today';
-    } else if (difference.inDays == 1) {
-      return 'Yesterday';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return '${date.day}/${date.month}/${date.year}';
-    }
+class _EditProjectDialog extends StatefulWidget {
+  final Project project;
+
+  const _EditProjectDialog({required this.project});
+
+  @override
+  State<_EditProjectDialog> createState() => _EditProjectDialogState();
+}
+
+class _EditProjectDialogState extends State<_EditProjectDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final _nameController = TextEditingController(text: widget.project.name);
+  late final _descriptionController = TextEditingController(text: widget.project.description);
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Project'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: 'Project Name',
+                hintText: 'Enter project name',
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter a project name';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description',
+                hintText: 'Enter project description',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter a description';
+                }
+                return null;
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            Navigator.of(context).pop();
+          },
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (_formKey.currentState!.validate()) {
+              FocusScope.of(context).unfocus();
+              Navigator.of(context).pop({
+                'name': _nameController.text.trim(),
+                'description': _descriptionController.text.trim(),
+              });
+            }
+          },
+          child: const Text('Update'),
+        ),
+      ],
+    );
   }
 }
 
