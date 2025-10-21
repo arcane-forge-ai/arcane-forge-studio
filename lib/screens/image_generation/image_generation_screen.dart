@@ -10,6 +10,16 @@ import 'dart:io';
 
 import 'widgets/image_detail_dialog.dart';
 
+// Chat UI imports
+import 'package:flutter_gen_ai_chat_ui/flutter_gen_ai_chat_ui.dart';
+import 'package:uuid/uuid.dart';
+import 'package:dio/dio.dart';
+import '../game_design_assistant/services/chat_api_service.dart';
+import '../game_design_assistant/models/api_models.dart';
+import '../../providers/settings_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../utils/app_constants.dart' as app_utils;
+
 class ImageGenerationScreen extends StatefulWidget {
   final String projectId;
   final String projectName;
@@ -2003,6 +2013,560 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
         ),
       );
     });
+  }
+
+  void _showAssetMetadataDialog(ImageAsset asset) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Container(
+          width: 500,
+          constraints: const BoxConstraints(maxHeight: 600),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.blue, size: 24),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Asset Metadata',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Icon(Icons.close, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildMetadataSection('Basic Information', [
+                        _buildMetadataRow('Name', asset.name),
+                        _buildMetadataRow('Description', asset.description.isEmpty ? 'No description' : asset.description),
+                        _buildMetadataRow('Asset ID', asset.id),
+                        _buildMetadataRow('Project ID', asset.projectId),
+                      ]),
+                      const SizedBox(height: 20),
+                      _buildMetadataSection('Statistics', [
+                        _buildMetadataRow('Total Generations', asset.generations.length.toString()),
+                        if (asset.favoriteGenerationId != null)
+                          _buildMetadataRow('Favorite Generation ID', asset.favoriteGenerationId!),
+                        _buildMetadataRow('Has Thumbnail', asset.thumbnail != null && asset.thumbnail!.isNotEmpty ? 'Yes' : 'No'),
+                      ]),
+                      const SizedBox(height: 20),
+                      _buildMetadataSection('Timestamps', [
+                        _buildMetadataRow('Created At', _formatDetailedDateTime(asset.createdAt)),
+                      ]),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetadataSection(String title, List<Widget> rows) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isDark ? const Color(0xFF404040) : Colors.grey.shade300),
+          ),
+          child: Column(
+            children: rows,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetadataRow(String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: isDark ? const Color(0xFF404040) : Colors.grey.shade300, width: 0.5),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: () => _copyToClipboard(value, label),
+            icon: const Icon(Icons.copy, color: Colors.blue, size: 16),
+            tooltip: 'Copy $label',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied to clipboard'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  String _formatDetailedDateTime(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} at ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildDiscussWithAIButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton.icon(
+        onPressed: _openChatPanel,
+        icon: const Icon(Icons.chat, color: Colors.white),
+        label: const Text(
+          'Discuss with AI',
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.deepPurple,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openChatPanel() {
+    // Check if we have an existing session with messages
+    final hasExistingSession = _currentChatSessionId != null && 
+                                _chatController.messages.isNotEmpty;
+    
+    if (!hasExistingSession) {
+      // Create new session only if no previous session exists
+      _startNewChatSession();
+    }
+    
+    // Toggle chat panel visibility
+    setState(() {
+      _showChatPanel = true;
+    });
+  }
+
+  void _startNewChatSession() {
+    // Generate session ID with asset name and timestamp
+    final now = DateTime.now();
+    final timestamp = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}-${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}-${now.second.toString().padLeft(2, '0')}';
+    final assetName = _selectedAsset?.name ?? 'image-gen';
+    final sessionId = '$assetName-$timestamp';
+    
+    setState(() {
+      _currentChatSessionId = sessionId;
+      _chatController.clearMessages();
+    });
+    
+    // Add initial AI greeting
+    final greetingMessage = ChatMessage(
+      text: 'Hello! I\'m here to help you with your image generation. What are you looking for? Any comments on existing generations and setup?',
+      user: _aiUser,
+      createdAt: DateTime.now(),
+      isMarkdown: true,
+    );
+    _chatController.addMessage(greetingMessage);
+  }
+
+  void _askAIForModelRecommendation() {
+    // Check if we have an asset selected
+    if (_selectedAsset == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select an asset first to get model recommendations'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Open chat panel if not already open, or start new session if it is
+    if (!_showChatPanel) {
+      // First time or panel was closed - start new session
+      _startNewChatSession();
+      setState(() {
+        _showChatPanel = true;
+      });
+    }
+
+    // Create the recommendation request message
+    final assetInfo = '''
+I need help choosing the best model and LoRAs for my image generation.
+
+Asset Details:
+- Name: ${_selectedAsset!.name}
+- Description: ${_selectedAsset!.description.isNotEmpty ? _selectedAsset!.description : 'No description provided'}
+
+Current Setup:
+- Selected Model: $_selectedModel
+- Dimensions: ${_widthController.text}x${_heightController.text}
+- Current Positive Prompt: ${_positivePromptController.text.isNotEmpty ? _positivePromptController.text : 'None yet'}
+
+Please recommend:
+1. Which model would work best for this asset?
+2. What LoRAs would enhance the generation?
+3. Any prompt suggestions to improve the results?
+''';
+
+    // Create user message
+    final userMessage = ChatMessage(
+      text: assetInfo,
+      user: _currentUser,
+      createdAt: DateTime.now(),
+    );
+
+    // Send the message automatically
+    _sendChatMessage(userMessage);
+  }
+
+  Widget _buildChatPanel() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      height: 400, // Fixed height for the bottom panel
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2A2A2A) : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+            width: 2,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.chat_bubble_outline,
+                  color: colorScheme.primary,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'AI Chat Assistant',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      if (_selectedAsset != null)
+                        Text(
+                          'Asset: ${_selectedAsset!.name}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isDark ? Colors.white70 : Colors.black54,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                // New Discussion button
+                ElevatedButton.icon(
+                  onPressed: _startNewChatSession,
+                  icon: const Icon(Icons.add_comment, size: 16, color: Colors.white),
+                  label: const Text(
+                    'New Discussion',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: const Size(0, 32),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _showChatPanel = false;
+                    });
+                  },
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Close Chat Panel',
+                ),
+              ],
+            ),
+          ),
+          
+          // Chat content
+          Expanded(
+            child: AiChatWidget(
+              currentUser: _currentUser,
+              aiUser: _aiUser,
+              controller: _chatController,
+              onSendMessage: _sendChatMessage,
+              scrollController: _chatScrollController,
+
+              // Message styling
+              messageOptions: MessageOptions(
+                bubbleStyle: BubbleStyle(
+                  userBubbleColor: colorScheme.primary,
+                  aiBubbleColor: colorScheme.surfaceContainerHighest,
+                  userNameColor: Colors.white,
+                  aiNameColor: colorScheme.onSurface,
+                  userBubbleTopLeftRadius: 16,
+                  userBubbleTopRightRadius: 4,
+                  aiBubbleTopLeftRadius: 4,
+                  aiBubbleTopRightRadius: 16,
+                  bottomLeftRadius: 16,
+                  bottomRightRadius: 16,
+                ),
+                showUserName: true,
+                showTime: true,
+                timeFormat: (dateTime) =>
+                    '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
+              ),
+
+              // Loading configuration
+              loadingConfig: LoadingConfig(
+                isLoading: _isChatGenerating,
+                typingIndicatorColor: colorScheme.primary,
+              ),
+
+              // Input customization
+              inputOptions: InputOptions(
+                decoration: InputDecoration(
+                  hintText: 'Ask about your image generation...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  filled: true,
+                  fillColor: isDark 
+                      ? Colors.grey[800] 
+                      : Colors.grey[100],
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+                textStyle: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+                sendButtonIcon: Icons.send_rounded,
+                sendButtonColor: colorScheme.primary,
+              ),
+
+              // Animation settings
+              enableAnimation: true,
+              enableMarkdownStreaming: true,
+              streamingDuration: const Duration(milliseconds: 30),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendChatMessage(ChatMessage message) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Add user message to chat
+    _chatController.addMessage(message);
+    
+    // Gather current generation parameters as context
+    final contextData = {
+      'asset': {
+        'name': _selectedAsset?.name ?? 'None selected',
+        'description': _selectedAsset?.description ?? '',
+      },
+      'model': _selectedModel,
+      'dimensions': {
+        'width': _widthController.text,
+        'height': _heightController.text,
+      },
+      'quality_settings': {
+        'sampler': _selectedSampler,
+        'scheduler': _selectedScheduler,
+        'steps': _stepsController.text,
+        'cfg_scale': _cfgController.text,
+      },
+      'seed': {
+        'value': _seedController.text,
+        'locked': _isSeedLocked,
+      },
+      'batch_count': _batchCountController.text,
+      'prompts': {
+        'positive': _positivePromptController.text,
+        'negative': _negativePromptController.text,
+      },
+    };
+    
+    // Format context as readable text
+    final contextString = '''
+
+Current Image Generation Setup:
+${const JsonEncoder.withIndent('  ').convert(contextData)}''';
+    
+    // Combine user message with context
+    final fullMessage = message.text + contextString;
+    
+    // Get project ID and user ID
+    int? projectId = int.tryParse(widget.projectId);
+    String? userId;
+    final authUserId = authProvider.userId;
+    if (authUserId.isNotEmpty && authUserId != app_utils.AppConstants.visitorUserId) {
+      userId = authUserId;
+    }
+    
+    // Generate unique ID for the AI message
+    final messageId = _uuid.v4();
+    
+    // Create AI message for the UI
+    final aiMessage = ChatMessage(
+      text: '', // Start with empty text for streaming
+      user: _aiUser,
+      createdAt: DateTime.now(),
+      customProperties: {'id': messageId},
+    );
+
+    // Add empty AI message to chat for the response
+    _chatController.addMessage(aiMessage);
+
+    // Update state
+    setState(() {
+      _isChatGenerating = true;
+    });
+
+    try {
+      // Create chat request
+      final request = ChatRequest(
+        message: fullMessage,
+        projectId: projectId,
+        userId: userId,
+        sessionId: _currentChatSessionId,
+        title: _currentChatSessionId, // Use session ID as title
+      );
+
+      // Send message to API
+      final response = await _chatApiService.sendChatMessage(request);
+      String fullResponse = response.content;
+      
+      // Update the message with the complete response
+      final updatedMessage = aiMessage.copyWith(text: fullResponse, isMarkdown: true);
+      _chatController.updateMessage(updatedMessage);
+
+    } catch (e) {
+      print('Chat Error: $e');
+      if (e is DioException) {
+        print('DioException details:');
+        print('  - Status code: ${e.response?.statusCode}');
+        print('  - Response data: ${e.response?.data}');
+      }
+      
+      final errorMessage = 'Sorry, I encountered an error: ${e.toString()}';
+      final updatedMessage = aiMessage.copyWith(text: errorMessage);
+      _chatController.updateMessage(updatedMessage);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sending message: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      // Reset generating state
+      if (mounted) {
+        setState(() {
+          _isChatGenerating = false;
+        });
+      }
+    }
   }
 
   @override

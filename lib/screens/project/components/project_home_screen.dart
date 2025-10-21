@@ -5,6 +5,9 @@ import '../../game_design_assistant/models/project_model.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../constants.dart';
+import '../../../models/project_overview_models.dart';
+import '../../../widgets/project_flow_chart.dart';
+import '../../../controllers/menu_app_controller.dart';
 
 class ProjectHomeScreen extends StatefulWidget {
   final String projectId;
@@ -21,6 +24,7 @@ class ProjectHomeScreen extends StatefulWidget {
 class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
   late ProjectsApiService _apiService;
   Project? _project;
+  ProjectOverviewResponse? _overview;
   bool _isLoading = true;
   String? _errorMessage;
   bool _isSaving = false;
@@ -48,10 +52,13 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
         throw Exception('Invalid project ID: ${widget.projectId}');
       }
 
+      // Load both project details and overview
       final project = await _apiService.getProjectById(projectId);
+      final overview = await _apiService.getProjectOverview(projectId);
 
       setState(() {
         _project = project;
+        _overview = overview;
         _introductionController.text = project.gameIntroduction ?? '';
         _isLoading = false;
       });
@@ -68,6 +75,11 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  void _navigateToScreen(ScreenType screenType) {
+    Provider.of<MenuAppController>(context, listen: false)
+        .changeScreen(screenType);
   }
 
   void _openGameIntroductionEditor() {
@@ -312,6 +324,15 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
 
           // Game Introduction Card (moved to bottom)
           _buildGameIntroductionCard(),
+
+          // Project Flow Chart
+          if (_overview != null) ...[
+            const SizedBox(height: defaultPadding),
+            ProjectFlowChart(
+              overview: _overview!,
+              onNodeTap: _navigateToScreen,
+            ),
+          ],
         ],
       ),
     );

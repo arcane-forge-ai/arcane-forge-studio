@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen_ai_chat_ui/flutter_gen_ai_chat_ui.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
@@ -270,9 +269,9 @@ Ask me anything about game design, or try one of the example questions below!
       createdAt: DateTime.now(),
     );
     
-    // Send the message with custom title and RAG agent
+    // Send the message with custom title
     final sessionTitle = 'Feedback Discussion: $topic';
-    await _sendMessageWithTitle(userMessage, sessionTitle, agentType: 'rag');
+    await _sendMessageWithTitle(userMessage, sessionTitle);
   }
 
   /// Send a message with custom session title
@@ -472,6 +471,7 @@ Ask me anything about game design, or try one of the example questions below!
         userId: userId, // Only included if available
         knowledgeBaseName: projectProvider.knowledgeBaseName,
         sessionId: _currentSessionId, // Use current session ID for this conversation (may be null for first message)
+        agentType: 'rag', // Use RAG agent for regular chat messages
         extraConfig: {
           'message_history': appMessages.take(appMessages.length - 1).map((m) => {
             'role': m.role,
@@ -1286,25 +1286,6 @@ Ask me anything about game design, or try one of the example questions below!
                         showTime: true,
                         timeFormat: (dateTime) =>
                             '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
-                        markdownStyleSheet: MarkdownStyleSheet(
-                          p: TextStyle(
-                            fontSize: 15,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                          code: TextStyle(
-                            fontFamily: 'monospace',
-                            backgroundColor: isDark
-                                ? Colors.black.withOpacity(0.3)
-                                : Colors.grey.withOpacity(0.2),
-                          ),
-                          codeblockDecoration: BoxDecoration(
-                            color: isDark
-                                ? Colors.grey[800]
-                                : Colors.grey[100],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          codeblockPadding: const EdgeInsets.all(12),
-                        ),
                       ),
 
                       // Loading configuration

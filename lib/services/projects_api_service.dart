@@ -4,6 +4,7 @@ import '../screens/game_design_assistant/models/project_model.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/app_constants.dart';
+import '../models/project_overview_models.dart';
 
 class ProjectsApiService {
   // Get default configuration from environment variables or constants
@@ -120,6 +121,29 @@ class ProjectsApiService {
       print('Request URL: $url');
       print('Headers: ${_dio.options.headers}');
       // Re-throw the exception to let the UI handle it properly
+      rethrow;
+    }
+  }
+
+  Future<ProjectOverviewResponse> getProjectOverview(int projectId) async {
+    if (_useMockMode) {
+      return _mockGetProjectOverview(projectId);
+    }
+
+    final url = '$baseUrl/api/v1/projects/$projectId/overview';
+
+    try {
+      final response = await _dio.get(url);
+
+      if (response.statusCode == 200) {
+        return ProjectOverviewResponse.fromJson(response.data);
+      } else {
+        throw Exception('Failed to load project overview: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Project Overview API Error: $e');
+      print('Request URL: $url');
+      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -317,6 +341,33 @@ class ProjectsApiService {
       gameFeedbackUrl: gameFeedbackUrl,
       gameIntroduction: gameIntroduction,
       codeMapUrl: codeMapUrl,
+    );
+  }
+
+  ProjectOverviewResponse _mockGetProjectOverview(int projectId) {
+    // Return mock data showing all three status types for testing
+    return ProjectOverviewResponse(
+      projectId: projectId,
+      gameDesign: GameDesignOverview(conversationCount: 5),
+      imageAssets: AssetCategoryOverview(
+        totalAssets: 15,
+        assetsWithGenerations: 14,
+        assetsWithFavorite: 14,
+      ),
+      sfxAssets: AssetCategoryOverview(
+        totalAssets: 7,
+        assetsWithGenerations: 7,
+        assetsWithFavorite: 7,
+      ),
+      musicAssets: AssetCategoryOverview(
+        totalAssets: 0,
+        assetsWithGenerations: 0,
+        assetsWithFavorite: 0,
+      ),
+      code: CodeOverview(hasCodeMap: true),
+      release: ReleaseOverview(hasGameLink: true),
+      analytics: AnalyticsOverview(analysisRunsCount: 3),
+      knowledgeBase: KnowledgeBaseOverview(fileCount: 4),
     );
   }
 }
