@@ -21,6 +21,7 @@ abstract class ImageAssetService {
   Future<ImageGeneration> updateGeneration(ImageGeneration generation);
   Future<ImageGeneration> getGeneration(String generationId);
   Future<Map<String, dynamic>> uploadGenerationImage(String generationId, Uint8List imageData, String filename);
+  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo);
 }
 
 abstract class ModelService {
@@ -390,6 +391,27 @@ class ApiImageAssetService implements ImageAssetService {
     }
   }
 
+  @override
+  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo) async {
+    try {
+      final response = await _dio.post(
+        '$_baseUrl/api/v1/$projectId/assets/generate-prompt',
+        data: {
+          'asset_info': assetInfo,
+          'generator_info': generatorInfo,
+        },
+      );
+      final data = response.data as Map<String, dynamic>;
+      final prompt = data['prompt'] as String?;
+      if (prompt == null || prompt.isEmpty) {
+        throw Exception('Empty prompt received from server');
+      }
+      return prompt;
+    } catch (e) {
+      throw Exception('Failed to generate image prompt: $e');
+    }
+  }
+
   /// Complete generation workflow: create generation, upload image, update status
   Future<ImageGeneration> completeGenerationWorkflow(
     String assetId,
@@ -722,6 +744,18 @@ class MockImageAssetService implements ImageAssetService {
       'file_size': imageData.length,
       'format': 'png',
     };
+  }
+
+  @override
+  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo) async {
+    await Future.delayed(Duration(milliseconds: 300));
+    final name = (assetInfo['name'] ?? 'game asset').toString();
+    final model = (generatorInfo['model'] ?? generatorInfo['checkpoint'] ?? 'a quality model').toString();
+    final width = generatorInfo['width'] ?? 512;
+    final height = generatorInfo['height'] ?? 512;
+    return 'Highly detailed concept art of ' 
+      '$name, cinematic lighting, intricate details, sharp focus, ' 
+      'rendered with $model, ${width}x${height}, masterpiece, trending on artstation.';
   }
 
   void _generateMockAssets(String projectId) {

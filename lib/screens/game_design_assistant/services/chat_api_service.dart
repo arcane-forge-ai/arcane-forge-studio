@@ -23,12 +23,13 @@ class ChatApiService {
   final Dio _dio;
   WebSocketChannel? _wsChannel;
 
-  ChatApiService({SettingsProvider? settingsProvider}) 
+  ChatApiService({SettingsProvider? settingsProvider})
       : _settingsProvider = settingsProvider,
         _dio = Dio() {
     _dio.options.headers['Content-Type'] = 'application/json';
     _dio.options.connectTimeout = const Duration(seconds: 10);
     _dio.options.receiveTimeout = const Duration(seconds: 30);
+    _dio.options.baseUrl = _apiUrl;
   }
 
   /// Get current mock mode setting
@@ -143,7 +144,7 @@ class ChatApiService {
       print('Knowledge Base API Error: $e');
       print('Request URL: $url');
       print('Headers: ${_dio.options.headers}');
-      return _mockKnowledgeBaseFiles();
+      rethrow;
     }
   }
 
@@ -170,7 +171,7 @@ class ChatApiService {
       print('File Path: $filePath');
       print('File Name: $fileName');
       print('Headers: ${_dio.options.headers}');
-      return false;
+      rethrow;
     }
   }
 
@@ -190,7 +191,7 @@ class ChatApiService {
       print('File Delete Error: $e');
       print('Request URL: $url');
       print('Headers: ${_dio.options.headers}');
-      return false;
+      rethrow;
     }
   }
 
@@ -216,7 +217,7 @@ class ChatApiService {
       print('File Download URL Error: $e');
       print('Request URL: $url');
       print('Headers: ${_dio.options.headers}');
-      return null;
+      rethrow;
     }
   }
 
@@ -261,7 +262,7 @@ class ChatApiService {
       print('Request URL: $url');
       print('Request Body: $requestBody');
       print('Headers: ${_dio.options.headers}');
-      return _mockCreateChatSession(projectId, userId, sessionId: sessionId);
+      rethrow;
     }
   }
 

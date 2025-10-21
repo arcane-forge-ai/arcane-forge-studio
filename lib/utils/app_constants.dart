@@ -87,6 +87,9 @@ class ImageGenerationConstants {
     {'width': 1024, 'height': 768},
     {'width': 768, 'height': 1024},
   ];
+
+  /// Supabase-hosted A1111 zip URL (update when final .zip link is provided)
+  static const String a1111ZipUrl = 'https://wdoiouwzfutdtmdsdgkr.supabase.co/storage/v1/object/public/arcane-forge-resources/sd-webui-aki-v4.8.zip';
 }
 
 /// Date formatting utilities

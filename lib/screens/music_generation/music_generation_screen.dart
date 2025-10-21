@@ -39,6 +39,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
   int _currentBatchIndex = 0;
   int _totalBatchCount = 0;
   bool _isBatchGenerating = false;
+  bool _isPromptGenerating = false;
 
   // Providers
   late MusicGenerationProvider musicGenerationProvider;
@@ -265,6 +266,23 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
               label:
                   const Text('New Asset', style: TextStyle(color: Colors.purple)),
             ),
+            if (_selectedAsset != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => _showAssetMetadataDialog(_selectedAsset!),
+                icon: const Icon(Icons.info_outline, color: Colors.purple, size: 20),
+                tooltip: 'View Asset Metadata',
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFF2A2A2A),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: const BorderSide(color: Color(0xFF404040)),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),
@@ -315,6 +333,31 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: ElevatedButton.icon(
+            onPressed: _isPromptGenerating ? null : _generateAutoPrompt,
+            icon: _isPromptGenerating
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Icon(Icons.bolt, color: Colors.white),
+            label: Text(
+              _isPromptGenerating ? 'Generating prompt...' : 'Generate Prompt with AI',
+              style: const TextStyle(color: Colors.white),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         // Prompt
         _buildFormSection(
           'Prompt',
@@ -749,6 +792,57 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
     return '${dateTime.day}/${dateTime.month} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _generateAutoPrompt() async {
+    if (_selectedAsset == null) {
+      _showErrorDialog('Please select an asset before generating a prompt');
+      return;
+    }
+
+    setState(() {
+      _isPromptGenerating = true;
+    });
+
+    try {
+      final assetInfo = {
+        'id': _selectedAsset!.id,
+        'name': _selectedAsset!.name,
+        'description': _selectedAsset!.description,
+      };
+
+      final durationSeconds = int.tryParse(_durationController.text) ?? 30;
+      final generatorInfo = {
+        'name': 'elevenlabs',
+        'music_length_ms': durationSeconds * 1000,
+      };
+
+      final prompt = await musicGenerationProvider.generateAutoPrompt(
+        projectId: widget.projectId,
+        assetInfo: assetInfo,
+        generatorInfo: generatorInfo,
+      );
+
+      if (mounted) {
+        setState(() {
+          _promptController.text = prompt;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Prompt generated.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _showErrorDialog('Failed to generate prompt: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPromptGenerating = false;
+        });
+      }
+    }
+  }
+
   void _generateMusic() async {
     if (_promptController.text.trim().isEmpty) {
       _showErrorDialog('Please enter a prompt');
@@ -970,6 +1064,188 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
 
     // Refresh the selected asset generations after dialog closes
     await _refreshSelectedAssetGenerations();
+  }
+
+  void _showAssetMetadataDialog(MusicAsset asset) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Container(
+          width: 500,
+          constraints: const BoxConstraints(maxHeight: 600),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.purple, size: 24),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Asset Metadata',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white54),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildMetadataSection('Basic Information', [
+                        _buildMetadataRow('Name', asset.name),
+                        _buildMetadataRow('Description', asset.description.isEmpty ? 'No description' : asset.description),
+                        _buildMetadataRow('Asset ID', asset.id),
+                        _buildMetadataRow('Project ID', asset.projectId),
+                      ]),
+                      const SizedBox(height: 20),
+                      _buildMetadataSection('Statistics', [
+                        _buildMetadataRow('Total Generations', asset.totalGenerations.toString()),
+                        _buildMetadataRow('Active Generations', asset.generations.length.toString()),
+                        if (asset.favoriteGenerationId != null)
+                          _buildMetadataRow('Favorite Generation ID', asset.favoriteGenerationId!),
+                        if (asset.fileSize != null)
+                          _buildMetadataRow('File Size', '${(asset.fileSize! / 1024).toStringAsFixed(2)} KB'),
+                      ]),
+                      const SizedBox(height: 20),
+                      _buildMetadataSection('Timestamps', [
+                        _buildMetadataRow('Created At', _formatDetailedDateTime(asset.createdAt)),
+                        _buildMetadataRow('Updated At', _formatDetailedDateTime(asset.updatedAt)),
+                      ]),
+                      if (asset.tags.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _buildMetadataSection('Tags', [
+                          _buildMetadataRow('Tags', asset.tags.join(', ')),
+                        ]),
+                      ],
+                      if (asset.metadata.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _buildMetadataSection('Custom Metadata',
+                          asset.metadata.entries.map((entry) =>
+                            _buildMetadataRow(entry.key, entry.value.toString())
+                          ).toList(),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetadataSection(String title, List<Widget> rows) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF404040)),
+          ),
+          child: Column(
+            children: rows,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetadataRow(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: Color(0xFF404040), width: 0.5),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: () => _copyToClipboard(value, label),
+            icon: const Icon(Icons.copy, color: Colors.purple, size: 16),
+            tooltip: 'Copy $label',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied to clipboard'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  String _formatDetailedDateTime(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} at ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
   }
 }
 

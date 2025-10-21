@@ -7,11 +7,13 @@ import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../services/comfyui_service.dart';
 import 'dart:io';
+import 'dart:convert';
 
 import 'widgets/image_detail_dialog.dart';
 
 // Chat UI imports
 import 'package:flutter_gen_ai_chat_ui/flutter_gen_ai_chat_ui.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:uuid/uuid.dart';
 import 'package:dio/dio.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
@@ -69,6 +71,29 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   int _currentBatchIndex = 0;
   int _totalBatchCount = 0;
   bool _isBatchGenerating = false;
+  bool _isPromptGenerating = false;
+
+  // Chat state
+  final _chatController = ChatMessagesController();
+  late final ChatApiService _chatApiService;
+  final _uuid = const Uuid();
+  String? _currentChatSessionId;
+  bool _isChatGenerating = false;
+  bool _showChatPanel = false;
+  final ScrollController _chatScrollController = ScrollController();
+  
+  // Chat users
+  final _currentUser = ChatUser(
+    id: 'user123',
+    firstName: 'You',
+    avatar: 'https://ui-avatars.com/api/?name=User&background=6366f1&color=fff',
+  );
+
+  final _aiUser = ChatUser(
+    id: 'ai_assistant',
+    firstName: 'AI Assistant',
+    avatar: 'https://ui-avatars.com/api/?name=AI&background=10b981&color=fff',
+  );
 
   // Providers
   late ImageGenerationProvider imageGenerationProvider;
@@ -103,6 +128,11 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   void initState() {
     super.initState();
     _seedController.text = DateTime.now().millisecondsSinceEpoch.toString();
+
+    // Initialize chat service
+    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    _chatApiService = ChatApiService(settingsProvider: settingsProvider);
+    _chatController.setScrollController(_chatScrollController);
 
     // Check if AI service is already running when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -371,12 +401,20 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
     if (Responsive.isMobile(context)) {
       return _buildMobileLayout(provider);
     } else {
-      return _buildDesktopLayout(provider);
+      return Column(
+        children: [
+          Expanded(
+            child: _buildDesktopLayout(provider),
+          ),
+          if (_showChatPanel) _buildChatPanel(),
+        ],
+      );
     }
   }
 
   Widget _buildDesktopLayout(ImageGenerationProvider provider) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Left Panel: Parameters
         Expanded(
@@ -416,11 +454,12 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildParametersPanel(ImageGenerationProvider provider) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return SingleChildScrollView(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Text(
             'Generation Parameters',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -452,6 +491,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           // Batch Count
           _buildBatchSection(),
         ],
+        ),
       ),
     );
   }
@@ -482,6 +522,23 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               ),
             ),
+            if (_selectedAsset != null) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => _showAssetMetadataDialog(_selectedAsset!),
+                icon: const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                tooltip: 'View Asset Metadata',
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFF2A2A2A),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    side: const BorderSide(color: Color(0xFF404040)),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 8),
@@ -762,6 +819,26 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                   tooltip: 'Refresh LoRAs',
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            // AI Recommendation button - full width
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _askAIForModelRecommendation,
+                icon: const Icon(Icons.psychology, color: Colors.white, size: 18),
+                label: const Text(
+                  'Ask AI for Model & LoRA Recommendations',
+                  style: TextStyle(color: Colors.white, fontSize: 13),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
             ),
             // Show server status warning if A1111 server is not reachable
             if (provider.currentBackendName == 'Automatic1111' && !provider.isA1111ServerReachable)
@@ -1148,11 +1225,12 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildPromptsPanel(ImageGenerationProvider provider) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return SingleChildScrollView(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Text(
             'Prompts',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -1160,6 +1238,33 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             ),
           ),
           const SizedBox(height: 20),
+
+          // Auto Prompt Generation button
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton.icon(
+              onPressed: _isPromptGenerating ? null : () => _generateAutoPrompt(provider),
+              icon: _isPromptGenerating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.bolt, color: Colors.white),
+              label: Text(
+                _isPromptGenerating ? 'Generating prompt...' : 'Generate Prompt with AI',
+                style: const TextStyle(color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0078D4),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
 
           // Positive Prompt
           _buildPromptField(
@@ -1179,7 +1284,13 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
 
           // Generate Button
           _buildGenerateButton(provider),
+          
+          const SizedBox(height: 16),
+          
+          // Discuss with AI Button
+          _buildDiscussWithAIButton(),
         ],
+        ),
       ),
     );
   }
@@ -1285,12 +1396,11 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildRecentImagesPanel(ImageGenerationProvider provider) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          child: Row(
             children: [
               Text(
                 'Recent Generations',
@@ -1311,12 +1421,11 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: _buildGenerationsList(provider),
-          ),
-        ],
-      ),
+        ),
+        Expanded(
+          child: _buildGenerationsList(provider),
+        ),
+      ],
     );
   }
 
@@ -1584,6 +1693,62 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   String _formatGenerationInfo(ImageGeneration generation) {
     final params = GenerationParameters(generation.parameters);
     return '${params.width}x${params.height} • ${params.steps} steps';
+  }
+
+  Future<void> _generateAutoPrompt(ImageGenerationProvider provider) async {
+    if (_selectedAsset == null) {
+      _showErrorDialog('Please select an asset before generating a prompt.');
+      return;
+    }
+
+    setState(() {
+      _isPromptGenerating = true;
+    });
+
+    try {
+      final assetInfo = {
+        'id': _selectedAsset!.id,
+        'name': _selectedAsset!.name,
+        'description': _selectedAsset!.description,
+      };
+
+      final generatorInfo = {
+        'name': provider.currentBackendName,
+        'model': _selectedModel,
+        'width': int.tryParse(_widthController.text) ?? 512,
+        'height': int.tryParse(_heightController.text) ?? 512,
+        'steps': int.tryParse(_stepsController.text) ?? 20,
+        'cfg_scale': double.tryParse(_cfgController.text) ?? 7.5,
+        'sampler': _selectedSampler,
+        'scheduler': _selectedScheduler,
+        'seed': int.tryParse(_seedController.text) ?? -1,
+      };
+
+      final prompt = await provider.generateAutoPrompt(
+        assetInfo: assetInfo,
+        generatorInfo: generatorInfo,
+      );
+
+      if (mounted) {
+        setState(() {
+          _positivePromptController.text = prompt;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Prompt generated.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      _showErrorDialog('Failed to generate prompt: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPromptGenerating = false;
+        });
+      }
+    }
   }
 
   void _generateImage(ImageGenerationProvider provider) async {
@@ -2579,6 +2744,9 @@ ${const JsonEncoder.withIndent('  ').convert(contextData)}''';
     _widthController.dispose();
     _heightController.dispose();
     _batchCountController.dispose();
+    _chatController.dispose();
+    _chatScrollController.dispose();
+    _chatApiService.dispose();
     super.dispose();
   }
 }

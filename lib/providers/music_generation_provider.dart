@@ -132,6 +132,19 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
     }
   }
 
+  /// Generate an optimized prompt for music generation
+  Future<String> generateAutoPrompt({
+    required String projectId,
+    required Map<String, dynamic> assetInfo,
+    required Map<String, dynamic> generatorInfo,
+  }) async {
+    try {
+      return await _assetService.generateAutoPrompt(projectId, assetInfo, generatorInfo);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   // Asset Selection
   void selectAsset(MusicAsset? asset) {
     _selectedAsset = asset;
