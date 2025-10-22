@@ -476,7 +476,7 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
                   end: Alignment.bottomRight,
                   colors: [
                     Colors.blue.withOpacity(0.6),
-                    Colors.purple.withOpacity(0.4),
+                    Colors.orange.withOpacity(0.4),
                   ],
                 ),
               ),

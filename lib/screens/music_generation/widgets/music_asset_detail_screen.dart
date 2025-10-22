@@ -107,13 +107,13 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
                   width: 60,
                   height: 60,
                   decoration: BoxDecoration(
-                    color: Colors.purple.withOpacity(0.2),
+                    color: Colors.orange.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.purple.withOpacity(0.5)),
+                    border: Border.all(color: Colors.orange.withOpacity(0.5)),
                   ),
                   child: const Icon(
                     Icons.music_note,
-                    color: Colors.purple,
+                    color: Colors.orange,
                     size: 30,
                   ),
                 ),
@@ -379,14 +379,14 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
                     height: 60,
                     decoration: BoxDecoration(
                       color: generation.status == GenerationStatus.completed
-                          ? Colors.purple.withOpacity(0.2)
+                          ? Colors.orange.withOpacity(0.2)
                           : Colors.grey.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       Icons.music_note,
                       color: generation.status == GenerationStatus.completed
-                          ? Colors.purple
+                          ? Colors.orange
                           : Colors.grey,
                       size: 30,
                     ),

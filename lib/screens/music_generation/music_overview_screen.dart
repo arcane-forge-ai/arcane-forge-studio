@@ -444,7 +444,7 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Colors.purple.withOpacity(0.6),
+                      Colors.orange.withOpacity(0.6),
                       Colors.pink.withOpacity(0.4),
                     ],
                   ),
@@ -543,7 +543,7 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
       color = Colors.grey;
       icon = Icons.music_note;
     } else if (count < 3) {
-      color = Colors.purple;
+      color = Colors.orange;
       icon = Icons.music_note;
     } else {
       color = Colors.pink;

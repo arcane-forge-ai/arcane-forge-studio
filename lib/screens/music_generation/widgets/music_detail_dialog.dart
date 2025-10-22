@@ -184,7 +184,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.music_note, color: Colors.purple, size: 24),
+          const Icon(Icons.music_note, color: Colors.orange, size: 24),
           const SizedBox(width: 12),
           const Text(
             'Music Details',
@@ -235,7 +235,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.purple.withOpacity(0.3),
+                Colors.orange.withOpacity(0.3),
                 Colors.pink.withOpacity(0.2),
               ],
             ),
@@ -267,19 +267,19 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                         children: [
                           Icon(
                             Icons.music_note,
-                            color: _isPlaying ? Colors.purple : Colors.white.withOpacity(0.8),
+                            color: _isPlaying ? Colors.orange : Colors.white.withOpacity(0.8),
                             size: 64,
                           ),
                           const SizedBox(height: 12),
                           if (_isLoading)
                             const CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
                             )
                           else if (widget.generation.audioUrl != null)
                             Text(
                               _isPlaying ? 'Playing...' : 'Ready to play',
                               style: TextStyle(
-                                color: _isPlaying ? Colors.purple : Colors.white54,
+                                color: _isPlaying ? Colors.orange : Colors.white54,
                                 fontSize: 16,
                               ),
                             )
@@ -356,7 +356,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
             onChanged: (value) {
               _seekTo(Duration(milliseconds: value.toInt()));
             },
-            activeColor: Colors.purple,
+            activeColor: Colors.orange,
             inactiveColor: Colors.white24,
           ),
           
@@ -402,7 +402,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                 onTap: _playPause,
                 child: Container(
                   decoration: const BoxDecoration(
-                    color: Colors.purple,
+                    color: Colors.orange,
                     shape: BoxShape.circle,
                   ),
                   padding: const EdgeInsets.all(16),
@@ -711,7 +711,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Downloading $defaultFileName...'),
-          backgroundColor: Colors.purple,
+          backgroundColor: Colors.orange,
         ),
       );
       

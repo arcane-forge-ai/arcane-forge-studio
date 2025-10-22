@@ -262,15 +262,15 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
             const Spacer(),
             TextButton.icon(
               onPressed: _showCreateAssetDialog,
-              icon: const Icon(Icons.add, color: Colors.purple),
+              icon: const Icon(Icons.add, color: Colors.orange),
               label:
-                  const Text('New Asset', style: TextStyle(color: Colors.purple)),
+                  const Text('New Asset', style: TextStyle(color: Colors.orange)),
             ),
             if (_selectedAsset != null) ...[
               const SizedBox(width: 8),
               IconButton(
                 onPressed: () => _showAssetMetadataDialog(_selectedAsset!),
-                icon: const Icon(Icons.info_outline, color: Colors.purple, size: 20),
+                icon: const Icon(Icons.info_outline, color: Colors.orange, size: 20),
                 tooltip: 'View Asset Metadata',
                 padding: const EdgeInsets.all(8),
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -352,7 +352,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
               style: const TextStyle(color: Colors.white),
             ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple,
+              backgroundColor: Colors.orange,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
           ),
@@ -382,7 +382,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Colors.purple),
+                borderSide: const BorderSide(color: Colors.orange),
               ),
             ),
           ),
@@ -413,7 +413,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Colors.purple),
+                borderSide: const BorderSide(color: Colors.orange),
               ),
             ),
           ),
@@ -442,7 +442,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: Colors.purple),
+                borderSide: const BorderSide(color: Colors.orange),
               ),
             ),
           ),
@@ -513,7 +513,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
             : const Icon(Icons.music_note),
         label: Text(buttonText),
         style: ElevatedButton.styleFrom(
-          backgroundColor: canGenerate ? Colors.purple : Colors.grey[800],
+          backgroundColor: canGenerate ? Colors.orange : Colors.grey[800],
           foregroundColor: Colors.white,
           disabledBackgroundColor: Colors.grey[800],
           disabledForegroundColor: Colors.grey[600],
@@ -571,7 +571,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
             ),
             SizedBox(height: 16),
             Text(
@@ -672,7 +672,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            Colors.purple.withOpacity(0.6),
+                            Colors.orange.withOpacity(0.6),
                             Colors.pink.withOpacity(0.4),
                           ],
                         ),
@@ -759,7 +759,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
           height: 24,
           child: CircularProgressIndicator(
             strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
           ),
         );
       case GenerationStatus.pending:
@@ -964,7 +964,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
                   borderSide: BorderSide(color: Color(0xFF404040)),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.purple),
+                  borderSide: BorderSide(color: Colors.orange),
                 ),
               ),
             ),
@@ -982,7 +982,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
                   borderSide: BorderSide(color: Color(0xFF404040)),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.purple),
+                  borderSide: BorderSide(color: Colors.orange),
                 ),
               ),
             ),
@@ -1017,7 +1017,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple,
+              backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
             ),
             child: const Text('Create'),
@@ -1037,7 +1037,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK', style: TextStyle(color: Colors.purple)),
+            child: const Text('OK', style: TextStyle(color: Colors.orange)),
           ),
         ],
       ),
@@ -1091,7 +1091,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, color: Colors.purple, size: 24),
+                    const Icon(Icons.info_outline, color: Colors.orange, size: 24),
                     const SizedBox(width: 12),
                     const Text(
                       'Asset Metadata',
@@ -1223,7 +1223,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
           ),
           IconButton(
             onPressed: () => _copyToClipboard(value, label),
-            icon: const Icon(Icons.copy, color: Colors.purple, size: 16),
+            icon: const Icon(Icons.copy, color: Colors.orange, size: 16),
             tooltip: 'Copy $label',
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 24, minHeight: 24),

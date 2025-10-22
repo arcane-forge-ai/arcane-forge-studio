@@ -498,7 +498,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             },
                             secondary: Icon(
                               _darkMode ? Icons.dark_mode : Icons.light_mode,
-                              color: _darkMode ? Colors.indigo : Colors.amber,
+                              color: _darkMode ? Colors.deepOrange : Colors.amber,
                             ),
                           ),
                 ),

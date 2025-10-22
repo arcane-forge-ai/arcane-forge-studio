@@ -833,7 +833,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                   style: TextStyle(color: Colors.white, fontSize: 13),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
+                  backgroundColor: Colors.deepOrange,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
@@ -2361,7 +2361,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           style: TextStyle(color: Colors.white, fontSize: 16),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.deepPurple,
+          backgroundColor: Colors.deepOrange,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
           ),
@@ -2526,7 +2526,7 @@ Please recommend:
                     style: TextStyle(color: Colors.white, fontSize: 13),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
+                    backgroundColor: Colors.deepOrange,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     minimumSize: const Size(0, 32),
                   ),
@@ -2557,7 +2557,9 @@ Please recommend:
               // Message styling
               messageOptions: MessageOptions(
                 bubbleStyle: BubbleStyle(
-                  userBubbleColor: colorScheme.primary,
+                  userBubbleColor: isDark 
+                      ? Colors.deepOrange[800]!
+                      : Colors.deepOrange[700]!,
                   aiBubbleColor: colorScheme.surfaceContainerHighest,
                   userNameColor: Colors.white,
                   aiNameColor: colorScheme.onSurface,

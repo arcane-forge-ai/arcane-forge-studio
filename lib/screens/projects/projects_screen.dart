@@ -297,7 +297,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                         child: GridView.builder(
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
+                            crossAxisCount: 5,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                             childAspectRatio: 1.2,
@@ -406,7 +406,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                 ),
                 child: Icon(
                   Icons.add,
-                  color: Colors.white,
+                  color: Colors.grey,
                   size: 32,
                 ),
               ),

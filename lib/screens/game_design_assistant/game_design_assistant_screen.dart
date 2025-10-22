@@ -109,7 +109,7 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
             borderRadius: BorderRadius.circular(12),
             gradient: LinearGradient(
               colors: [
-                Colors.purple.withOpacity(0.1),
+                Colors.orange.withOpacity(0.1),
                 Colors.blue.withOpacity(0.1)
               ],
               begin: Alignment.topLeft,
@@ -160,8 +160,8 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
             borderRadius: BorderRadius.circular(12),
             gradient: LinearGradient(
               colors: [
-                Colors.indigo.withOpacity(0.1),
-                Colors.purple.withOpacity(0.1)
+                Colors.deepOrange.withOpacity(0.1),
+                Colors.orange.withOpacity(0.1)
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -1271,7 +1271,9 @@ Ask me anything about game design, or try one of the example questions below!
                       // Message styling
                       messageOptions: MessageOptions(
                         bubbleStyle: BubbleStyle(
-                          userBubbleColor: colorScheme.primary,
+                          userBubbleColor: isDark 
+                              ? Colors.deepOrange[800]!
+                              : Colors.deepOrange[700]!,
                           aiBubbleColor: colorScheme.surfaceContainerHighest,
                           userNameColor: Colors.white,
                           aiNameColor: colorScheme.onSurface,

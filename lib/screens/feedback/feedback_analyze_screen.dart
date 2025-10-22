@@ -952,7 +952,7 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
   Color _getNoveltyColor(String novelty) {
     switch (novelty.toLowerCase()) {
       case 'innovative':
-        return Colors.purple;
+        return Colors.orange;
       case 'standard':
         return Colors.blue;
       case 'incremental':

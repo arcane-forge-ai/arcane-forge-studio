@@ -130,6 +130,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           debugShowCheckedModeBanner: false,
           title: 'Flutter Admin Panel',
           theme: ThemeData.light().copyWith(
+            primaryColor: primaryColor,
+            colorScheme: ColorScheme.light(
+              primary: primaryColor,
+              secondary: const Color.fromARGB(255, 76, 78, 80),
+              surface: Colors.white,
+              error: Colors.red,
+            ),
             scaffoldBackgroundColor: Colors.grey.shade100,
             textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)
                 .apply(bodyColor: Colors.black87),
@@ -198,6 +205,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             ),
           ),
           darkTheme: ThemeData.dark().copyWith(
+            primaryColor: primaryColor,
+            colorScheme: ColorScheme.dark(
+              primary: primaryColor,
+              secondary: Colors.blueAccent,
+              surface: secondaryColor,
+              error: Colors.red,
+            ),
             scaffoldBackgroundColor: bgColor,
             textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)
                 .apply(bodyColor: Colors.white),
