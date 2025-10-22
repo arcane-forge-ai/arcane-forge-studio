@@ -309,12 +309,15 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               Expanded(
                 child: _buildMetadataCard(
                   'Knowledge Base',
-                  _project!.hasKnowledgeBase ? 'Available' : 'Not Set Up',
-                  _project!.hasKnowledgeBase
-                      ? Icons.check_circle
-                      : Icons.cancel,
-                  color:
-                      _project!.hasKnowledgeBase ? Colors.green : Colors.orange,
+                  _overview != null
+                      ? '${_overview!.knowledgeBase.fileCount} ${_overview!.knowledgeBase.fileCount == 1 ? 'file' : 'files'}'
+                      : 'Loading...',
+                  _overview != null && _overview!.knowledgeBase.fileCount > 0
+                      ? Icons.folder_open
+                      : Icons.folder_outlined,
+                  color: _overview != null && _overview!.knowledgeBase.fileCount > 0
+                      ? Colors.green
+                      : Colors.grey,
                 ),
               ),
             ],
