@@ -86,6 +86,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                 'Image Assets',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const Spacer(),

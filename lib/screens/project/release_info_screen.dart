@@ -189,7 +189,9 @@ class _ReleaseInfoScreenState extends State<ReleaseInfoScreen> {
                 const SizedBox(width: 12),
                 Text(
                   'Release Info',
-                  style: Theme.of(context).textTheme.headlineMedium,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
                 const Spacer(),
                 if (_isSaving)

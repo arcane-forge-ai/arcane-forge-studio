@@ -212,14 +212,14 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                             'Knowledge Base',
                             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Manage your project\'s knowledge base files',
                             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Colors.white,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                         ],
@@ -279,7 +279,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           Text(
             'No files in knowledge base',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Colors.grey[600],
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
             ),
           ),
           const SizedBox(height: 8),

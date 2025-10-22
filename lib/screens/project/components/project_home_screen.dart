@@ -134,7 +134,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               children: [
                 Text(
                   "Project Home",
-                  style: Theme.of(context).textTheme.headlineMedium,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
                 const Spacer(),
                 if (_isSaving)
@@ -186,7 +188,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
             const SizedBox(height: 16),
             Text(
               'Error loading project',
-              style: Theme.of(context).textTheme.headlineSmall,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -235,7 +239,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                           children: [
                             Text(
                               _project!.name,
-                              style: Theme.of(context).textTheme.headlineSmall,
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                             Text(
                               'Project ID: ${_project!.id}',

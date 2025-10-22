@@ -251,6 +251,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             'AI Image Generation',
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const Spacer(),

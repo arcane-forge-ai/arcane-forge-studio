@@ -222,7 +222,9 @@ class _CodeScreenState extends State<CodeScreen> {
                           const SizedBox(width: 12),
                           Text(
                             'Code',
-                            style: Theme.of(context).textTheme.headlineMedium,
+                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                           ),
                           const Spacer(),
                           IconButton(
