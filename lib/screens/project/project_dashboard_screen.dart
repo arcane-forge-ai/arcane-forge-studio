@@ -17,6 +17,7 @@ import '../music_generation/music_overview_screen.dart';
 import '../feedback/feedback_screen.dart';
 import 'release_info_screen.dart';
 import '../shared/coming_soon_screen.dart';
+import '../development/code_screen.dart';
 
 class ProjectDashboardScreen extends StatelessWidget {
   final String projectId;
@@ -85,10 +86,9 @@ class ProjectDashboardScreen extends StatelessWidget {
                         child: GameDesignAssistantScreen(),
                       );
                     case ScreenType.codeEditor:
-                      return const ComingSoonScreen(
-                        featureName: 'Code Editor',
-                        icon: Icons.code,
-                        description: 'An integrated code editor for game development is coming soon. You\'ll be able to write and test code directly within the platform.',
+                      return CodeScreen(
+                        projectId: projectId,
+                        projectName: projectName,
                       );
                     case ScreenType.imageGenerationOverview:
                       return ImageOverviewScreen(

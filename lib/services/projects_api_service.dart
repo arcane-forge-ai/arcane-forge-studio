@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../screens/game_design_assistant/models/project_model.dart';
@@ -342,6 +343,50 @@ class ProjectsApiService {
       gameIntroduction: gameIntroduction,
       codeMapUrl: codeMapUrl,
     );
+  }
+
+  /// Upload a code map file for a project
+  /// The API endpoint expects a multipart/form-data file upload
+  Future<Map<String, dynamic>> uploadCodeMapFile({
+    required int projectId,
+    required File file,
+  }) async {
+    if (_useMockMode) {
+      // In mock mode, simulate a successful upload
+      return {
+        'content': 'Mock code map content',
+        'project_id': projectId,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+    }
+
+    final url = '$baseUrl/api/v1/projects/$projectId/code_map/upload';
+
+    try {
+      // Create form data with the file
+      final formData = FormData.fromMap({
+        'file': await MultipartFile.fromFile(
+          file.path,
+          filename: file.path.split('/').last,
+        ),
+      });
+
+      final response = await _dio.post(
+        url,
+        data: formData,
+      );
+
+      if (response.statusCode == 200) {
+        return response.data as Map<String, dynamic>;
+      } else {
+        throw Exception('Failed to upload code map file: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Code Map Upload API Error: $e');
+      print('Request URL: $url');
+      print('File: ${file.path}');
+      rethrow;
+    }
   }
 
   ProjectOverviewResponse _mockGetProjectOverview(int projectId) {

@@ -25,11 +25,9 @@ class ReleaseInfoScreen extends StatefulWidget {
 class _ReleaseInfoScreenState extends State<ReleaseInfoScreen> {
   final TextEditingController _gameLinkController = TextEditingController();
   final TextEditingController _feedbackLinkController = TextEditingController();
-  final TextEditingController _codeMapController = TextEditingController();
 
   bool _isEditingGameLink = false;
   bool _isEditingFeedbackLink = false;
-  bool _isEditingCodeMap = false;
   bool _isLoading = true;
   bool _isSaving = false;
   String? _errorMessage;
@@ -65,7 +63,6 @@ class _ReleaseInfoScreenState extends State<ReleaseInfoScreen> {
       setState(() {
         _gameLinkController.text = project.gameReleaseUrl ?? '';
         _feedbackLinkController.text = project.gameFeedbackUrl ?? '';
-        _codeMapController.text = project.codeMapUrl ?? '';
         _isLoading = false;
       });
     } catch (e) {
@@ -96,18 +93,8 @@ class _ReleaseInfoScreenState extends State<ReleaseInfoScreen> {
     setState(() => _isEditingFeedbackLink = false);
   }
 
-  Future<void> _saveCodeMapLink() async {
-    final link = _codeMapController.text.trim();
-    if (link.isNotEmpty && !_isValidUrl(link)) {
-      _showSnackBar('Please enter a valid URL for Code Map Link');
-      return;
-    }
-    await _updateProject(codeMapUrl: link.isEmpty ? null : link);
-    setState(() => _isEditingCodeMap = false);
-  }
-
   Future<void> _updateProject(
-      {String? gameReleaseUrl, String? gameFeedbackUrl, String? codeMapUrl}) async {
+      {String? gameReleaseUrl, String? gameFeedbackUrl}) async {
     try {
       setState(() => _isSaving = true);
 
@@ -115,7 +102,6 @@ class _ReleaseInfoScreenState extends State<ReleaseInfoScreen> {
         projectId: widget.projectId,
         gameReleaseUrl: gameReleaseUrl,
         gameFeedbackUrl: gameFeedbackUrl,
-        codeMapUrl: codeMapUrl,
       );
 
       setState(() {
@@ -290,24 +276,6 @@ class _ReleaseInfoScreenState extends State<ReleaseInfoScreen> {
                             _feedbackLinkController.text,
                             label: 'Feedback link'),
                       ),
-                      const SizedBox(height: defaultPadding),
-                      _buildLinkCard(
-                        title: 'Code Map Link',
-                        icon: Icons.account_tree_outlined,
-                        controller: _codeMapController,
-                        isEditing: _isEditingCodeMap,
-                        onToggleEdit: () {
-                          if (_isEditingCodeMap) {
-                            _saveCodeMapLink();
-                          } else {
-                            setState(() => _isEditingCodeMap = true);
-                          }
-                        },
-                        onOpen: () => _openUrl(_codeMapController.text),
-                        onCopy: () => _copyToClipboard(
-                            _codeMapController.text,
-                            label: 'Code map link'),
-                      ),
                     ],
                   ),
                 ),
@@ -456,7 +424,6 @@ class _ReleaseInfoScreenState extends State<ReleaseInfoScreen> {
   void dispose() {
     _gameLinkController.dispose();
     _feedbackLinkController.dispose();
-    _codeMapController.dispose();
     super.dispose();
   }
 }
