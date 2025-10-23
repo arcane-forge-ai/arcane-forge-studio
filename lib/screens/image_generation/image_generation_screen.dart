@@ -13,7 +13,6 @@ import 'widgets/image_detail_dialog.dart';
 
 // Chat UI imports
 import 'package:flutter_gen_ai_chat_ui/flutter_gen_ai_chat_ui.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:uuid/uuid.dart';
 import 'package:dio/dio.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
@@ -2429,6 +2428,29 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       });
     }
 
+    // Get provider to access available models and LoRAs
+    final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+    
+    // Determine which models list to use (A1111 or ComfyUI)
+    List<String> availableModels;
+    List<String> availableLoras;
+    
+    if (provider.currentBackendName == 'Automatic1111' && 
+        provider.isA1111ServerReachable && 
+        provider.a1111Checkpoints.isNotEmpty) {
+      availableModels = provider.a1111Checkpoints.map((c) => c.title).toList();
+    } else {
+      availableModels = provider.availableModels;
+    }
+    
+    if (provider.currentBackendName == 'Automatic1111' && 
+        provider.isA1111ServerReachable && 
+        provider.a1111Loras.isNotEmpty) {
+      availableLoras = provider.a1111Loras.map((l) => l.name).toList();
+    } else {
+      availableLoras = provider.availableLoras;
+    }
+
     // Create the recommendation request message
     final assetInfo = '''
 I need help choosing the best model and LoRAs for my image generation.
@@ -2442,10 +2464,17 @@ Current Setup:
 - Dimensions: ${_widthController.text}x${_heightController.text}
 - Current Positive Prompt: ${_positivePromptController.text.isNotEmpty ? _positivePromptController.text : 'None yet'}
 
+Available Models:
+${availableModels.isNotEmpty ? availableModels.map((m) => '- $m').join('\n') : '- No models available'}
+
+Available LoRAs:
+${availableLoras.isNotEmpty ? availableLoras.map((l) => '- $l').join('\n') : '- No LoRAs available'}
+
 Please recommend:
-1. Which model would work best for this asset?
-2. What LoRAs would enhance the generation?
-3. Any prompt suggestions to improve the results?
+1. Which model from the available list would work best for this asset?
+2. What LoRAs from the available list would enhance the generation?
+3. If none of the available models or LoRAs are suitable, suggest a model or LoRA that would be suitable for this asset.
+4. Any prompt suggestions to improve the results?
 ''';
 
     // Create user message
@@ -2624,13 +2653,39 @@ Please recommend:
     // Add user message to chat
     _chatController.addMessage(message);
     
+    // Get provider to access available models and LoRAs
+    final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+    
+    // Determine which models list to use (A1111 or ComfyUI)
+    List<String> availableModels;
+    List<String> availableLoras;
+    
+    if (provider.currentBackendName == 'Automatic1111' && 
+        provider.isA1111ServerReachable && 
+        provider.a1111Checkpoints.isNotEmpty) {
+      availableModels = provider.a1111Checkpoints.map((c) => c.title).toList();
+    } else {
+      availableModels = provider.availableModels;
+    }
+    
+    if (provider.currentBackendName == 'Automatic1111' && 
+        provider.isA1111ServerReachable && 
+        provider.a1111Loras.isNotEmpty) {
+      availableLoras = provider.a1111Loras.map((l) => l.name).toList();
+    } else {
+      availableLoras = provider.availableLoras;
+    }
+    
     // Gather current generation parameters as context
     final contextData = {
       'asset': {
         'name': _selectedAsset?.name ?? 'None selected',
         'description': _selectedAsset?.description ?? '',
       },
+      'backend': provider.currentBackendName,
       'model': _selectedModel,
+      'available_models': availableModels.isNotEmpty ? availableModels : ['No models available'],
+      'available_loras': availableLoras.isNotEmpty ? availableLoras : ['No LoRAs available'],
       'dimensions': {
         'width': _widthController.text,
         'height': _heightController.text,
