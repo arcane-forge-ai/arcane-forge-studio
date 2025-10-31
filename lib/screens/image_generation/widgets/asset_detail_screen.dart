@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../providers/image_generation_provider.dart';
 import '../../../models/image_generation_models.dart';
 import '../../../responsive.dart';
+import '../../../controllers/menu_app_controller.dart';
 import 'image_detail_dialog.dart';
 import 'dart:io';
 
@@ -358,8 +359,10 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: () {
-              // TODO: Navigate to generation screen with this asset pre-selected
+              // Navigate to generation screen
               Navigator.of(context).pop();
+              Provider.of<MenuAppController>(context, listen: false)
+                  .changeScreen(ScreenType.imageGenerationGeneration);
             },
             icon: const Icon(Icons.auto_awesome, color: Colors.white),
             label: const Text(

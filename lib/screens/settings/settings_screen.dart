@@ -249,7 +249,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: colorScheme.primaryContainer,
+                color: colorScheme.secondaryContainer,
                 border: Border(
                   bottom: BorderSide(color: colorScheme.outline.withOpacity(0.2)),
                 ),
@@ -277,7 +277,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(width: 8),
                   ElevatedButton(
                     onPressed: _saveSettings,
-                    child: const Text('Save Changes'),
+                    child: Text('Save Changes', style: TextStyle(color: colorScheme.secondary),),
                   ),
                 ],
               ),

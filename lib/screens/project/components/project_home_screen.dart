@@ -135,8 +135,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                 Text(
                   "Project Home",
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                 ),
                 const Spacer(),
                 if (_isSaving)
@@ -151,8 +151,15 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                 else
                   ElevatedButton.icon(
                     onPressed: _loadProject,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text("Refresh"),
+                    icon: const Icon(
+                      Icons.refresh,
+                      color: secondaryColor,
+                    ),
+                    label: Text(
+                      "Refresh",
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.secondary),
+                    ),
                   ),
               ],
             ),
@@ -189,8 +196,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
             Text(
               'Error loading project',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -239,9 +246,13 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                           children: [
                             Text(
                               _project!.name,
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface,
-                              ),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(
+                                    color:
+                                        Theme.of(context).colorScheme.onSurface,
+                                  ),
                             ),
                             Text(
                               'Project ID: ${_project!.id}',
@@ -249,7 +260,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                                   .textTheme
                                   .bodySmall
                                   ?.copyWith(
-                                    color: Theme.of(context).brightness == Brightness.dark
+                                    color: Theme.of(context).brightness ==
+                                            Brightness.dark
                                         ? Colors.grey[400]
                                         : Colors.grey[600],
                                   ),
@@ -315,7 +327,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                   _overview != null && _overview!.knowledgeBase.fileCount > 0
                       ? Icons.folder_open
                       : Icons.folder_outlined,
-                  color: _overview != null && _overview!.knowledgeBase.fileCount > 0
+                  color: _overview != null &&
+                          _overview!.knowledgeBase.fileCount > 0
                       ? Colors.green
                       : Colors.grey,
                 ),
@@ -406,7 +419,11 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: _project?.gameIntroduction?.isNotEmpty == true
                               ? null
-                              : Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                              : Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.color
+                                  ?.withOpacity(0.6),
                           fontStyle:
                               _project?.gameIntroduction?.isNotEmpty == true
                                   ? null
