@@ -36,6 +36,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   bool _isLoadingProject = true;
   String? _projectError;
   bool _hasInitialized = false;
+  String? _gameIntroduction;
 
   @override
   void initState() {
@@ -75,6 +76,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       
       setState(() {
         _isLoadingProject = false;
+        _gameIntroduction = project.gameIntroduction;
       });
 
       // Load feedbacks after setting the URL
@@ -1018,6 +1020,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       feedbacks: selectedFeedbacks,
       projectId: widget.projectId,
       projectName: widget.projectName,
+      gameIntroduction: _gameIntroduction,
     );
     
     // Navigate to Game Design Assistant using MenuAppController (same pattern as mutation design)

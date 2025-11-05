@@ -9,7 +9,7 @@ import 'dart:io';
 
 import 'models/chat_message.dart' as app_models;
 import 'models/api_models.dart';
-import 'providers/project_provider.dart';
+import 'models/project_model.dart';
 import '../../providers/auth_provider.dart';
 import 'services/chat_api_service.dart';
 import 'services/document_extractor.dart';
@@ -19,11 +19,19 @@ import '../../providers/settings_provider.dart';
 import '../../utils/app_constants.dart' as app_utils;
 import '../../services/mutation_design_service.dart';
 import '../../services/feedback_discussion_service.dart';
+import '../../services/projects_api_service.dart';
 import '../../models/feedback_models.dart' as feedback_models;
 
 /// Game Design Assistant Screen using Flutter Gen AI Chat UI
 class GameDesignAssistantScreen extends StatefulWidget {
-  const GameDesignAssistantScreen({super.key});
+  final String projectId;
+  final String projectName;
+  
+  const GameDesignAssistantScreen({
+    super.key,
+    required this.projectId,
+    required this.projectName,
+  });
 
   @override
   State<GameDesignAssistantScreen> createState() => _GameDesignAssistantScreenState();
@@ -58,7 +66,8 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
   ChatSession? _selectedChatSession; // Currently selected chat session
   String? _currentSessionId; // Track session ID for current conversation
   bool _showChatHistory = true; // Toggle for chat history sidebar
-  bool _showToolbar = true; // Toggle for toolbar visibility
+  bool _showToolbar = false; // Toggle for toolbar visibility
+  Project? _projectDetails; // Cached project details from API
   
   // Scroll controller
   final ScrollController _scrollController = ScrollController();
@@ -82,6 +91,9 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
     _initializeExampleQuestions();
     _addWelcomeMessage();
     _chatController.setScrollController(_scrollController);
+    
+    // Fetch project details
+    _fetchProjectDetails();
     
     // Check for pending mutation design data
     _checkForMutationDesignData();
@@ -202,6 +214,26 @@ Ask me anything about game design, or try one of the example questions below!
     );
   }
 
+  /// Fetch project details from API
+  Future<void> _fetchProjectDetails() async {
+    try {
+      final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final apiService = ProjectsApiService(
+        settingsProvider: settingsProvider,
+        authProvider: authProvider,
+      );
+      
+      _projectDetails = await apiService.getProjectById(int.parse(widget.projectId));
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error fetching project details: $e');
+      // Continue without project details - will use fallback
+    }
+  }
+
   /// Check for pending mutation design data and automatically send it
   void _checkForMutationDesignData() {
     final mutationService = MutationDesignService();
@@ -227,6 +259,7 @@ Ask me anything about game design, or try one of the example questions below!
           discussionService.pendingFeedbacks!,
           discussionService.pendingProjectId!,
           discussionService.pendingProjectName!,
+          discussionService.pendingGameIntroduction,
         );
       });
     }
@@ -254,13 +287,18 @@ Ask me anything about game design, or try one of the example questions below!
     List<feedback_models.Feedback> feedbacks,
     String projectId,
     String projectName,
+    String? gameIntroduction,
   ) async {
     // Clear the feedback discussion data since we're using it now
     FeedbackDiscussionService().clearFeedbackDiscussionData();
     
     // Format the message using the service
     final discussionService = FeedbackDiscussionService();
-    final formattedMessage = discussionService.formatFeedbacksForChat(feedbacks, topic);
+    final formattedMessage = discussionService.formatFeedbacksForChat(
+      feedbacks, 
+      topic,
+      gameIntroduction: gameIntroduction,
+    );
     
     // Create and send the user message
     final userMessage = ChatMessage(
@@ -269,27 +307,26 @@ Ask me anything about game design, or try one of the example questions below!
       createdAt: DateTime.now(),
     );
     
-    // Send the message with custom title
+    // Send the message with custom title and RAG agent
     final sessionTitle = 'Feedback Discussion: $topic';
-    await _sendMessageWithTitle(userMessage, sessionTitle);
+    await _sendMessageWithTitle(userMessage, sessionTitle, agentType: 'rag');
   }
 
   /// Send a message with custom session title
   Future<void> _sendMessageWithTitle(ChatMessage message, String customTitle, {String? agentType}) async {
-    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Ensure we have project details
+    if (_projectDetails == null) {
+      await _fetchProjectDetails();
+    }
     
     // FIRST: Add the user's message to the chat immediately
     _chatController.addMessage(message);
     
     // Get project ID and user ID if available - let API handle defaults if missing
-    int? projectId;
+    int? projectId = int.tryParse(widget.projectId);
     String? userId;
-    
-    // Only include project ID if we have a valid current project
-    if (projectProvider.currentProject?.id != null) {
-      projectId = int.tryParse(projectProvider.currentProject!.id!);
-    }
     
     // Only include user ID if we have a valid authenticated user
     final authUserId = authProvider.userId;
@@ -325,7 +362,7 @@ Ask me anything about game design, or try one of the example questions below!
           role: 'user',
           content: message.text,
           timestamp: message.createdAt,
-          projectId: projectProvider.currentProject?.id,
+          projectId: widget.projectId,
         ),
       ];
 
@@ -334,7 +371,7 @@ Ask me anything about game design, or try one of the example questions below!
         message: appMessages.last.content, // Send the latest user message
         projectId: projectId, // Only included if available
         userId: userId, // Only included if available
-        knowledgeBaseName: projectProvider.knowledgeBaseName,
+        knowledgeBaseName: _projectDetails?.knowledgeBaseName,
         sessionId: _currentSessionId, // Use current session ID for this conversation (may be null for first message)
         title: customTitle, // Custom session title for mutation design
         agentType: agentType, // Agent type (rag for feedback discussions)
@@ -411,20 +448,19 @@ Ask me anything about game design, or try one of the example questions below!
 
   /// Send a message to the chat API
   Future<void> _sendMessage(ChatMessage message) async {
-    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Ensure we have project details
+    if (_projectDetails == null) {
+      await _fetchProjectDetails();
+    }
     
     // FIRST: Add the user's message to the chat immediately
     _chatController.addMessage(message);
     
     // Get project ID and user ID if available - let API handle defaults if missing
-    int? projectId;
+    int? projectId = int.tryParse(widget.projectId);
     String? userId;
-    
-    // Only include project ID if we have a valid current project
-    if (projectProvider.currentProject?.id != null) {
-      projectId = int.tryParse(projectProvider.currentProject!.id!);
-    }
     
     // Only include user ID if we have a valid authenticated user
     final authUserId = authProvider.userId;
@@ -460,7 +496,7 @@ Ask me anything about game design, or try one of the example questions below!
           role: 'user',
           content: message.text,
           timestamp: message.createdAt,
-          projectId: projectProvider.currentProject?.id,
+          projectId: widget.projectId,
         ),
       ];
 
@@ -469,7 +505,7 @@ Ask me anything about game design, or try one of the example questions below!
         message: appMessages.last.content, // Send the latest user message
         projectId: projectId, // Only included if available
         userId: userId, // Only included if available
-        knowledgeBaseName: projectProvider.knowledgeBaseName,
+        knowledgeBaseName: _projectDetails?.knowledgeBaseName,
         sessionId: _currentSessionId, // Use current session ID for this conversation (may be null for first message)
         agentType: 'rag', // Use RAG agent for regular chat messages
         extraConfig: {
@@ -553,8 +589,6 @@ Ask me anything about game design, or try one of the example questions below!
 
   Future<void> _saveDocumentToKnowledgeBase() async {
     if (_lastAiResponse == null) return;
-
-    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
     
     // Show loading state
     setState(() {
@@ -568,17 +602,6 @@ Ask me anything about game design, or try one of the example questions below!
         throw Exception('No extractable markdown content found');
       }
       
-      // Extract title for filename
-      final extractedDoc = DocumentExtractor.createExtractedDocument(
-        _lastAiResponse!,
-        projectProvider.currentProject?.id ?? 'default',
-        'saved_${DateTime.now().millisecondsSinceEpoch}',
-      );
-      
-      if (extractedDoc == null) {
-        throw Exception('Failed to create document');
-      }
-      
       // Create temporary markdown file
       final tempDir = await Directory.systemTemp.createTemp('arcane_forge_docs');
       final cleanFileName = _getFileNameFromMarkdown(markdownContent);
@@ -587,16 +610,14 @@ Ask me anything about game design, or try one of the example questions below!
       await tempFile.writeAsString(markdownContent);
       
       // Upload file to backend via API
-      final projectIdString = projectProvider.currentProject?.id ?? '1';
       final success = await _chatApiService.uploadFile(
-        projectIdString,
+        widget.projectId,
         tempFile.path,
         fileName,
       );
       
       if (success) {
-        // Also add to local provider for immediate UI update
-        projectProvider.addExtractedDocument(extractedDoc);
+        // API handles adding to knowledge base
         
         // Update state to hide save button
         setState(() {
@@ -607,7 +628,7 @@ Ask me anything about game design, or try one of the example questions below!
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Saved "${extractedDoc.title}" to knowledge base'),
+              content: Text('Saved "$fileName" to knowledge base'),
               backgroundColor: Colors.green,
               action: SnackBarAction(
                 label: 'View',
@@ -658,29 +679,15 @@ Ask me anything about game design, or try one of the example questions below!
       );
 
       if (result != null && result.files.isNotEmpty) {
-        final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-        
         for (final file in result.files) {
           if (file.path != null) {
             // Upload file using the API service
-            final success = await _chatApiService.uploadFile(
-              projectProvider.currentProject?.id ?? 'default',
+            await _chatApiService.uploadFile(
+              widget.projectId,
               file.path!,
               file.name,
             );
-            
-            if (success) {
-              // Create a simple document entry for uploaded files
-              final doc = ExtractedDocument(
-                id: _uuid.v4(),
-                title: file.name,
-                content: "File uploaded: ${file.name}",
-                projectId: projectProvider.currentProject?.id ?? 'default',
-                extractedAt: DateTime.now(),
-                sourceMessageId: 'upload_${DateTime.now().millisecondsSinceEpoch}',
-              );
-              projectProvider.addExtractedDocument(doc);
-            }
+            // API handles adding to knowledge base
           }
         }
 
@@ -716,8 +723,6 @@ Ask me anything about game design, or try one of the example questions below!
 
   /// Show session information dialog
   void _showSessionInfo() {
-    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-    
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -748,8 +753,8 @@ Ask me anything about game design, or try one of the example questions below!
                 ] else ...[
                   const SizedBox(height: 12),
                   _buildInfoRow('Current Session ID', _currentSessionId ?? 'None'),
-                  _buildInfoRow('Project', projectProvider.currentProject?.name ?? 'Default Project'),
-                  _buildInfoRow('Project ID', projectProvider.currentProject?.id ?? '1'),
+                  _buildInfoRow('Project', widget.projectName),
+                  _buildInfoRow('Project ID', widget.projectId),
                 ],
                 const SizedBox(height: 16),
                 const Divider(),
@@ -1036,8 +1041,15 @@ Ask me anything about game design, or try one of the example questions below!
   }
 
   void _showKnowledgeBase() {
-    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
+    // Simply show a message - user can navigate to Knowledge Base screen from menu
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Navigate to Knowledge Base screen from the menu to view all documents'),
+        backgroundColor: Colors.blue,
+      ),
+    );
     
+    /* Old implementation with modal - removed as it relied on ProjectProvider
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1135,6 +1147,7 @@ Ask me anything about game design, or try one of the example questions below!
         ),
       ),
     );
+    */
   }
 
   @override
@@ -1187,19 +1200,10 @@ Ask me anything about game design, or try one of the example questions below!
                         ),
                       ),
                     ),
-                    Consumer<ProjectProvider>(
-                      builder: (context, provider, child) {
-                        final docCount = provider.extractedDocuments.length;
-                        return Badge(
-                          label: Text(docCount.toString()),
-                          isLabelVisible: docCount > 0,
-                          child: IconButton(
-                            icon: const Icon(Icons.library_books),
-                            onPressed: _showKnowledgeBase,
-                            tooltip: 'Knowledge Base',
-                          ),
-                        );
-                      },
+                    IconButton(
+                      icon: const Icon(Icons.library_books),
+                      onPressed: _showKnowledgeBase,
+                      tooltip: 'Knowledge Base',
                     ),
                     IconButton(
                       icon: const Icon(Icons.upload_file),
@@ -1235,6 +1239,7 @@ Ask me anything about game design, or try one of the example questions below!
                     // Chat History Sidebar
                     if (_showChatHistory)
                       ChatHistorySidebar(
+                        projectId: widget.projectId,
                         selectedSession: _selectedChatSession,
                         onSessionSelected: _onChatSessionSelected,
                         chatApiService: _chatApiService,

@@ -9,12 +9,14 @@ class FeedbackDiscussionService {
   List<feedback_models.Feedback>? _pendingFeedbacks;
   String? _pendingProjectId;
   String? _pendingProjectName;
+  String? _pendingGameIntroduction;
 
   // Getters
   String? get pendingTopic => _pendingTopic;
   List<feedback_models.Feedback>? get pendingFeedbacks => _pendingFeedbacks;
   String? get pendingProjectId => _pendingProjectId;
   String? get pendingProjectName => _pendingProjectName;
+  String? get pendingGameIntroduction => _pendingGameIntroduction;
   bool get hasPendingFeedbackDiscussion => _pendingTopic != null && _pendingFeedbacks != null;
 
   // Set feedback discussion data
@@ -23,11 +25,13 @@ class FeedbackDiscussionService {
     required List<feedback_models.Feedback> feedbacks,
     required String projectId,
     required String projectName,
+    String? gameIntroduction,
   }) {
     _pendingTopic = topic;
     _pendingFeedbacks = feedbacks;
     _pendingProjectId = projectId;
     _pendingProjectName = projectName;
+    _pendingGameIntroduction = gameIntroduction;
   }
 
   // Clear feedback discussion data after it's been used
@@ -36,11 +40,22 @@ class FeedbackDiscussionService {
     _pendingFeedbacks = null;
     _pendingProjectId = null;
     _pendingProjectName = null;
+    _pendingGameIntroduction = null;
   }
 
   // Format feedbacks for chat message
-  String formatFeedbacksForChat(List<feedback_models.Feedback> feedbacks, String topic) {
+  String formatFeedbacksForChat(List<feedback_models.Feedback> feedbacks, String topic, {String? gameIntroduction}) {
     final buffer = StringBuffer();
+    
+    // Add game introduction if available
+    if (gameIntroduction != null && gameIntroduction.isNotEmpty) {
+      buffer.writeln('# Game Introduction');
+      buffer.writeln();
+      buffer.writeln(gameIntroduction);
+      buffer.writeln();
+      buffer.writeln('---');
+      buffer.writeln();
+    }
     
     // Add the topic/question at the top
     buffer.writeln('# Free Discussion Topic');

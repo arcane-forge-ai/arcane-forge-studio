@@ -1,7 +1,6 @@
 import 'package:arcane_forge/constants.dart';
 import 'package:arcane_forge/controllers/menu_app_controller.dart';
 import 'package:arcane_forge/screens/projects/projects_dashboard_screen.dart';
-import 'package:arcane_forge/screens/game_design_assistant/providers/project_provider.dart';
 import 'package:arcane_forge/providers/settings_provider.dart';
 import 'package:arcane_forge/providers/auth_provider.dart';
 import 'package:arcane_forge/providers/image_generation_provider.dart';
@@ -85,7 +84,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => MenuAppController()..changeScreen(ScreenType.projects)),
-        ChangeNotifierProvider(create: (context) => ProjectProvider()),
         ChangeNotifierProvider(create: (context) => SettingsProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
         ChangeNotifierProxyProvider<SettingsProvider, ImageGenerationProvider>(

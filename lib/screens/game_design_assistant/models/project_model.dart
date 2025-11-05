@@ -12,6 +12,7 @@ class Project {
   final String? gameFeedbackUrl;
   final String? gameIntroduction;
   final String? codeMapUrl;
+  final String? knowledgeBaseName;
 
   Project({
     required this.id,
@@ -27,6 +28,7 @@ class Project {
     this.gameFeedbackUrl,
     this.gameIntroduction,
     this.codeMapUrl,
+    this.knowledgeBaseName,
   });
 
   Map<String, dynamic> toJson() {
@@ -44,6 +46,7 @@ class Project {
       'gameFeedbackUrl': gameFeedbackUrl,
       'gameIntroduction': gameIntroduction,
       'codeMapUrl': codeMapUrl,
+      'knowledgeBaseName': knowledgeBaseName,
     };
   }
 
@@ -63,6 +66,7 @@ class Project {
       gameFeedbackUrl: json['gameFeedbackUrl'],
       gameIntroduction: json['gameIntroduction'],
       codeMapUrl: json['codeMapUrl'],
+      knowledgeBaseName: json['knowledgeBaseName'],
     );
   }
 
@@ -85,6 +89,7 @@ class Project {
       gameFeedbackUrl: json['game_feedback_url'],
       gameIntroduction: json['game_introduction'],
       codeMapUrl: json['code_map_url'],
+      knowledgeBaseName: json['knowledge_base_name'],
     );
   }
 
@@ -102,6 +107,7 @@ class Project {
     String? gameFeedbackUrl,
     String? gameIntroduction,
     String? codeMapUrl,
+    String? knowledgeBaseName,
   }) {
     return Project(
       id: id ?? this.id,
@@ -117,6 +123,7 @@ class Project {
       gameFeedbackUrl: gameFeedbackUrl ?? this.gameFeedbackUrl,
       gameIntroduction: gameIntroduction ?? this.gameIntroduction,
       codeMapUrl: codeMapUrl ?? this.codeMapUrl,
+      knowledgeBaseName: knowledgeBaseName ?? this.knowledgeBaseName,
     );
   }
 }

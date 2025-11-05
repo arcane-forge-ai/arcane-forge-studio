@@ -28,7 +28,7 @@ class ChatApiService {
         _dio = Dio() {
     _dio.options.headers['Content-Type'] = 'application/json';
     _dio.options.connectTimeout = const Duration(seconds: 10);
-    _dio.options.receiveTimeout = const Duration(seconds: 30);
+    _dio.options.receiveTimeout = const Duration(seconds: 120);
     _dio.options.baseUrl = _apiUrl;
   }
 
