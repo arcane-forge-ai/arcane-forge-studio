@@ -13,7 +13,7 @@ import 'models/project_model.dart';
 import '../../providers/auth_provider.dart';
 import 'services/chat_api_service.dart';
 import 'services/document_extractor.dart';
-import 'services/langchain_message_parser.dart';
+import 'services/langchain_message_parser.dart';  
 import 'widgets/chat_history_sidebar.dart';
 import '../../providers/settings_provider.dart';
 import '../../utils/app_constants.dart' as app_utils;

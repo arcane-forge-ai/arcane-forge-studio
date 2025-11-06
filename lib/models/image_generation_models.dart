@@ -15,6 +15,7 @@ class ImageAsset {
   final List<ImageGeneration> generations;
   final String? thumbnail;
   final String? favoriteGenerationId;
+  final int? totalGenerations; // Total count from API when generations list is not included
 
   ImageAsset({
     required this.id,
@@ -25,6 +26,7 @@ class ImageAsset {
     required this.generations,
     this.thumbnail,
     this.favoriteGenerationId,
+    this.totalGenerations,
   });
 
   ImageAsset copyWith({
@@ -36,6 +38,7 @@ class ImageAsset {
     List<ImageGeneration>? generations,
     String? thumbnail,
     String? favoriteGenerationId,
+    int? totalGenerations,
   }) {
     return ImageAsset(
       id: id ?? this.id,
@@ -46,6 +49,7 @@ class ImageAsset {
       generations: generations ?? this.generations,
       thumbnail: thumbnail ?? this.thumbnail,
       favoriteGenerationId: favoriteGenerationId ?? this.favoriteGenerationId,
+      totalGenerations: totalGenerations ?? this.totalGenerations,
     );
   }
 

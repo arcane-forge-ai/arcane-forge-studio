@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:dio/dio.dart';
+import 'package:provider/provider.dart';
 import '../../../models/music_generation_models.dart';
 import '../../../models/sfx_generation_models.dart'; // For GenerationStatus
+import '../../../providers/music_generation_provider.dart';
 
 class MusicDetailDialog extends StatefulWidget {
   final MusicGeneration generation;
@@ -26,8 +28,10 @@ class MusicDetailDialog extends StatefulWidget {
 
 class _MusicDetailDialogState extends State<MusicDetailDialog> {
   late AudioPlayer _audioPlayer;
+  late MusicGeneration _currentGeneration;
   bool _isPlaying = false;
   bool _isLoading = false;
+  bool _isTogglingFavorite = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   String? _errorMessage;
@@ -41,8 +45,54 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
   @override
   void initState() {
     super.initState();
+    _currentGeneration = widget.generation;
     _audioPlayer = AudioPlayer();
     _setupAudioPlayer();
+  }
+
+  Future<void> _handleFavoriteToggle() async {
+    if (_isTogglingFavorite) return;
+    
+    setState(() {
+      _isTogglingFavorite = true;
+    });
+
+    try {
+      final provider = Provider.of<MusicGenerationProvider>(context, listen: false);
+      
+      // First, make the API call
+      await provider.setFavoriteMusicGeneration(
+        _currentGeneration.assetId,
+        _currentGeneration.id,
+      );
+      
+      // After API call succeeds, update the UI
+      if (mounted) {
+        setState(() {
+          _currentGeneration = _currentGeneration.copyWith(
+            isFavorite: !_currentGeneration.isFavorite,
+          );
+          _isTogglingFavorite = false;
+        });
+      }
+      
+      // Call the callback if provided (for parent to refresh)
+      if (widget.onFavoriteToggle != null) {
+        widget.onFavoriteToggle!();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isTogglingFavorite = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update favorite: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _setupAudioPlayer() {
@@ -195,15 +245,23 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
             ),
           ),
           const Spacer(),
-          if (widget.onFavoriteToggle != null)
-            IconButton(
-              onPressed: widget.onFavoriteToggle,
-              icon: Icon(
-                widget.generation.isFavorite ? Icons.favorite : Icons.favorite_border,
-                color: widget.generation.isFavorite ? Colors.red : Colors.white54,
-              ),
-              tooltip: widget.generation.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
-            ),
+          IconButton(
+            onPressed: _isTogglingFavorite ? null : _handleFavoriteToggle,
+            icon: _isTogglingFavorite
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+                    ),
+                  )
+                : Icon(
+                    _currentGeneration.isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: _currentGeneration.isFavorite ? Colors.red : Colors.white54,
+                  ),
+            tooltip: _currentGeneration.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+          ),
           // Download button
           IconButton(
             onPressed: widget.generation.status == GenerationStatus.completed 
