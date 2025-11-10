@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'dart:io';
 import '../../../models/image_generation_models.dart';
 import '../../../providers/image_generation_provider.dart';
+import '../../../services/file_download_service.dart';
 import 'package:provider/provider.dart';
 
 class ImageDetailDialog extends StatefulWidget {
@@ -583,14 +584,65 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
   }
 
 
-  void _downloadImage(BuildContext context) {
-    // TODO: Implement download functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Download functionality will be implemented soon'),
-        backgroundColor: Colors.blue,
+  Future<void> _downloadImage(BuildContext context) async {
+    final imageUrl = _currentGeneration.imageUrl;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No image URL available for download'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final defaultFileName = _generateDefaultFileName();
+    
+    await FileDownloadService.downloadFile(
+      url: imageUrl,
+      defaultFileName: defaultFileName,
+      config: const FileDownloadConfig(
+        dialogTitle: 'Save Image File',
+        allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
+        errorPrefix: 'Error downloading image',
+        downloadingSnackbarColor: Colors.blue,
+        showOverwriteConfirmation: true,
       ),
+      context: context,
+      mounted: () => mounted,
     );
+  }
+
+  String _generateDefaultFileName() {
+    // Generate a filename based on the prompt or asset name
+    String baseName = 'generated_image';
+    
+    if (widget.asset != null && widget.asset!.name.isNotEmpty) {
+      baseName = widget.asset!.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+    } else if (_currentGeneration.parameters['positive_prompt'] != null) {
+      final prompt = _currentGeneration.parameters['positive_prompt'].toString();
+      if (prompt.isNotEmpty) {
+        // Take first few words of prompt and sanitize
+        final words = prompt.split(' ').take(3).join('_');
+        baseName = words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      }
+    }
+    
+    // Add timestamp to make filename unique
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    
+    // Determine file extension from imageUrl or default to png
+    String extension = 'png';
+    if (_currentGeneration.imageUrl != null && _currentGeneration.imageUrl!.isNotEmpty) {
+      final url = _currentGeneration.imageUrl!;
+      if (url.contains('.jpg') || url.contains('.jpeg')) {
+        extension = 'jpg';
+      } else if (url.contains('.webp')) {
+        extension = 'webp';
+      }
+    }
+    
+    return '${baseName}_$timestamp.$extension';
   }
 
   void _deleteGeneration(BuildContext context) {

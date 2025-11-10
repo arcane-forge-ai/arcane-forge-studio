@@ -452,18 +452,32 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   }
 
   String _formatDate(DateTime date) {
+    // Convert to local time
+    final localDate = date.toLocal();
     final now = DateTime.now();
-    final difference = now.difference(date);
+    final difference = now.difference(localDate);
     
+    String relativeTime;
     if (difference.inDays == 0) {
-      return 'Today';
+      relativeTime = 'Today';
     } else if (difference.inDays == 1) {
-      return 'Yesterday';
+      relativeTime = 'Yesterday';
     } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
+      relativeTime = '${difference.inDays} days ago';
     } else {
-      return '${date.day}/${date.month}/${date.year}';
+      relativeTime = '${difference.inDays} days ago';
     }
+    
+    // Format absolute time as YYYY-MM-DD HH:mm:ss in local time
+    final year = localDate.year.toString().padLeft(4, '0');
+    final month = localDate.month.toString().padLeft(2, '0');
+    final day = localDate.day.toString().padLeft(2, '0');
+    final hour = localDate.hour.toString().padLeft(2, '0');
+    final minute = localDate.minute.toString().padLeft(2, '0');
+    final second = localDate.second.toString().padLeft(2, '0');
+    final absoluteTime = '$year-$month-$day $hour:$minute:$second';
+    
+    return '$relativeTime ($absoluteTime)';
   }
 
   Future<void> _downloadFile(KnowledgeBaseFile file) async {

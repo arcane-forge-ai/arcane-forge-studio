@@ -1,14 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:dio/dio.dart';
 import 'package:provider/provider.dart';
 import '../../../models/music_generation_models.dart';
 import '../../../models/sfx_generation_models.dart'; // For GenerationStatus
 import '../../../providers/music_generation_provider.dart';
+import '../../../services/file_download_service.dart';
 
 class MusicDetailDialog extends StatefulWidget {
   final MusicGeneration generation;
@@ -748,81 +746,21 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
       return;
     }
 
-    try {
-      // Generate a default filename based on generation data
-      final defaultFileName = _generateDefaultFileName();
-      
-      // Show "Save As" dialog
-      String? outputFile = await FilePicker.platform.saveFile(
+    final defaultFileName = _generateDefaultFileName();
+    
+    await FileDownloadService.downloadFile(
+      url: audioUrl,
+      defaultFileName: defaultFileName,
+      config: const FileDownloadConfig(
         dialogTitle: 'Save Music File',
-        fileName: defaultFileName,
-        type: FileType.custom,
         allowedExtensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a'],
-      );
-      
-      if (outputFile == null) {
-        // User cancelled the dialog
-        return;
-      }
-      
-      // Show downloading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Downloading $defaultFileName...'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      
-      // Download file content using dio
-      final dio = Dio();
-      final response = await dio.get(
-        audioUrl,
-        options: Options(
-          responseType: ResponseType.bytes,
-          receiveTimeout: const Duration(minutes: 5), // 5 minute timeout for large files
-        ),
-      );
-      
-      // Write to selected location
-      final outputFileObj = File(outputFile);
-      await outputFileObj.writeAsBytes(response.data);
-      
-      // Show success message with file location
-      final fileName = outputFileObj.path.split(Platform.pathSeparator).last;
-      final directory = outputFileObj.parent.path;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Saved "$fileName" to $directory'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
-    } catch (e) {
-      String errorMessage = 'Error downloading music: ';
-      if (e is DioException) {
-        switch (e.type) {
-          case DioExceptionType.connectionTimeout:
-          case DioExceptionType.receiveTimeout:
-            errorMessage += 'Download timed out. Please try again.';
-            break;
-          case DioExceptionType.connectionError:
-            errorMessage += 'Network connection error.';
-            break;
-          default:
-            errorMessage += e.message ?? 'Unknown network error';
-        }
-      } else if (e is FileSystemException) {
-        errorMessage += 'Could not save file. Check permissions and disk space.';
-      } else {
-        errorMessage += e.toString();
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+        errorPrefix: 'Error downloading music',
+        downloadingSnackbarColor: Colors.orange,
+        showOverwriteConfirmation: false,
+      ),
+      context: context,
+      mounted: () => mounted,
+    );
   }
 
   String _generateDefaultFileName() {

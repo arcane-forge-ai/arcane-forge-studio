@@ -16,6 +16,8 @@ class ImageAsset {
   final String? thumbnail;
   final String? favoriteGenerationId;
   final int? totalGenerations; // Total count from API when generations list is not included
+  final List<String> tags;
+  final Map<String, dynamic> metadata;
 
   ImageAsset({
     required this.id,
@@ -27,6 +29,8 @@ class ImageAsset {
     this.thumbnail,
     this.favoriteGenerationId,
     this.totalGenerations,
+    this.tags = const [],
+    this.metadata = const {},
   });
 
   ImageAsset copyWith({
@@ -39,6 +43,8 @@ class ImageAsset {
     String? thumbnail,
     String? favoriteGenerationId,
     int? totalGenerations,
+    List<String>? tags,
+    Map<String, dynamic>? metadata,
   }) {
     return ImageAsset(
       id: id ?? this.id,
@@ -50,6 +56,8 @@ class ImageAsset {
       thumbnail: thumbnail ?? this.thumbnail,
       favoriteGenerationId: favoriteGenerationId ?? this.favoriteGenerationId,
       totalGenerations: totalGenerations ?? this.totalGenerations,
+      tags: tags ?? this.tags,
+      metadata: metadata ?? this.metadata,
     );
   }
 
