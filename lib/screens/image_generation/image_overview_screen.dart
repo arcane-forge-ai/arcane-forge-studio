@@ -266,12 +266,16 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     // Apply status filter
     switch (_filterType) {
       case 'HasGenerations':
-        filtered =
-            filtered.where((asset) => asset.generations.isNotEmpty).toList();
+        filtered = filtered.where((asset) {
+          final count = asset.totalGenerations ?? asset.generations.length;
+          return count > 0;
+        }).toList();
         break;
       case 'Empty':
-        filtered =
-            filtered.where((asset) => asset.generations.isEmpty).toList();
+        filtered = filtered.where((asset) {
+          final count = asset.totalGenerations ?? asset.generations.length;
+          return count == 0;
+        }).toList();
         break;
       case 'Recent':
         filtered = filtered
@@ -418,7 +422,9 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                     const Spacer(),
                     Row(
                       children: [
-                        _buildGenerationCount(asset.generations.length),
+                        _buildGenerationCount(
+                          asset.totalGenerations ?? asset.generations.length,
+                        ),
                         const Spacer(),
                         Text(
                           _formatDate(asset.createdAt),
@@ -449,6 +455,19 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   }
 
   Widget _buildAssetThumbnailWithFuture(ImageAsset asset, ImageGenerationProvider provider) {
+    // First check if asset has a thumbnail URL (from backend)
+    if (asset.thumbnail != null && asset.thumbnail!.isNotEmpty) {
+      // Check if it's a URL (starts with http/https) or a local path
+      if (asset.thumbnail!.startsWith('http://') || asset.thumbnail!.startsWith('https://')) {
+        // It's a URL, use it directly
+        return _buildThumbnailFromUrl(asset.thumbnail!, asset);
+      } else if (File(asset.thumbnail!).existsSync()) {
+        // It's a local file path, use it
+        return _buildThumbnailFromFile(asset.thumbnail!, asset);
+      }
+    }
+    
+    // Fallback: try to get favorite generation
     if (asset.favoriteGenerationId != null) {
       return FutureBuilder<ImageGeneration?>(
         future: provider.getGeneration(asset.favoriteGenerationId!),
@@ -541,6 +560,50 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     } else {
       return _buildEmptyThumbnail(asset);
     }
+  }
+
+  Widget _buildThumbnailFromUrl(String url, ImageAsset asset) {
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        child: Image.network(
+          url,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildEmptyThumbnail(asset);
+          },
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return _buildLoadingThumbnail();
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnailFromFile(String filePath, ImageAsset asset) {
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        child: Image.file(
+          File(filePath),
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildEmptyThumbnail(asset);
+          },
+        ),
+      ),
+    );
   }
 
   Widget _buildLoadingThumbnail() {

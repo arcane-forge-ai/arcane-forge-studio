@@ -5,10 +5,19 @@ import 'package:dio/dio.dart';
 import 'dart:io';
 import '../game_design_assistant/models/api_models.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
-import '../game_design_assistant/providers/project_provider.dart';
 import '../../providers/settings_provider.dart';
+import 'markdown_viewer_screen.dart';
 
 class KnowledgeBaseScreen extends StatefulWidget {
+  final String projectId;
+  final String projectName;
+  
+  const KnowledgeBaseScreen({
+    Key? key,
+    required this.projectId,
+    required this.projectName,
+  }) : super(key: key);
+  
   @override
   _KnowledgeBaseScreenState createState() => _KnowledgeBaseScreenState();
 }
@@ -34,19 +43,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     });
 
     try {
-      final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-      
-      // Wait a bit if the project is still being initialized
-      String? projectId = projectProvider.currentProject?.id;
-      if (projectId == null) {
-        // Wait a moment for the provider to initialize
-        await Future.delayed(const Duration(milliseconds: 100));
-        projectId = projectProvider.currentProject?.id;
-      }
-      
-      // Use the project ID or fallback to a default
-      final finalProjectId = projectId ?? '1';
-      final files = await _chatApiService.getKnowledgeBaseFiles(finalProjectId);
+      final files = await _chatApiService.getKnowledgeBaseFiles(widget.projectId);
       
       setState(() {
         _files = files;
@@ -72,24 +69,12 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         setState(() {
           _isUploading = true;
         });
-
-        final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-        
-        // Wait a bit if the project is still being initialized
-        String? projectId = projectProvider.currentProject?.id;
-        if (projectId == null) {
-          // Wait a moment for the provider to initialize
-          await Future.delayed(const Duration(milliseconds: 100));
-          projectId = projectProvider.currentProject?.id;
-        }
-        
-        final finalProjectId = projectId ?? '1';
         
         int successCount = 0;
         for (final file in result.files) {
           if (file.path != null) {
             final success = await _chatApiService.uploadFile(
-              finalProjectId,
+              widget.projectId,
               file.path!,
               file.name,
             );
@@ -126,19 +111,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     if (!confirm) return;
 
     try {
-      final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-      
-      // Wait a bit if the project is still being initialized
-      String? projectId = projectProvider.currentProject?.id;
-      if (projectId == null) {
-        // Wait a moment for the provider to initialize
-        await Future.delayed(const Duration(milliseconds: 100));
-        projectId = projectProvider.currentProject?.id;
-      }
-      
-      final finalProjectId = projectId ?? '1';
-      
-      final success = await _chatApiService.deleteFile(finalProjectId, file.id);
+      final success = await _chatApiService.deleteFile(widget.projectId, file.id);
       
       if (success) {
         _showSuccessSnackBar('File deleted successfully');
@@ -416,6 +389,13 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           // Action buttons
           Row(
             children: [
+              // View button for markdown files
+              if (file.fileType.toLowerCase() == 'md')
+                IconButton(
+                  onPressed: () => _viewMarkdownFile(file),
+                  icon: Icon(Icons.visibility, color: Colors.blue),
+                  tooltip: 'View markdown',
+                ),
               IconButton(
                 onPressed: () => _downloadFile(file),
                 icon: Icon(Icons.download, color: Colors.green),
@@ -480,39 +460,41 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   }
 
   String _formatDate(DateTime date) {
+    // Convert to local time
+    final localDate = date.toLocal();
     final now = DateTime.now();
-    final difference = now.difference(date);
+    final difference = now.difference(localDate);
     
+    String relativeTime;
     if (difference.inDays == 0) {
-      return 'Today';
+      relativeTime = 'Today';
     } else if (difference.inDays == 1) {
-      return 'Yesterday';
+      relativeTime = 'Yesterday';
     } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
+      relativeTime = '${difference.inDays} days ago';
     } else {
-      return '${date.day}/${date.month}/${date.year}';
+      relativeTime = '${difference.inDays} days ago';
     }
+    
+    // Format absolute time as YYYY-MM-DD HH:mm:ss in local time
+    final year = localDate.year.toString().padLeft(4, '0');
+    final month = localDate.month.toString().padLeft(2, '0');
+    final day = localDate.day.toString().padLeft(2, '0');
+    final hour = localDate.hour.toString().padLeft(2, '0');
+    final minute = localDate.minute.toString().padLeft(2, '0');
+    final second = localDate.second.toString().padLeft(2, '0');
+    final absoluteTime = '$year-$month-$day $hour:$minute:$second';
+    
+    return '$relativeTime ($absoluteTime)';
   }
 
   Future<void> _downloadFile(KnowledgeBaseFile file) async {
     try {
-      final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-      
-      // Wait a bit if the project is still being initialized
-      String? projectId = projectProvider.currentProject?.id;
-      if (projectId == null) {
-        // Wait a moment for the provider to initialize
-        await Future.delayed(const Duration(milliseconds: 100));
-        projectId = projectProvider.currentProject?.id;
-      }
-      
-      final finalProjectId = projectId ?? '1';
-      
       // Show loading indicator
       _showSuccessSnackBar('Getting download link...');
       
       // Get download URL from API
-      final downloadResponse = await _chatApiService.getFileDownloadUrl(finalProjectId, file.id);
+      final downloadResponse = await _chatApiService.getFileDownloadUrl(widget.projectId, file.id);
       
       if (downloadResponse == null) {
         _showErrorSnackBar('Failed to get download URL');
@@ -603,6 +585,18 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         ],
       ),
     ) ?? false;
+  }
+
+  Future<void> _viewMarkdownFile(KnowledgeBaseFile file) async {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => MarkdownViewerScreen(
+          file: file,
+          projectId: widget.projectId,
+          chatApiService: _chatApiService,
+        ),
+      ),
+    );
   }
 
 } 

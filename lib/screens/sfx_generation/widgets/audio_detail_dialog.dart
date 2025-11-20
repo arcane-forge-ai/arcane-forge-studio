@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:dio/dio.dart';
+import 'package:provider/provider.dart';
 import '../../../models/sfx_generation_models.dart';
+import '../../../providers/sfx_generation_provider.dart';
+import '../../../services/file_download_service.dart';
 
 class AudioDetailDialog extends StatefulWidget {
   final SfxGeneration generation;
@@ -29,8 +29,10 @@ class AudioDetailDialog extends StatefulWidget {
 
 class _AudioDetailDialogState extends State<AudioDetailDialog> {
   late AudioPlayer _audioPlayer;
+  late SfxGeneration _currentGeneration;
   bool _isPlaying = false;
   bool _isLoading = false;
+  bool _isTogglingFavorite = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   String? _errorMessage;
@@ -44,8 +46,54 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
   @override
   void initState() {
     super.initState();
+    _currentGeneration = widget.generation;
     _audioPlayer = AudioPlayer();
     _setupAudioPlayer();
+  }
+
+  Future<void> _handleFavoriteToggle() async {
+    if (_isTogglingFavorite) return;
+    
+    setState(() {
+      _isTogglingFavorite = true;
+    });
+
+    try {
+      final provider = Provider.of<SfxGenerationProvider>(context, listen: false);
+      
+      // First, make the API call
+      await provider.setFavoriteSfxGeneration(
+        _currentGeneration.assetId,
+        _currentGeneration.id,
+      );
+      
+      // After API call succeeds, update the UI
+      if (mounted) {
+        setState(() {
+          _currentGeneration = _currentGeneration.copyWith(
+            isFavorite: !_currentGeneration.isFavorite,
+          );
+          _isTogglingFavorite = false;
+        });
+      }
+      
+      // Call the callback if provided (for parent to refresh)
+      if (widget.onFavoriteToggle != null) {
+        widget.onFavoriteToggle!();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isTogglingFavorite = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update favorite: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _setupAudioPlayer() {
@@ -249,12 +297,21 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
           const Spacer(),
           // Favorite button
           IconButton(
-            onPressed: widget.onFavoriteToggle,
-            icon: Icon(
-              widget.generation.isFavorite ? Icons.favorite : Icons.favorite_border,
-              color: widget.generation.isFavorite ? Colors.red : Colors.white54,
-            ),
-            tooltip: widget.generation.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+            onPressed: _isTogglingFavorite ? null : _handleFavoriteToggle,
+            icon: _isTogglingFavorite
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+                    ),
+                  )
+                : Icon(
+                    _currentGeneration.isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: _currentGeneration.isFavorite ? Colors.red : Colors.white54,
+                  ),
+            tooltip: _currentGeneration.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
           ),
           // Download button
           IconButton(
@@ -441,7 +498,7 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
           _buildDetailSection('Basic Information', [
             _buildDetailItem('Created', _formatDateTime(widget.generation.createdAt)),
             _buildDetailItem('Status', widget.generation.status.name.toUpperCase()),
-            _buildDetailItem('Favorite', widget.generation.isFavorite ? 'Yes' : 'No'),
+            _buildDetailItem('Favorite', _currentGeneration.isFavorite ? 'Yes' : 'No'),
             if (widget.asset != null) _buildDetailItem('Asset', widget.asset!.name),
             if (widget.generation.duration != null) 
               _buildDetailItem('Duration', '${widget.generation.duration!.toStringAsFixed(1)}s'),
@@ -597,7 +654,7 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
     details.writeln('SFX Generation Details:');
     details.writeln('Created: ${_formatDateTime(widget.generation.createdAt)}');
     details.writeln('Status: ${widget.generation.status.name.toUpperCase()}');
-    details.writeln('Favorite: ${widget.generation.isFavorite ? 'Yes' : 'No'}');
+    details.writeln('Favorite: ${_currentGeneration.isFavorite ? 'Yes' : 'No'}');
     if (widget.asset != null) details.writeln('Asset: ${widget.asset!.name}');
     if (widget.generation.duration != null) details.writeln('Duration: ${widget.generation.duration!.toStringAsFixed(1)}s');
     if (widget.generation.fileSize != null) details.writeln('File Size: ${_formatFileSize(widget.generation.fileSize!)}');
@@ -636,89 +693,21 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
       return;
     }
 
-    try {
-      // Generate a default filename based on generation data
-      final defaultFileName = _generateDefaultFileName();
-      
-      // Show "Save As" dialog
-      String? outputFile = await FilePicker.platform.saveFile(
+    final defaultFileName = _generateDefaultFileName();
+    
+    await FileDownloadService.downloadFile(
+      url: audioUrl,
+      defaultFileName: defaultFileName,
+      config: const FileDownloadConfig(
         dialogTitle: 'Save Audio File',
-        fileName: defaultFileName,
-        type: FileType.custom,
         allowedExtensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a'],
-      );
-      
-      if (outputFile == null) {
-        // User cancelled the dialog
-        return;
-      }
-      
-      // Check if file already exists and confirm overwrite
-      final outputFileObj = File(outputFile);
-      if (await outputFileObj.exists()) {
-        final shouldOverwrite = await _showOverwriteConfirmDialog(outputFileObj.path);
-        if (!shouldOverwrite) {
-          return;
-        }
-      }
-      
-      // Show downloading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Downloading $defaultFileName...'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-      
-      // Download file content using dio
-      final dio = Dio();
-      final response = await dio.get(
-        audioUrl,
-        options: Options(
-          responseType: ResponseType.bytes,
-          receiveTimeout: const Duration(minutes: 5), // 5 minute timeout for large files
-        ),
-      );
-      
-      // Write to selected location
-      await outputFileObj.writeAsBytes(response.data);
-      
-      // Show success message with file location
-      final fileName = outputFileObj.path.split(Platform.pathSeparator).last;
-      final directory = outputFileObj.parent.path;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Saved "$fileName" to $directory'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
-    } catch (e) {
-      String errorMessage = 'Error downloading audio: ';
-      if (e is DioException) {
-        switch (e.type) {
-          case DioExceptionType.connectionTimeout:
-          case DioExceptionType.receiveTimeout:
-            errorMessage += 'Download timed out. Please try again.';
-            break;
-          case DioExceptionType.connectionError:
-            errorMessage += 'Network connection error.';
-            break;
-          default:
-            errorMessage += e.message ?? 'Unknown network error';
-        }
-      } else if (e is FileSystemException) {
-        errorMessage += 'Could not save file. Check permissions and disk space.';
-      } else {
-        errorMessage += e.toString();
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+        errorPrefix: 'Error downloading audio',
+        downloadingSnackbarColor: Colors.blue,
+        showOverwriteConfirmation: true,
+      ),
+      context: context,
+      mounted: () => mounted,
+    );
   }
 
   String _generateDefaultFileName() {
@@ -745,36 +734,6 @@ class _AudioDetailDialogState extends State<AudioDetailDialog> {
     return '${baseName}_$timestamp.$format';
   }
 
-  Future<bool> _showOverwriteConfirmDialog(String filePath) async {
-    return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2A2A2A),
-        title: const Text(
-          'File Already Exists',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'The file "$filePath" already exists. Do you want to overwrite it?',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white70),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.orange),
-            child: const Text('Overwrite'),
-          ),
-        ],
-      ),
-    ) ?? false;
-  }
 
   void _deleteGeneration(BuildContext context) {
     showDialog(

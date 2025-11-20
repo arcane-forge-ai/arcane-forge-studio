@@ -6,7 +6,6 @@ import '../dashboard/dashboard_screen.dart';
 import 'components/side_menu.dart';
 import 'components/project_home_screen.dart';
 import '../game_design_assistant/game_design_assistant_screen.dart';
-import '../game_design_assistant/providers/project_provider.dart';
 import '../knowledge_base/knowledge_base_screen.dart';
 import '../image_generation/image_overview_screen.dart';
 import '../image_generation/image_generation_screen.dart';
@@ -66,24 +65,14 @@ class ProjectDashboardScreen extends StatelessWidget {
                         projectId: projectId,
                       );
                     case ScreenType.knowledgeBase:
-                      return ChangeNotifierProvider(
-                        create: (context) {
-                          final provider = ProjectProvider();
-                          provider.initializeWithProject(
-                              projectId, projectName);
-                          return provider;
-                        },
-                        child: KnowledgeBaseScreen(),
+                      return KnowledgeBaseScreen(
+                        projectId: projectId,
+                        projectName: projectName,
                       );
                     case ScreenType.gameDesignAssistant:
-                      return ChangeNotifierProvider(
-                        create: (context) {
-                          final provider = ProjectProvider();
-                          provider.initializeWithProject(
-                              projectId, projectName);
-                          return provider;
-                        },
-                        child: GameDesignAssistantScreen(),
+                      return GameDesignAssistantScreen(
+                        projectId: projectId,
+                        projectName: projectName,
                       );
                     case ScreenType.codeEditor:
                       return CodeScreen(

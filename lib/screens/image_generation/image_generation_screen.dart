@@ -2249,6 +2249,20 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
                       _buildMetadataSection('Timestamps', [
                         _buildMetadataRow('Created At', _formatDetailedDateTime(asset.createdAt)),
                       ]),
+                      if (asset.tags.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _buildMetadataSection('Tags', [
+                          _buildMetadataRow('Tags', asset.tags.join(', ')),
+                        ]),
+                      ],
+                      if (asset.metadata.isNotEmpty) ...[
+                        const SizedBox(height: 20),
+                        _buildMetadataSection('Custom Metadata', 
+                          asset.metadata.entries.map((entry) => 
+                            _buildMetadataRow(entry.key, entry.value.toString())
+                          ).toList()
+                        ),
+                      ],
                     ],
                   ),
                 ),

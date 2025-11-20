@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:provider/provider.dart';
 import '../models/api_models.dart';
 import '../services/document_extractor.dart';
-import '../providers/project_provider.dart';
 
 class GameDesignResponseWidget extends StatelessWidget {
   final String response;
+  final String projectId;
+  final String projectName;
 
   const GameDesignResponseWidget({
     Key? key,
     required this.response,
+    required this.projectId,
+    required this.projectName,
   }) : super(key: key);
 
   @override
@@ -118,28 +120,14 @@ class GameDesignResponseWidget extends StatelessWidget {
   }
 
   void _extractDocument(BuildContext context) {
-    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-    final currentProject = projectProvider.currentProject;
-    
-    if (currentProject == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No active project found. Please initialize a project first.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
     final extractedDocument = DocumentExtractor.createExtractedDocument(
       response,
-      currentProject.id,
+      projectId,
       'response_${DateTime.now().millisecondsSinceEpoch}', // Source message ID
     );
 
     if (extractedDocument != null) {
-      projectProvider.addExtractedDocument(extractedDocument);
-      
+      // API handles adding to knowledge base - we just show success
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Document "${extractedDocument.title}" extracted successfully!'),

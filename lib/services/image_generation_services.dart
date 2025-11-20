@@ -554,6 +554,24 @@ class ApiImageAssetService implements ImageAssetService {
       );
     }
 
+    // Parse total_generations if available (when generations list is not included)
+    int? totalGenerations;
+    if (json['total_generations'] != null) {
+      totalGenerations = json['total_generations'] as int;
+    }
+
+    // Parse tags
+    List<String> tags = [];
+    if (json['tags'] != null) {
+      tags = List<String>.from(json['tags'] as List<dynamic>);
+    }
+
+    // Parse metadata
+    Map<String, dynamic> metadata = {};
+    if (json['metadata'] != null) {
+      metadata = Map<String, dynamic>.from(json['metadata'] as Map<String, dynamic>);
+    }
+
     return ImageAsset(
       id: json['id'] as String,
       projectId: json['project_id'].toString(),
@@ -563,6 +581,9 @@ class ApiImageAssetService implements ImageAssetService {
       generations: generations,
       thumbnail: json['thumbnail'] as String?,
       favoriteGenerationId: json['favorite_generation_id'] as String?,
+      totalGenerations: totalGenerations,
+      tags: tags,
+      metadata: metadata,
     );
   }
 

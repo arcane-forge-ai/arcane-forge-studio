@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import '../../../models/image_generation_models.dart';
+import '../../../providers/image_generation_provider.dart';
+import '../../../services/file_download_service.dart';
+import 'package:provider/provider.dart';
 
-class ImageDetailDialog extends StatelessWidget {
+class ImageDetailDialog extends StatefulWidget {
   final ImageGeneration generation;
   final ImageAsset? asset;
   final VoidCallback? onFavoriteToggle;
@@ -18,6 +21,69 @@ class ImageDetailDialog extends StatelessWidget {
     this.onDownload,
     this.onDelete,
   });
+
+  @override
+  State<ImageDetailDialog> createState() => _ImageDetailDialogState();
+}
+
+class _ImageDetailDialogState extends State<ImageDetailDialog> {
+  late ImageGeneration _currentGeneration;
+  bool _isTogglingFavorite = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentGeneration = widget.generation;
+  }
+
+  Future<void> _handleFavoriteToggle() async {
+    if (_isTogglingFavorite) return;
+    
+    setState(() {
+      _isTogglingFavorite = true;
+    });
+
+    try {
+      final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+      
+      // First, make the API call
+      if (_currentGeneration.isFavorite) {
+        await provider.removeGenerationFavorite(_currentGeneration.id);
+      } else {
+        await provider.markGenerationAsFavorite(_currentGeneration.id);
+      }
+      
+      // After API call succeeds, fetch updated generation
+      final updatedGeneration = await provider.getGeneration(_currentGeneration.id);
+      if (updatedGeneration != null && mounted) {
+        setState(() {
+          _currentGeneration = updatedGeneration;
+          _isTogglingFavorite = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _isTogglingFavorite = false;
+        });
+      }
+      
+      // Call the callback if provided (for parent to refresh)
+      if (widget.onFavoriteToggle != null) {
+        widget.onFavoriteToggle!();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isTogglingFavorite = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update favorite: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +214,7 @@ class ImageDetailDialog extends StatelessWidget {
             message: 'Copy Generation ID',
             child: InkWell(
               onTap: () {
-                Clipboard.setData(ClipboardData(text: generation.id));
+                Clipboard.setData(ClipboardData(text: _currentGeneration.id));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Generation ID copied to clipboard'),
@@ -171,9 +237,9 @@ class ImageDetailDialog extends StatelessWidget {
                     const Icon(Icons.fingerprint, size: 14, color: Colors.white54),
                     const SizedBox(width: 4),
                     Text(
-                      generation.id.length > 8 
-                          ? '${generation.id.substring(0, 8)}...' 
-                          : generation.id,
+                      _currentGeneration.id.length > 8 
+                          ? '${_currentGeneration.id.substring(0, 8)}...' 
+                          : _currentGeneration.id,
                       style: const TextStyle(
                         color: Colors.white54,
                         fontSize: 11,
@@ -188,24 +254,33 @@ class ImageDetailDialog extends StatelessWidget {
           const SizedBox(width: 8),
           // Favorite button
           IconButton(
-            onPressed: onFavoriteToggle,
-            icon: Icon(
-              generation.isFavorite ? Icons.favorite : Icons.favorite_border,
-              color: generation.isFavorite ? Colors.red : Colors.white54,
-            ),
-            tooltip: generation.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+            onPressed: _isTogglingFavorite ? null : _handleFavoriteToggle,
+            icon: _isTogglingFavorite
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white54),
+                    ),
+                  )
+                : Icon(
+                    _currentGeneration.isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: _currentGeneration.isFavorite ? Colors.red : Colors.white54,
+                  ),
+            tooltip: _currentGeneration.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
           ),
           // Download button
           IconButton(
-            onPressed: generation.status == GenerationStatus.completed 
-                ? (onDownload ?? () => _downloadImage(context))
+            onPressed: _currentGeneration.status == GenerationStatus.completed 
+                ? (widget.onDownload ?? () => _downloadImage(context))
                 : null,
             icon: const Icon(Icons.download, color: Colors.white54),
             tooltip: 'Download image',
           ),
           // Delete button
           IconButton(
-            onPressed: onDelete ?? () => _deleteGeneration(context),
+            onPressed: widget.onDelete ?? () => _deleteGeneration(context),
             icon: const Icon(Icons.delete, color: Colors.red),
             tooltip: 'Delete generation',
           ),
@@ -224,25 +299,25 @@ class ImageDetailDialog extends StatelessWidget {
     // Get image dimensions
     int width = 512;
     int height = 512;
-    if (generation.parameters.containsKey('width')) {
-      width = generation.parameters['width'] ?? 512;
+    if (_currentGeneration.parameters.containsKey('width')) {
+      width = _currentGeneration.parameters['width'] ?? 512;
     }
-    if (generation.parameters.containsKey('height')) {
-      height = generation.parameters['height'] ?? 512;
+    if (_currentGeneration.parameters.containsKey('height')) {
+      height = _currentGeneration.parameters['height'] ?? 512;
     }
     
     // Use online URL if available, otherwise use local file
-    final Widget imageWidget = generation.imageUrl != null && generation.imageUrl!.isNotEmpty
+    final Widget imageWidget = _currentGeneration.imageUrl != null && _currentGeneration.imageUrl!.isNotEmpty
         ? Image.network(
-            generation.imageUrl!,
+            _currentGeneration.imageUrl!,
             width: width.toDouble(),
             height: height.toDouble(),
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
               // Fallback to local file if network image fails
-              if (generation.imagePath.isNotEmpty) {
+              if (_currentGeneration.imagePath.isNotEmpty) {
                 return Image.file(
-                  File(generation.imagePath),
+                  File(_currentGeneration.imagePath),
                   width: width.toDouble(),
                   height: height.toDouble(),
                   fit: BoxFit.contain,
@@ -254,9 +329,9 @@ class ImageDetailDialog extends StatelessWidget {
               return _buildErrorImage(width, height);
             },
           )
-        : generation.imagePath.isNotEmpty
+        : _currentGeneration.imagePath.isNotEmpty
             ? Image.file(
-                File(generation.imagePath),
+                File(_currentGeneration.imagePath),
                 width: width.toDouble(),
                 height: height.toDouble(),
                 fit: BoxFit.contain,
@@ -308,51 +383,51 @@ class ImageDetailDialog extends StatelessWidget {
           
           // Basic Info
           _buildDetailSection('Basic Information', [
-            _buildDetailItem('Created', _formatDateTime(generation.createdAt)),
-            _buildDetailItem('Status', generation.status.name.toUpperCase()),
-            _buildDetailItem('Favorite', generation.isFavorite ? 'Yes' : 'No'),
-            if (asset != null) _buildDetailItem('Asset', asset!.name),
+            _buildDetailItem('Created', _formatDateTime(_currentGeneration.createdAt)),
+            _buildDetailItem('Status', _currentGeneration.status.name.toUpperCase()),
+            _buildDetailItem('Favorite', _currentGeneration.isFavorite ? 'Yes' : 'No'),
+            if (widget.asset != null) _buildDetailItem('Asset', widget.asset!.name),
           ]),
           
           const SizedBox(height: 20),
           
           // Technical Details (Debug Info)
           _buildDetailSection('Technical Details', [
-            _buildCopyableDetailItem('Generation ID', generation.id),
-            _buildCopyableDetailItem('Asset ID', generation.assetId),
-            if (generation.imagePath.isNotEmpty)
-              _buildCopyableDetailItem('Local Path', generation.imagePath),
-            if (generation.imageUrl != null && generation.imageUrl!.isNotEmpty)
-              _buildCopyableDetailItem('Image URL', generation.imageUrl!),
+            _buildCopyableDetailItem('Generation ID', _currentGeneration.id),
+            _buildCopyableDetailItem('Asset ID', _currentGeneration.assetId),
+            if (_currentGeneration.imagePath.isNotEmpty)
+              _buildCopyableDetailItem('Local Path', _currentGeneration.imagePath),
+            if (_currentGeneration.imageUrl != null && _currentGeneration.imageUrl!.isNotEmpty)
+              _buildCopyableDetailItem('Image URL', _currentGeneration.imageUrl!),
           ]),
           
           const SizedBox(height: 20),
           
           // Generation Parameters
           _buildDetailSection('Generation Parameters', [
-            _buildDetailItem('Model', generation.parameters['model'] ?? 'Unknown'),
-            _buildDetailItem('Dimensions', '${generation.parameters['width']}x${generation.parameters['height']}'),
-            _buildDetailItem('Steps', generation.parameters['steps']?.toString() ?? 'Unknown'),
-            _buildDetailItem('CFG Scale', generation.parameters['cfg_scale']?.toString() ?? 'Unknown'),
-            _buildDetailItem('Sampler', generation.parameters['sampler'] ?? 'Unknown'),
-            _buildDetailItem('Seed', generation.parameters['seed']?.toString() ?? 'Unknown'),
+            _buildDetailItem('Model', _currentGeneration.parameters['model'] ?? 'Unknown'),
+            _buildDetailItem('Dimensions', '${_currentGeneration.parameters['width']}x${_currentGeneration.parameters['height']}'),
+            _buildDetailItem('Steps', _currentGeneration.parameters['steps']?.toString() ?? 'Unknown'),
+            _buildDetailItem('CFG Scale', _currentGeneration.parameters['cfg_scale']?.toString() ?? 'Unknown'),
+            _buildDetailItem('Sampler', _currentGeneration.parameters['sampler'] ?? 'Unknown'),
+            _buildDetailItem('Seed', _currentGeneration.parameters['seed']?.toString() ?? 'Unknown'),
           ]),
           
           const SizedBox(height: 20),
           
           // Prompts
           _buildDetailSection('Prompts', [
-            _buildTextDetailItem('Positive Prompt', generation.parameters['positive_prompt'] ?? 'No prompt'),
-            if (generation.parameters['negative_prompt'] != null && generation.parameters['negative_prompt'].toString().isNotEmpty)
-              _buildTextDetailItem('Negative Prompt', generation.parameters['negative_prompt']),
+            _buildTextDetailItem('Positive Prompt', _currentGeneration.parameters['positive_prompt'] ?? 'No prompt'),
+            if (_currentGeneration.parameters['negative_prompt'] != null && _currentGeneration.parameters['negative_prompt'].toString().isNotEmpty)
+              _buildTextDetailItem('Negative Prompt', _currentGeneration.parameters['negative_prompt']),
           ]),
           
           // LoRAs if any
-          if (generation.parameters['loras'] != null && (generation.parameters['loras'] as List).isNotEmpty)
+          if (_currentGeneration.parameters['loras'] != null && (_currentGeneration.parameters['loras'] as List).isNotEmpty)
             ...[
               const SizedBox(height: 20),
               _buildDetailSection('LoRAs', [
-                for (final lora in generation.parameters['loras'] as List)
+                for (final lora in _currentGeneration.parameters['loras'] as List)
                   _buildDetailItem(lora['name'], 'Strength: ${lora['strength']}'),
               ]),
             ],
@@ -509,14 +584,65 @@ class ImageDetailDialog extends StatelessWidget {
   }
 
 
-  void _downloadImage(BuildContext context) {
-    // TODO: Implement download functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Download functionality will be implemented soon'),
-        backgroundColor: Colors.blue,
+  Future<void> _downloadImage(BuildContext context) async {
+    final imageUrl = _currentGeneration.imageUrl;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No image URL available for download'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final defaultFileName = _generateDefaultFileName();
+    
+    await FileDownloadService.downloadFile(
+      url: imageUrl,
+      defaultFileName: defaultFileName,
+      config: const FileDownloadConfig(
+        dialogTitle: 'Save Image File',
+        allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
+        errorPrefix: 'Error downloading image',
+        downloadingSnackbarColor: Colors.blue,
+        showOverwriteConfirmation: true,
       ),
+      context: context,
+      mounted: () => mounted,
     );
+  }
+
+  String _generateDefaultFileName() {
+    // Generate a filename based on the prompt or asset name
+    String baseName = 'generated_image';
+    
+    if (widget.asset != null && widget.asset!.name.isNotEmpty) {
+      baseName = widget.asset!.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+    } else if (_currentGeneration.parameters['positive_prompt'] != null) {
+      final prompt = _currentGeneration.parameters['positive_prompt'].toString();
+      if (prompt.isNotEmpty) {
+        // Take first few words of prompt and sanitize
+        final words = prompt.split(' ').take(3).join('_');
+        baseName = words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      }
+    }
+    
+    // Add timestamp to make filename unique
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    
+    // Determine file extension from imageUrl or default to png
+    String extension = 'png';
+    if (_currentGeneration.imageUrl != null && _currentGeneration.imageUrl!.isNotEmpty) {
+      final url = _currentGeneration.imageUrl!;
+      if (url.contains('.jpg') || url.contains('.jpeg')) {
+        extension = 'jpg';
+      } else if (url.contains('.webp')) {
+        extension = 'webp';
+      }
+    }
+    
+    return '${baseName}_$timestamp.$extension';
   }
 
   void _deleteGeneration(BuildContext context) {

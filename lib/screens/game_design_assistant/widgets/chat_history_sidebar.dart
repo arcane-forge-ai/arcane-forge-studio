@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/api_models.dart';
 import '../services/chat_api_service.dart';
-import '../providers/project_provider.dart';
 import '../../../providers/settings_provider.dart';
 
 class ChatHistorySidebar extends StatefulWidget {
+  final String projectId;
   final Function(ChatSession)? onSessionSelected;
   final ChatSession? selectedSession;
   final ChatApiService? chatApiService;
@@ -14,6 +14,7 @@ class ChatHistorySidebar extends StatefulWidget {
 
   const ChatHistorySidebar({
     Key? key,
+    required this.projectId,
     this.onSessionSelected,
     this.selectedSession,
     this.chatApiService,
@@ -60,9 +61,7 @@ class _ChatHistorySidebarState extends State<ChatHistorySidebar> {
     });
 
     try {
-      final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
-      final projectIdString = projectProvider.currentProject?.id ?? '1';
-      final projectId = int.tryParse(projectIdString) ?? 1;
+      final projectId = int.tryParse(widget.projectId) ?? 1;
       
       final sessions = await _chatApiService!.getChatSessions(projectId);
       
