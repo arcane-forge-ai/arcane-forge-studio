@@ -193,11 +193,13 @@ class SideMenu extends BaseSideMenu {
           ),
         ],
       ),
-      _buildComingSoonMenuItem(
-        context,
-        title: "Code",
-        screenType: ScreenType.codeEditor,
-        icon: Icons.code,
+      ListTile(
+        title: const Text("Code"),
+        leading: const Icon(Icons.code),
+        onTap: () {
+          Provider.of<MenuAppController>(context, listen: false)
+              .changeScreen(ScreenType.codeEditor);
+        },
       ),
       // ListTile(
       //     title: const Text("Web Server"),

@@ -6,6 +6,7 @@ import 'dart:io';
 import '../game_design_assistant/models/api_models.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
 import '../../providers/settings_provider.dart';
+import 'markdown_viewer_screen.dart';
 
 class KnowledgeBaseScreen extends StatefulWidget {
   final String projectId;
@@ -388,6 +389,13 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           // Action buttons
           Row(
             children: [
+              // View button for markdown files
+              if (file.fileType.toLowerCase() == 'md')
+                IconButton(
+                  onPressed: () => _viewMarkdownFile(file),
+                  icon: Icon(Icons.visibility, color: Colors.blue),
+                  tooltip: 'View markdown',
+                ),
               IconButton(
                 onPressed: () => _downloadFile(file),
                 icon: Icon(Icons.download, color: Colors.green),
@@ -577,6 +585,18 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         ],
       ),
     ) ?? false;
+  }
+
+  Future<void> _viewMarkdownFile(KnowledgeBaseFile file) async {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => MarkdownViewerScreen(
+          file: file,
+          projectId: widget.projectId,
+          chatApiService: _chatApiService,
+        ),
+      ),
+    );
   }
 
 } 

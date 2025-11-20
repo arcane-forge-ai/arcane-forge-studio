@@ -241,6 +241,11 @@ class _CodeScreenState extends State<CodeScreen> {
                       
                       const SizedBox(height: defaultPadding * 2),
 
+                      // Install MCPs Section
+                      _buildInstallMcpsSection(),
+                      
+                      const SizedBox(height: defaultPadding * 2),
+
                       // Agent Section
                       _buildAgentSection(),
                     ],
@@ -490,6 +495,110 @@ class _CodeScreenState extends State<CodeScreen> {
     );
   }
 
+  Widget _buildInstallMcpsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section Header
+        Row(
+          children: [
+            Icon(Icons.extension_outlined, size: 22, color: Colors.grey[700]),
+            const SizedBox(width: 8),
+            Text(
+              'Install MCPs',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Install Model Context Protocol servers to enhance your AI coding experience',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+              ),
+        ),
+        const SizedBox(height: defaultPadding),
+
+        // MCP Buttons Grid
+        Wrap(
+          spacing: defaultPadding,
+          runSpacing: defaultPadding,
+          children: [
+            _buildMcpButton(
+              name: 'Flame MCP',
+              logoPath: 'assets/icons/flame_logo.png',
+              url: 'http://flame-mcp-server.dev.arcaneforge.ai/',
+            ),
+            _buildMcpButton(
+              name: 'Flutter MCP',
+              logoPath: 'assets/icons/flutter_logo.png',
+              url: 'https://docs.flutter.dev/ai/mcp-server',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMcpButton({
+    required String name,
+    required String logoPath,
+    required String url,
+  }) {
+    return InkWell(
+      onTap: () => _openUrl(url),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 120,
+        height: 120,
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.grey.shade300,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  logoPath,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              name,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAgentSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -623,7 +732,7 @@ class _CodeScreenState extends State<CodeScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'You can use any of your favorite AI-powered IDEs like Cursor, GitHub Copilot, or Windsurf to work on your game code.',
+                            'You can install our MCPs anduse any of your favorite AI-powered IDEs like Cursor, GitHub Copilot, or Windsurf to work on your game code.',
                             style: TextStyle(
                               color: Colors.green.shade700,
                               fontSize: 14,
