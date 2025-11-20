@@ -36,6 +36,7 @@ dependencies:
   audioplayers: ^6.1.0
   archive: ^3.6.1
   path: ^1.9.0
+  package_info_plus: ^8.0.2
 
 dev_dependencies:
   flutter_test:

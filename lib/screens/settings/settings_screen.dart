@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../providers/settings_provider.dart';
 import '../../utils/app_constants.dart';
 import '../../models/download_models.dart';
@@ -34,6 +35,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasInitialized = false;
   bool _a1111SnackShown = false;
   Timer? _progressPollTimer;
+  String _appVersion = 'Loading...';
+  String _buildNumber = '';
 
   /// Check if we're in development mode
   bool get _isDevelopmentMode {
@@ -46,6 +49,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     // Initialize will happen in build method after provider is available
     
+    // Load app version info
+    _loadAppVersion();
+    
     // Start polling timer for A1111 download progress updates
     // Only updates UI when downloading is active
     _progressPollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -56,6 +62,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
       }
     });
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = packageInfo.version;
+          _buildNumber = packageInfo.buildNumber;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _appVersion = 'Unknown';
+        });
+      }
+    }
   }
 
   void _initializeFromProvider(SettingsProvider settingsProvider) {
@@ -508,6 +532,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     leading: const Icon(Icons.construction),
                     title: const Text('Language Settings'),
                     subtitle: const Text('Coming soon...'),
+                    enabled: false,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.info_outline,
+                      color: colorScheme.primary,
+                    ),
+                    title: const Text('App Version'),
+                    subtitle: Text(
+                      _buildNumber.isNotEmpty 
+                        ? 'Version $_appVersion (Build $_buildNumber)'
+                        : 'Version $_appVersion',
+                    ),
                     enabled: false,
                   ),
                 ),
