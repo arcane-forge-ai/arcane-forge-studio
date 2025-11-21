@@ -732,7 +732,7 @@ class _CodeScreenState extends State<CodeScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'You can install our MCPs anduse any of your favorite AI-powered IDEs like Cursor, GitHub Copilot, or Windsurf to work on your game code.',
+                            'You can download all design docs from Knowledge Base,  install our MCPs and use any of your favorite AI-powered IDEs like Cursor, GitHub Copilot, or Windsurf to work on your game code.',
                             style: TextStyle(
                               color: Colors.green.shade700,
                               fontSize: 14,
