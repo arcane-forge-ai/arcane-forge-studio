@@ -1,3 +1,4 @@
+import 'package:arcane_forge/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
@@ -108,7 +109,7 @@ class SideMenu extends BaseSideMenu {
       buildSectionHeader(context, icon: Icons.code, title: "Development"),
       ExpansionTile(
         title: const Text("Image Generation"),
-        leading: const Icon(Icons.image),
+        leading: const Icon(Icons.image, color: iconColor),
         initiallyExpanded: true,
         children: [
           Padding(
@@ -137,7 +138,7 @@ class SideMenu extends BaseSideMenu {
       ),
       ExpansionTile(
         title: const Text("SFX Generation"),
-        leading: const Icon(Icons.audiotrack),
+        leading: const Icon(Icons.audiotrack, color: iconColor),
         initiallyExpanded: true,
         children: [
           Padding(
@@ -166,7 +167,7 @@ class SideMenu extends BaseSideMenu {
       ),
       ExpansionTile(
         title: const Text("Music Generation"),
-        leading: const Icon(Icons.music_note),
+        leading: const Icon(Icons.music_note, color: iconColor),
         initiallyExpanded: true,
         children: [
           Padding(

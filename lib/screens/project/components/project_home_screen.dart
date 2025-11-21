@@ -151,15 +151,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                 else
                   ElevatedButton.icon(
                     onPressed: _loadProject,
-                    icon: const Icon(
-                      Icons.refresh,
-                      color: secondaryColor,
-                    ),
-                    label: Text(
-                      "Refresh",
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.secondary),
-                    ),
+                    icon: const Icon(Icons.refresh),
+                    label: Text("Refresh"),
                   ),
               ],
             ),
