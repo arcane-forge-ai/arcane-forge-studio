@@ -80,30 +80,30 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 16),
                   
                   // Social Auth (Google only)
-                  SupaSocialsAuth(
-                    socialProviders: const [OAuthProvider.google],
-                    redirectUrl: 'arcaneforge://auth-callback', // Windows deep linking
-                    onSuccess: (session) {
-                      // Navigation is handled by the Consumer in main.dart
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Welcome, ${session.user.email ?? 'User'}!'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    },
-                    onError: (error) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Authentication failed: ${error.toString()}'),
-                          backgroundColor: Colors.red,
-                          duration: const Duration(seconds: 4),
-                        ),
-                      );
-                    },
-                  ),
+                  // SupaSocialsAuth(
+                  //   socialProviders: const [OAuthProvider.google],
+                  //   redirectUrl: 'arcaneforge://auth-callback', // Windows deep linking
+                  //   onSuccess: (session) {
+                  //     // Navigation is handled by the Consumer in main.dart
+                  //     ScaffoldMessenger.of(context).showSnackBar(
+                  //       SnackBar(
+                  //         content: Text('Welcome, ${session.user.email ?? 'User'}!'),
+                  //         backgroundColor: Colors.green,
+                  //       ),
+                  //     );
+                  //   },
+                  //   onError: (error) {
+                  //     ScaffoldMessenger.of(context).showSnackBar(
+                  //       SnackBar(
+                  //         content: Text('Authentication failed: ${error.toString()}'),
+                  //         backgroundColor: Colors.red,
+                  //         duration: const Duration(seconds: 4),
+                  //       ),
+                  //     );
+                  //   },
+                  // ),
                   
-                  const SizedBox(height: 24),
+                  // const SizedBox(height: 24),
                   
                   // Visitor Mode Button (keeping your existing functionality)
                   TextButton(
