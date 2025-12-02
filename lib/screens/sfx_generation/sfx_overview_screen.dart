@@ -5,6 +5,7 @@ import '../../models/sfx_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../widgets/create_assets_from_doc_dialog.dart';
+import '../../services/file_download_service.dart';
 import 'widgets/sfx_asset_detail_screen.dart';
 import 'dart:io';
 
@@ -26,6 +27,7 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _filterType = 'All';
+  final Set<String> _downloadingAssetIds = {};
 
   @override
   void initState() {
@@ -214,6 +216,7 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
         items: const [
           DropdownMenuItem(value: 'All', child: Text('All Assets')),
           DropdownMenuItem(value: 'HasGenerations', child: Text('With Audio')),
+          DropdownMenuItem(value: 'Favorites', child: Text('Has Favorite')),
           DropdownMenuItem(value: 'Empty', child: Text('Empty Assets')),
           DropdownMenuItem(value: 'Recent', child: Text('Recent')),
         ],
@@ -260,6 +263,13 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
       case 'HasGenerations':
         filtered =
             filtered.where((asset) => asset.generations.isNotEmpty).toList();
+        break;
+      case 'Favorites':
+        filtered = filtered
+            .where((asset) =>
+                asset.favoriteGenerationId != null ||
+                asset.generations.any((gen) => gen.isFavorite))
+            .toList();
         break;
       case 'Empty':
         filtered =
@@ -412,6 +422,7 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
                       children: [
                         _buildGenerationCount(asset.totalGenerations),
                         const Spacer(),
+                        _buildFavoriteDownloadAction(context, asset),
                         Text(
                           _formatDate(asset.createdAt),
                           style: const TextStyle(
@@ -442,11 +453,9 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
 
   Widget _buildAssetThumbnailWithFuture(
       SfxAsset asset, SfxGenerationProvider provider) {
-    if (asset.favoriteGenerationId != null) {
-      // Find the favorite generation in the asset's generations
-      final favoriteGeneration = asset.generations
-          .where((gen) => gen.id == asset.favoriteGenerationId)
-          .firstOrNull;
+    final favoriteGeneration = _getFavoriteGeneration(asset);
+
+    if (favoriteGeneration != null) {
       return _buildAssetThumbnail(asset, favoriteGeneration);
     } else {
       // No favorite generation, use fallback logic
@@ -601,12 +610,170 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
     return '${date.day}/${date.month}/${date.year}';
   }
 
+  Widget _buildFavoriteDownloadAction(
+      BuildContext context, SfxAsset asset) {
+    if (asset.favoriteGenerationId == null) {
+      return const SizedBox.shrink();
+    }
+
+    if (_downloadingAssetIds.contains(asset.id)) {
+      return SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white70,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return IconButton(
+      onPressed: () => _downloadFavoriteGeneration(context, asset),
+      icon: const Icon(
+        Icons.download,
+        color: Colors.white70,
+        size: 18,
+      ),
+      tooltip: 'Download favorite audio',
+    );
+  }
+
   void _showAssetDetail(SfxAsset asset, SfxGenerationProvider provider) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => SfxAssetDetailScreen(asset: asset),
       ),
     );
+  }
+
+  SfxGeneration? _getFavoriteGeneration(SfxAsset asset) {
+    if (asset.favoriteGenerationId != null) {
+      for (final generation in asset.generations) {
+        if (generation.id == asset.favoriteGenerationId) {
+          return generation;
+        }
+      }
+    }
+
+    for (final generation in asset.generations) {
+      if (generation.isFavorite) {
+        return generation;
+      }
+    }
+
+    return null;
+  }
+
+  Future<void> _downloadFavoriteGeneration(
+      BuildContext context, SfxAsset asset) async {
+    final favoriteGenerationId = asset.favoriteGenerationId;
+    if (favoriteGenerationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No favorite generation selected for this asset'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    _setFavoriteDownloadState(asset.id, true);
+    try {
+      final provider =
+          Provider.of<SfxGenerationProvider>(context, listen: false);
+      final favoriteGeneration =
+          await provider.getGeneration(favoriteGenerationId);
+
+      if (favoriteGeneration == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to load favorite generation details'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final audioUrl = favoriteGeneration.audioUrl;
+
+      if (audioUrl == null || audioUrl.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Favorite generation has no download URL'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final defaultFileName =
+          _generateDefaultFileName(asset, favoriteGeneration);
+
+      await FileDownloadService.downloadFile(
+        url: audioUrl,
+        defaultFileName: defaultFileName,
+        config: const FileDownloadConfig(
+          dialogTitle: 'Save Audio File',
+          allowedExtensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a'],
+          errorPrefix: 'Error downloading audio',
+          downloadingSnackbarColor: Colors.blue,
+          showOverwriteConfirmation: true,
+        ),
+        context: context,
+        mounted: () => mounted,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to download audio: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      _setFavoriteDownloadState(asset.id, false);
+    }
+  }
+
+  void _setFavoriteDownloadState(String assetId, bool isDownloading) {
+    if (!mounted) return;
+    setState(() {
+      if (isDownloading) {
+        _downloadingAssetIds.add(assetId);
+      } else {
+        _downloadingAssetIds.remove(assetId);
+      }
+    });
+  }
+
+  String _generateDefaultFileName(
+      SfxAsset asset, SfxGeneration favoriteGeneration) {
+    String baseName = 'sfx_audio';
+
+    if (asset.name.isNotEmpty) {
+      baseName =
+          asset.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+    } else if (favoriteGeneration.parameters['prompt'] != null) {
+      final prompt = favoriteGeneration.parameters['prompt'].toString();
+      if (prompt.isNotEmpty) {
+        final words = prompt.split(' ').take(3).join('_');
+        baseName =
+            words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      }
+    }
+
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final format = favoriteGeneration.format ?? 'mp3';
+
+    return '${baseName}_$timestamp.$format';
   }
 
   void _showAssetContextMenu(SfxAsset asset, SfxGenerationProvider provider) {

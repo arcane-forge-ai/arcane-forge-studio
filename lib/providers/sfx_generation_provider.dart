@@ -199,6 +199,15 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
     }
   }
 
+  Future<SfxGeneration?> getGeneration(String generationId) async {
+    try {
+      return await _assetService.getSfxGeneration(generationId);
+    } catch (e) {
+      debugPrint('Failed to fetch SFX generation $generationId: $e');
+      return null;
+    }
+  }
+
   Future<void> setFavoriteSfxGeneration(
       String assetId, String generationId) async {
     try {

@@ -4,6 +4,7 @@ import '../../providers/music_generation_provider.dart';
 import '../../models/music_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
+import '../../services/file_download_service.dart';
 import 'widgets/music_asset_detail_screen.dart';
 import 'dart:io';
 
@@ -25,6 +26,7 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _filterType = 'All';
+  final Set<String> _downloadingAssetIds = {};
 
   @override
   void initState() {
@@ -196,6 +198,7 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
         items: const [
           DropdownMenuItem(value: 'All', child: Text('All Assets')),
           DropdownMenuItem(value: 'HasGenerations', child: Text('With Music')),
+          DropdownMenuItem(value: 'Favorites', child: Text('Has Favorite')),
           DropdownMenuItem(value: 'Empty', child: Text('Empty Assets')),
           DropdownMenuItem(value: 'Recent', child: Text('Recent')),
         ],
@@ -242,6 +245,13 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
       case 'HasGenerations':
         filtered =
             filtered.where((asset) => asset.generations.isNotEmpty).toList();
+        break;
+      case 'Favorites':
+        filtered = filtered
+            .where((asset) =>
+                asset.favoriteGenerationId != null ||
+                asset.generations.any((gen) => gen.isFavorite))
+            .toList();
         break;
       case 'Empty':
         filtered =
@@ -390,6 +400,7 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
                       children: [
                         _buildGenerationCount(asset.totalGenerations),
                         const Spacer(),
+                        _buildFavoriteDownloadAction(context, asset),
                         Text(
                           _formatDate(asset.createdAt),
                           style: const TextStyle(
@@ -569,6 +580,146 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Widget _buildFavoriteDownloadAction(
+      BuildContext context, MusicAsset asset) {
+    if (asset.favoriteGenerationId == null) {
+      return const SizedBox.shrink();
+    }
+
+    if (_downloadingAssetIds.contains(asset.id)) {
+      return SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white70,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return IconButton(
+      onPressed: () => _downloadFavoriteGeneration(context, asset),
+      icon: const Icon(
+        Icons.download,
+        color: Colors.white70,
+        size: 18,
+      ),
+      tooltip: 'Download favorite music',
+    );
+  }
+
+  Future<void> _downloadFavoriteGeneration(
+      BuildContext context, MusicAsset asset) async {
+    final favoriteGenerationId = asset.favoriteGenerationId;
+    if (favoriteGenerationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No favorite generation selected for this asset'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    _setFavoriteDownloadState(asset.id, true);
+    try {
+      final provider =
+          Provider.of<MusicGenerationProvider>(context, listen: false);
+      final favoriteGeneration =
+          await provider.getGeneration(favoriteGenerationId);
+
+      if (favoriteGeneration == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to load favorite generation details'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final audioUrl = favoriteGeneration.audioUrl;
+
+      if (audioUrl == null || audioUrl.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Favorite generation has no download URL'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final defaultFileName =
+          _generateDefaultFileName(asset, favoriteGeneration);
+
+      await FileDownloadService.downloadFile(
+        url: audioUrl,
+        defaultFileName: defaultFileName,
+        config: const FileDownloadConfig(
+          dialogTitle: 'Save Music File',
+          allowedExtensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a'],
+          errorPrefix: 'Error downloading music',
+          downloadingSnackbarColor: Colors.orange,
+          showOverwriteConfirmation: true,
+        ),
+        context: context,
+        mounted: () => mounted,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to download music: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      _setFavoriteDownloadState(asset.id, false);
+    }
+  }
+
+  void _setFavoriteDownloadState(String assetId, bool isDownloading) {
+    if (!mounted) return;
+    setState(() {
+      if (isDownloading) {
+        _downloadingAssetIds.add(assetId);
+      } else {
+        _downloadingAssetIds.remove(assetId);
+      }
+    });
+  }
+
+  String _generateDefaultFileName(
+      MusicAsset asset, MusicGeneration favoriteGeneration) {
+    String baseName = 'music';
+
+    if (asset.name.isNotEmpty) {
+      baseName =
+          asset.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+    } else if (favoriteGeneration.parameters['prompt'] != null) {
+      final prompt = favoriteGeneration.parameters['prompt'].toString();
+      if (prompt.isNotEmpty) {
+        final words = prompt.split(' ').take(3).join('_');
+        baseName =
+            words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      }
+    }
+
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final format = favoriteGeneration.format ?? 'mp3';
+
+    return '${baseName}_$timestamp.$format';
   }
 
   String _formatDuration(double seconds) {
@@ -989,4 +1140,3 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
     super.dispose();
   }
 }
-
