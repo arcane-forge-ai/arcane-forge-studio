@@ -355,9 +355,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () {
-                // Navigate to Release Info screen (ScreenType.versions)
-                Navigator.of(context).pop(); // Go back to project dashboard
-                // The user can then navigate to Release Info manually
+                Provider.of<MenuAppController>(context, listen: false)
+                    .changeScreen(ScreenType.versions);
               },
               icon: const Icon(Icons.settings),
               label: const Text('Go to Release Info'),
