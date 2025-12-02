@@ -21,6 +21,7 @@ import '../../services/mutation_design_service.dart';
 import '../../services/feedback_discussion_service.dart';
 import '../../services/projects_api_service.dart';
 import '../../models/feedback_models.dart' as feedback_models;
+import '../../controllers/menu_app_controller.dart';
 
 /// Game Design Assistant Screen using Flutter Gen AI Chat UI
 class GameDesignAssistantScreen extends StatefulWidget {
@@ -1041,14 +1042,12 @@ Ask me anything about game design, or try one of the example questions below!
   }
 
   void _showKnowledgeBase() {
-    // Simply show a message - user can navigate to Knowledge Base screen from menu
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Navigate to Knowledge Base screen from the menu to view all documents'),
-        backgroundColor: Colors.blue,
-      ),
-    );
-    
+    if (!mounted) return;
+
+    // Navigate to the Knowledge Base screen within the current project
+    Provider.of<MenuAppController>(context, listen: false)
+        .changeScreen(ScreenType.knowledgeBase);
+
     /* Old implementation with modal - removed as it relied on ProjectProvider
     showModalBottomSheet(
       context: context,
