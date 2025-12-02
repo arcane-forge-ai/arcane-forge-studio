@@ -90,6 +90,15 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
     }
   }
 
+  Future<MusicGeneration?> getGeneration(String generationId) async {
+    try {
+      return await _assetService.getMusicGeneration(generationId);
+    } catch (e) {
+      debugPrint('Failed to fetch music generation $generationId: $e');
+      return null;
+    }
+  }
+
   Future<MusicAsset> createAsset(
       String projectId, String name, String description) async {
     try {

@@ -6,6 +6,7 @@ import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../widgets/create_assets_from_doc_dialog.dart';
+import '../../services/file_download_service.dart';
 import 'widgets/asset_detail_screen.dart';
 
 class ImageOverviewScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _filterType = 'All';
+  final Set<String> _downloadingAssetIds = {};
 
   @override
   void initState() {
@@ -219,6 +221,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
         items: const [
           DropdownMenuItem(value: 'All', child: Text('All Assets')),
           DropdownMenuItem(value: 'HasGenerations', child: Text('With Images')),
+          DropdownMenuItem(value: 'Favorites', child: Text('Has Favorite')),
           DropdownMenuItem(value: 'Empty', child: Text('Empty Assets')),
           DropdownMenuItem(value: 'Recent', child: Text('Recent')),
         ],
@@ -270,6 +273,13 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           final count = asset.totalGenerations ?? asset.generations.length;
           return count > 0;
         }).toList();
+        break;
+      case 'Favorites':
+        filtered = filtered
+            .where((asset) =>
+                asset.favoriteGenerationId != null ||
+                asset.generations.any((gen) => gen.isFavorite))
+            .toList();
         break;
       case 'Empty':
         filtered = filtered.where((asset) {
@@ -426,6 +436,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                           asset.totalGenerations ?? asset.generations.length,
                         ),
                         const Spacer(),
+                        _buildFavoriteDownloadAction(context, asset),
                         Text(
                           _formatDate(asset.createdAt),
                           style: const TextStyle(
@@ -700,6 +711,156 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Widget _buildFavoriteDownloadAction(
+      BuildContext context, ImageAsset asset) {
+    if (asset.favoriteGenerationId == null) {
+      return const SizedBox.shrink();
+    }
+
+    if (_downloadingAssetIds.contains(asset.id)) {
+      return SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white54,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return IconButton(
+      onPressed: () => _downloadFavoriteGeneration(context, asset),
+      icon: const Icon(
+        Icons.download,
+        color: Colors.white54,
+        size: 18,
+      ),
+      tooltip: 'Download favorite image',
+    );
+  }
+
+  Future<void> _downloadFavoriteGeneration(
+      BuildContext context, ImageAsset asset) async {
+    final favoriteGenerationId = asset.favoriteGenerationId;
+    if (favoriteGenerationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No favorite generation selected for this asset'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    _setFavoriteDownloadState(asset.id, true);
+    try {
+      final provider =
+          Provider.of<ImageGenerationProvider>(context, listen: false);
+      final favoriteGeneration =
+          await provider.getGeneration(favoriteGenerationId);
+
+      if (favoriteGeneration == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to load favorite generation details'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final imageUrl = favoriteGeneration.imageUrl;
+
+      if (imageUrl == null || imageUrl.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Favorite generation has no download URL'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final defaultFileName =
+          _generateDefaultFileName(asset, favoriteGeneration);
+
+      await FileDownloadService.downloadFile(
+        url: imageUrl,
+        defaultFileName: defaultFileName,
+        config: const FileDownloadConfig(
+          dialogTitle: 'Save Image File',
+          allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
+          errorPrefix: 'Error downloading image',
+          downloadingSnackbarColor: Colors.blue,
+          showOverwriteConfirmation: true,
+        ),
+        context: context,
+        mounted: () => mounted,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to download image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      _setFavoriteDownloadState(asset.id, false);
+    }
+  }
+
+  void _setFavoriteDownloadState(String assetId, bool isDownloading) {
+    if (!mounted) return;
+    setState(() {
+      if (isDownloading) {
+        _downloadingAssetIds.add(assetId);
+      } else {
+        _downloadingAssetIds.remove(assetId);
+      }
+    });
+  }
+
+  String _generateDefaultFileName(
+      ImageAsset asset, ImageGeneration favoriteGeneration) {
+    String baseName = 'generated_image';
+
+    if (asset.name.isNotEmpty) {
+      baseName =
+          asset.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+    } else if (favoriteGeneration.parameters['positive_prompt'] != null) {
+      final prompt =
+          favoriteGeneration.parameters['positive_prompt'].toString();
+      if (prompt.isNotEmpty) {
+        final words = prompt.split(' ').take(3).join('_');
+        baseName =
+            words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      }
+    }
+
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+    var extension = 'png';
+    final imageUrl = favoriteGeneration.imageUrl?.toLowerCase() ?? '';
+    if (imageUrl.contains('.jpg') || imageUrl.contains('.jpeg')) {
+      extension = 'jpg';
+    } else if (imageUrl.contains('.webp')) {
+      extension = 'webp';
+    } else if (imageUrl.contains('.png')) {
+      extension = 'png';
+    }
+
+    return '${baseName}_$timestamp.$extension';
   }
 
   void _showAssetDetail(ImageAsset asset, ImageGenerationProvider provider) {

@@ -27,6 +27,7 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _filterType = 'All';
+  final Set<String> _downloadingAssetIds = {};
 
   @override
   void initState() {
@@ -421,17 +422,7 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
                       children: [
                         _buildGenerationCount(asset.totalGenerations),
                         const Spacer(),
-                        if (_getFavoriteGeneration(asset) != null)
-                          IconButton(
-                            onPressed: () =>
-                                _downloadFavoriteGeneration(context, asset),
-                            icon: const Icon(
-                              Icons.download,
-                              color: Colors.white70,
-                              size: 18,
-                            ),
-                            tooltip: 'Download favorite audio',
-                          ),
+                        _buildFavoriteDownloadAction(context, asset),
                         Text(
                           _formatDate(asset.createdAt),
                           style: const TextStyle(
@@ -619,6 +610,40 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
     return '${date.day}/${date.month}/${date.year}';
   }
 
+  Widget _buildFavoriteDownloadAction(
+      BuildContext context, SfxAsset asset) {
+    if (asset.favoriteGenerationId == null) {
+      return const SizedBox.shrink();
+    }
+
+    if (_downloadingAssetIds.contains(asset.id)) {
+      return SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white70,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return IconButton(
+      onPressed: () => _downloadFavoriteGeneration(context, asset),
+      icon: const Icon(
+        Icons.download,
+        color: Colors.white70,
+        size: 18,
+      ),
+      tooltip: 'Download favorite audio',
+    );
+  }
+
   void _showAssetDetail(SfxAsset asset, SfxGenerationProvider provider) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -629,56 +654,104 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
 
   SfxGeneration? _getFavoriteGeneration(SfxAsset asset) {
     if (asset.favoriteGenerationId != null) {
-      final favoriteGeneration = asset.generations
-          .where((gen) => gen.id == asset.favoriteGenerationId)
-          .firstOrNull;
-      if (favoriteGeneration != null) return favoriteGeneration;
+      for (final generation in asset.generations) {
+        if (generation.id == asset.favoriteGenerationId) {
+          return generation;
+        }
+      }
     }
 
-    return asset.generations.firstWhereOrNull((gen) => gen.isFavorite);
+    for (final generation in asset.generations) {
+      if (generation.isFavorite) {
+        return generation;
+      }
+    }
+
+    return null;
   }
 
   Future<void> _downloadFavoriteGeneration(
       BuildContext context, SfxAsset asset) async {
-    final favoriteGeneration = _getFavoriteGeneration(asset);
-
-    if (favoriteGeneration == null) {
+    final favoriteGenerationId = asset.favoriteGenerationId;
+    if (favoriteGenerationId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No favorite generation available to download'),
+          content: Text('No favorite generation selected for this asset'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    final audioUrl = favoriteGeneration.audioUrl;
+    _setFavoriteDownloadState(asset.id, true);
+    try {
+      final provider =
+          Provider.of<SfxGenerationProvider>(context, listen: false);
+      final favoriteGeneration =
+          await provider.getGeneration(favoriteGenerationId);
 
-    if (audioUrl == null || audioUrl.isEmpty) {
+      if (favoriteGeneration == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to load favorite generation details'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final audioUrl = favoriteGeneration.audioUrl;
+
+      if (audioUrl == null || audioUrl.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Favorite generation has no download URL'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final defaultFileName =
+          _generateDefaultFileName(asset, favoriteGeneration);
+
+      await FileDownloadService.downloadFile(
+        url: audioUrl,
+        defaultFileName: defaultFileName,
+        config: const FileDownloadConfig(
+          dialogTitle: 'Save Audio File',
+          allowedExtensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a'],
+          errorPrefix: 'Error downloading audio',
+          downloadingSnackbarColor: Colors.blue,
+          showOverwriteConfirmation: true,
+        ),
+        context: context,
+        mounted: () => mounted,
+      );
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Favorite generation has no download URL'),
+        SnackBar(
+          content: Text('Failed to download audio: $e'),
           backgroundColor: Colors.red,
         ),
       );
-      return;
+    } finally {
+      _setFavoriteDownloadState(asset.id, false);
     }
+  }
 
-    final defaultFileName = _generateDefaultFileName(asset, favoriteGeneration);
-
-    await FileDownloadService.downloadFile(
-      url: audioUrl,
-      defaultFileName: defaultFileName,
-      config: const FileDownloadConfig(
-        dialogTitle: 'Save Audio File',
-        allowedExtensions: ['mp3', 'wav', 'ogg', 'aac', 'm4a'],
-        errorPrefix: 'Error downloading audio',
-        downloadingSnackbarColor: Colors.blue,
-        showOverwriteConfirmation: true,
-      ),
-      context: context,
-      mounted: () => mounted,
-    );
+  void _setFavoriteDownloadState(String assetId, bool isDownloading) {
+    if (!mounted) return;
+    setState(() {
+      if (isDownloading) {
+        _downloadingAssetIds.add(assetId);
+      } else {
+        _downloadingAssetIds.remove(assetId);
+      }
+    });
   }
 
   String _generateDefaultFileName(
