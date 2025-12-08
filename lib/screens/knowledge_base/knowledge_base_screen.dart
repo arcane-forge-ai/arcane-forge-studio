@@ -6,7 +6,9 @@ import 'dart:io';
 import '../game_design_assistant/models/api_models.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
 import '../../providers/settings_provider.dart';
+import '../../widgets/file_rename_dialog.dart';
 import 'markdown_viewer_screen.dart';
+import 'models/file_version_group.dart';
 
 class KnowledgeBaseScreen extends StatefulWidget {
   final String projectId;
@@ -24,7 +26,8 @@ class KnowledgeBaseScreen extends StatefulWidget {
 
 class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   late final ChatApiService _chatApiService;
-  List<KnowledgeBaseFile> _files = [];
+  List<FileVersionGroup> _fileGroups = [];
+  Set<String> _expandedGroups = {};
   bool _isLoading = false;
   bool _isUploading = false;
 
@@ -46,7 +49,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
       final files = await _chatApiService.getKnowledgeBaseFiles(widget.projectId);
       
       setState(() {
-        _files = files;
+        _fileGroups = _groupFilesByName(files);
         _isLoading = false;
       });
     } catch (e) {
@@ -55,6 +58,35 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
       });
       _showErrorSnackBar('Error loading files: $e');
     }
+  }
+
+  /// Group files by name and sort versions by date
+  List<FileVersionGroup> _groupFilesByName(List<KnowledgeBaseFile> files) {
+    final grouped = <String, List<KnowledgeBaseFile>>{};
+    
+    for (final file in files) {
+      grouped.putIfAbsent(file.documentName, () => []).add(file);
+    }
+    
+    return grouped.entries.map((entry) {
+      // Sort versions by date descending (newest first)
+      final sortedVersions = entry.value..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return FileVersionGroup(
+        fileName: entry.key,
+        versions: sortedVersions,
+      );
+    }).toList();
+  }
+
+  /// Toggle expansion state for a file group
+  void _toggleGroupExpansion(String fileName) {
+    setState(() {
+      if (_expandedGroups.contains(fileName)) {
+        _expandedGroups.remove(fileName);
+      } else {
+        _expandedGroups.add(fileName);
+      }
+    });
   }
 
   Future<void> _uploadFiles() async {
@@ -66,6 +98,17 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
       );
 
       if (result != null && result.files.isNotEmpty) {
+        // Show rename dialog
+        final fileNames = await showDialog<Map<String, String>>(
+          context: context,
+          builder: (context) => FileRenameDialog(files: result.files),
+        );
+
+        // User cancelled the dialog
+        if (fileNames == null) {
+          return;
+        }
+
         setState(() {
           _isUploading = true;
         });
@@ -73,10 +116,11 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         int successCount = 0;
         for (final file in result.files) {
           if (file.path != null) {
+            final fileName = fileNames[file.path!] ?? file.name;
             final success = await _chatApiService.uploadFile(
               widget.projectId,
               file.path!,
-              file.name,
+              fileName,
             );
             
             if (success) {
@@ -225,7 +269,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   Expanded(
                     child: _isLoading 
                       ? Center(child: CircularProgressIndicator())
-                      : _files.isEmpty
+                      : _fileGroups.isEmpty
                         ? _buildEmptyState()
                         : _buildFilesList(),
                   ),
@@ -310,10 +354,10 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           // Files list
           Expanded(
             child: ListView.builder(
-              itemCount: _files.length,
+              itemCount: _fileGroups.length,
               itemBuilder: (context, index) {
-                final file = _files[index];
-                return _buildFileItem(file);
+                final group = _fileGroups[index];
+                return _buildFileGroupItem(group);
               },
             ),
           ),
@@ -322,95 +366,259 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     );
   }
 
-  Widget _buildFileItem(KnowledgeBaseFile file) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
-      ),
-      child: Row(
-        children: [
-          // File icon
-          _getFileIcon(file.fileType),
-          const SizedBox(width: 12),
-          
-          // File name
-          Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildFileGroupItem(FileVersionGroup group) {
+    final isExpanded = _expandedGroups.contains(group.fileName);
+    final latestFile = group.latestVersion;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Column(
+      children: [
+        // Latest version (always visible)
+        _buildFileItem(
+          latestFile,
+          isLatest: true,
+          showVersionBadge: true,
+        ),
+        
+        // Version count and expansion control
+        if (group.hasMultipleVersions)
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(
+                color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+              )),
+            ),
+            child: Row(
               children: [
-                Text(
-                  file.documentName,
-                  style: TextStyle(fontWeight: FontWeight.w500),
-                ),
-                if (file.metadata != null && file.metadata!.isNotEmpty)
-                  Text(
-                    'Size: ${file.metadata!['size'] ?? 'Unknown'}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
+                SizedBox(width: 36), // Align with file icon
+                InkWell(
+                  onTap: () => _toggleGroupExpansion(group.fileName),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isDark 
+                          ? Colors.blue.withOpacity(0.15)
+                          : Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${group.versionCount} versions',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.blue[300] : Colors.blue[700],
+                          ),
+                        ),
+                        SizedBox(width: 4),
+                        Icon(
+                          isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                          size: 16,
+                          color: isDark ? Colors.blue[300] : Colors.blue[700],
+                        ),
+                      ],
                     ),
                   ),
+                ),
               ],
             ),
           ),
-          
-          // File type
-          Expanded(
-            flex: 1,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: _getFileTypeColor(file.fileType).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+        
+        // Older versions (shown when expanded)
+        if (group.hasMultipleVersions && isExpanded)
+          ...group.olderVersions.map((file) => _buildFileItem(
+            file,
+            isLatest: false,
+            showVersionBadge: true,
+            isIndented: true,
+          )),
+      ],
+    );
+  }
+
+  Widget _buildFileItem(
+    KnowledgeBaseFile file, {
+    bool isLatest = true,
+    bool showVersionBadge = false,
+    bool isIndented = false,
+  }) {
+    final opacity = isLatest ? 1.0 : 0.85;
+    final leftPadding = isIndented ? 52.0 : 16.0; // Extra indent for older versions
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Theme-aware background color for older versions
+    final backgroundColor = isLatest 
+        ? null 
+        : (isDark 
+            ? Colors.white.withOpacity(0.03) 
+            : Colors.black.withOpacity(0.02));
+
+    return Container(
+      padding: EdgeInsets.only(
+        left: leftPadding,
+        right: 16,
+        top: 16,
+        bottom: 16,
+      ),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(
+          color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
+        )),
+        color: backgroundColor,
+      ),
+      child: Opacity(
+        opacity: opacity,
+        child: Row(
+          children: [
+            // Arrow indicator for older versions
+            if (isIndented)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Icon(
+                  Icons.subdirectory_arrow_right,
+                  size: 16,
+                  color: isDark ? Colors.grey[600] : Colors.grey[400],
+                ),
               ),
+            
+            // File icon
+            _getFileIcon(file.fileType),
+            const SizedBox(width: 12),
+            
+            // File name with version badge
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          file.documentName,
+                          style: TextStyle(
+                            fontWeight: isLatest ? FontWeight.w600 : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      if (showVersionBadge) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isLatest 
+                                ? (isDark ? Colors.green.withOpacity(0.2) : Colors.green.withOpacity(0.1))
+                                : (isDark ? Colors.grey.withOpacity(0.2) : Colors.grey.withOpacity(0.1)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            isLatest ? 'Latest' : _getRelativeDate(file.createdAt),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: isLatest 
+                                  ? (isDark ? Colors.green[300] : Colors.green[700])
+                                  : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (file.metadata != null && file.metadata!.isNotEmpty)
+                    Text(
+                      'Size: ${file.metadata!['size'] ?? 'Unknown'}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            
+            // File type
+            Expanded(
+              flex: 1,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _getFileTypeColor(file.fileType).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  file.fileType.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _getFileTypeColor(file.fileType),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            
+            // Date
+            Expanded(
+              flex: 2,
               child: Text(
-                file.fileType.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: _getFileTypeColor(file.fileType),
-                ),
-                textAlign: TextAlign.center,
+                _formatDate(file.createdAt),
+                style: TextStyle(color: Colors.grey[600]),
               ),
             ),
-          ),
-          
-          // Date
-          Expanded(
-            flex: 2,
-            child: Text(
-              _formatDate(file.createdAt),
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ),
-          
-          // Action buttons
-          Row(
-            children: [
-              // View button for markdown files
-              if (file.fileType.toLowerCase() == 'md')
+            
+            // Action buttons
+            Row(
+              children: [
+                // View button for markdown files
+                if (file.fileType.toLowerCase() == 'md')
+                  IconButton(
+                    onPressed: () => _viewMarkdownFile(file),
+                    icon: Icon(Icons.visibility, color: Colors.blue),
+                    tooltip: 'View markdown',
+                  ),
                 IconButton(
-                  onPressed: () => _viewMarkdownFile(file),
-                  icon: Icon(Icons.visibility, color: Colors.blue),
-                  tooltip: 'View markdown',
+                  onPressed: () => _downloadFile(file),
+                  icon: Icon(Icons.download, color: Colors.green),
+                  tooltip: 'Download file',
                 ),
-              IconButton(
-                onPressed: () => _downloadFile(file),
-                icon: Icon(Icons.download, color: Colors.green),
-                tooltip: 'Download file',
-              ),
-              IconButton(
-                onPressed: () => _deleteFile(file),
-                icon: Icon(Icons.delete_outline, color: Colors.red),
-                tooltip: 'Delete file',
-              ),
-            ],
-          ),
-        ],
+                IconButton(
+                  onPressed: () => _deleteFile(file),
+                  icon: Icon(Icons.delete_outline, color: Colors.red),
+                  tooltip: 'Delete file',
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  /// Get relative date string for version badge
+  String _getRelativeDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    
+    if (difference.inDays == 0) {
+      return 'Today';
+    } else if (difference.inDays == 1) {
+      return '1 day ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
+    } else if (difference.inDays < 30) {
+      final weeks = (difference.inDays / 7).floor();
+      return '$weeks ${weeks == 1 ? "week" : "weeks"} ago';
+    } else if (difference.inDays < 365) {
+      final months = (difference.inDays / 30).floor();
+      return '$months ${months == 1 ? "month" : "months"} ago';
+    } else {
+      final years = (difference.inDays / 365).floor();
+      return '$years ${years == 1 ? "year" : "years"} ago';
+    }
   }
 
   Widget _getFileIcon(String fileType) {
@@ -588,10 +796,17 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   }
 
   Future<void> _viewMarkdownFile(KnowledgeBaseFile file) async {
+    // Find all versions of this file
+    final group = _fileGroups.firstWhere(
+      (g) => g.fileName == file.documentName,
+      orElse: () => FileVersionGroup(fileName: file.documentName, versions: [file]),
+    );
+    
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MarkdownViewerScreen(
           file: file,
+          allVersions: group.versions,
           projectId: widget.projectId,
           chatApiService: _chatApiService,
         ),

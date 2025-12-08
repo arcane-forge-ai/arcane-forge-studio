@@ -6,12 +6,14 @@ import '../game_design_assistant/services/chat_api_service.dart';
 
 class MarkdownViewerScreen extends StatefulWidget {
   final KnowledgeBaseFile file;
+  final List<KnowledgeBaseFile> allVersions;
   final String projectId;
   final ChatApiService chatApiService;
 
   const MarkdownViewerScreen({
     Key? key,
     required this.file,
+    required this.allVersions,
     required this.projectId,
     required this.chatApiService,
   }) : super(key: key);
@@ -24,10 +26,18 @@ class _MarkdownViewerScreenState extends State<MarkdownViewerScreen> {
   String? _markdownContent;
   bool _isLoading = true;
   String? _errorMessage;
+  late int _currentVersionIndex;
+  late KnowledgeBaseFile _currentFile;
 
   @override
   void initState() {
     super.initState();
+    // Find the index of the current file in the versions list
+    _currentVersionIndex = widget.allVersions.indexWhere((f) => f.id == widget.file.id);
+    if (_currentVersionIndex == -1) {
+      _currentVersionIndex = 0; // Fallback to first version
+    }
+    _currentFile = widget.allVersions[_currentVersionIndex];
     _loadMarkdownContent();
   }
 
@@ -41,7 +51,7 @@ class _MarkdownViewerScreenState extends State<MarkdownViewerScreen> {
       // Get download URL from API
       final downloadResponse = await widget.chatApiService.getFileDownloadUrl(
         widget.projectId,
-        widget.file.id,
+        _currentFile.id,
       );
 
       if (downloadResponse == null) {
@@ -91,12 +101,95 @@ class _MarkdownViewerScreenState extends State<MarkdownViewerScreen> {
     }
   }
 
+  void _switchToNewerVersion() {
+    if (_currentVersionIndex > 0) {
+      setState(() {
+        _currentVersionIndex--;
+        _currentFile = widget.allVersions[_currentVersionIndex];
+      });
+      _loadMarkdownContent();
+    }
+  }
+
+  void _switchToOlderVersion() {
+    if (_currentVersionIndex < widget.allVersions.length - 1) {
+      setState(() {
+        _currentVersionIndex++;
+        _currentFile = widget.allVersions[_currentVersionIndex];
+      });
+      _loadMarkdownContent();
+    }
+  }
+
+  String _formatTimestamp(DateTime date) {
+    final localDate = date.toLocal();
+    final year = localDate.year.toString().padLeft(4, '0');
+    final month = localDate.month.toString().padLeft(2, '0');
+    final day = localDate.day.toString().padLeft(2, '0');
+    final hour = localDate.hour.toString().padLeft(2, '0');
+    final minute = localDate.minute.toString().padLeft(2, '0');
+    final second = localDate.second.toString().padLeft(2, '0');
+    return '$year-$month-$day $hour:$minute:$second';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasMultipleVersions = widget.allVersions.length > 1;
+    final canGoNewer = _currentVersionIndex > 0;
+    final canGoOlder = _currentVersionIndex < widget.allVersions.length - 1;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.file.documentName),
         actions: [
+          // Version switcher (only show if multiple versions exist)
+          if (hasMultipleVersions)
+            Container(
+              margin: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Newer version button (left arrow)
+                  IconButton(
+                    icon: Icon(Icons.chevron_left),
+                    onPressed: canGoNewer ? _switchToNewerVersion : null,
+                    tooltip: 'Newer version',
+                    iconSize: 20,
+                    padding: EdgeInsets.all(4),
+                    constraints: BoxConstraints(),
+                  ),
+                  // Current version timestamp
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      _formatTimestamp(_currentFile.createdAt),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                  // Older version button (right arrow)
+                  IconButton(
+                    icon: Icon(Icons.chevron_right),
+                    onPressed: canGoOlder ? _switchToOlderVersion : null,
+                    tooltip: 'Older version',
+                    iconSize: 20,
+                    padding: EdgeInsets.all(4),
+                    constraints: BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
           IconButton(
             icon: Icon(Icons.refresh),
             onPressed: _isLoading ? null : _loadMarkdownContent,

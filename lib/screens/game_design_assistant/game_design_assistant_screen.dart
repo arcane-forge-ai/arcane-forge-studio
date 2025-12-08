@@ -22,6 +22,7 @@ import '../../services/feedback_discussion_service.dart';
 import '../../services/projects_api_service.dart';
 import '../../models/feedback_models.dart' as feedback_models;
 import '../../controllers/menu_app_controller.dart';
+import '../../widgets/file_rename_dialog.dart';
 
 /// Game Design Assistant Screen using Flutter Gen AI Chat UI
 class GameDesignAssistantScreen extends StatefulWidget {
@@ -591,11 +592,6 @@ Ask me anything about game design, or try one of the example questions below!
   Future<void> _saveDocumentToKnowledgeBase() async {
     if (_lastAiResponse == null) return;
     
-    // Show loading state
-    setState(() {
-      _isGenerating = true;
-    });
-    
     try {
       // Extract markdown content from AI response
       final markdownContent = DocumentExtractor.extractMarkdownBlock(_lastAiResponse!);
@@ -610,11 +606,44 @@ Ask me anything about game design, or try one of the example questions below!
       final tempFile = File('${tempDir.path}/$fileName');
       await tempFile.writeAsString(markdownContent);
       
+      // Create a PlatformFile-like object for the rename dialog
+      final fileForDialog = PlatformFile(
+        name: fileName,
+        path: tempFile.path,
+        size: await tempFile.length(),
+      );
+      
+      // Show rename dialog
+      final fileNames = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (context) => FileRenameDialog(files: [fileForDialog]),
+      );
+      
+      // User cancelled the dialog
+      if (fileNames == null) {
+        // Clean up temporary file
+        try {
+          await tempFile.delete();
+          await tempDir.delete();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        return;
+      }
+      
+      // Get the renamed file name
+      final finalFileName = fileNames[tempFile.path] ?? fileName;
+      
+      // Show loading state
+      setState(() {
+        _isGenerating = true;
+      });
+      
       // Upload file to backend via API
       final success = await _chatApiService.uploadFile(
         widget.projectId,
         tempFile.path,
-        fileName,
+        finalFileName,
       );
       
       if (success) {
@@ -629,7 +658,7 @@ Ask me anything about game design, or try one of the example questions below!
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Saved "$fileName" to knowledge base'),
+              content: Text('Saved "$finalFileName" to knowledge base'),
               backgroundColor: Colors.green,
               action: SnackBarAction(
                 label: 'View',
@@ -680,13 +709,25 @@ Ask me anything about game design, or try one of the example questions below!
       );
 
       if (result != null && result.files.isNotEmpty) {
+        // Show rename dialog
+        final fileNames = await showDialog<Map<String, String>>(
+          context: context,
+          builder: (context) => FileRenameDialog(files: result.files),
+        );
+
+        // User cancelled the dialog
+        if (fileNames == null) {
+          return;
+        }
+
         for (final file in result.files) {
           if (file.path != null) {
+            final fileName = fileNames[file.path!] ?? file.name;
             // Upload file using the API service
             await _chatApiService.uploadFile(
               widget.projectId,
               file.path!,
-              file.name,
+              fileName,
             );
             // API handles adding to knowledge base
           }
