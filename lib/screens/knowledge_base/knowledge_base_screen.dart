@@ -1,12 +1,16 @@
-import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
-import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:universal_io/io.dart';
 import '../game_design_assistant/models/api_models.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
 import '../../providers/settings_provider.dart';
 import '../../widgets/file_rename_dialog.dart';
+import '../../services/file_download_service.dart';
+import '../../utils/web_file_picker_stub.dart'
+    if (dart.library.html) '../../utils/web_file_picker.dart';
 import 'markdown_viewer_screen.dart';
 import 'models/file_version_group.dart';
 
@@ -91,17 +95,26 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Future<void> _uploadFiles() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
         allowMultiple: true,
+        withData: true,
       );
 
-      if (result != null && result.files.isNotEmpty) {
+      List<PlatformFile>? files = result?.files;
+      if (kIsWeb && (files == null || files.isEmpty || files.any((f) => f.bytes == null))) {
+        files = await pickFilesWithWebFallback(
+          allowedExtensions: const ['pdf', 'txt', 'md', 'doc', 'docx'],
+          allowMultiple: true,
+        );
+      }
+
+      if (files != null && files.isNotEmpty) {
         // Show rename dialog
-        final fileNames = await showDialog<Map<String, String>>(
+        final fileNames = await showDialog<List<String>>(
           context: context,
-          builder: (context) => FileRenameDialog(files: result.files),
+          builder: (context) => FileRenameDialog(files: files!),
         );
 
         // User cancelled the dialog
@@ -114,18 +127,18 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         });
         
         int successCount = 0;
-        for (final file in result.files) {
-          if (file.path != null) {
-            final fileName = fileNames[file.path!] ?? file.name;
-            final success = await _chatApiService.uploadFile(
-              widget.projectId,
-              file.path!,
-              fileName,
-            );
-            
-            if (success) {
-              successCount++;
-            }
+        for (var i = 0; i < files.length; i++) {
+          final file = files[i];
+          final fileName = fileNames[i];
+          final uploadSuccess = await _chatApiService.uploadFile(
+            widget.projectId,
+            fileName,
+            filePath: kIsWeb ? null : file.path,
+            bytes: file.bytes,
+          );
+
+          if (uploadSuccess) {
+            successCount++;
           }
         }
 
@@ -138,7 +151,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           await _loadFiles(); // Refresh the file list
         }
 
-        if (successCount < result.files.length) {
+        if (successCount < files.length) {
           _showErrorSnackBar('Some files failed to upload');
         }
       }
@@ -698,59 +711,27 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Future<void> _downloadFile(KnowledgeBaseFile file) async {
     try {
-      // Show loading indicator
-      _showSuccessSnackBar('Getting download link...');
-      
-      // Get download URL from API
       final downloadResponse = await _chatApiService.getFileDownloadUrl(widget.projectId, file.id);
-      
+
       if (downloadResponse == null) {
         _showErrorSnackBar('Failed to get download URL');
         return;
       }
-      
-      // Show "Save As" dialog
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save ${downloadResponse.fileName}',
-        fileName: downloadResponse.fileName,
-        type: FileType.any,
-      );
-      
-      if (outputFile == null) {
-        // User cancelled the dialog
-        return;
-      }
-      
-      // Check if file already exists and confirm overwrite
-      final outputFileObj = File(outputFile);
-      if (await outputFileObj.exists()) {
-        final shouldOverwrite = await _showOverwriteConfirmDialog(outputFileObj.path);
-        if (!shouldOverwrite) {
-          return;
-        }
-      }
-      
-      // Show downloading indicator
-      _showSuccessSnackBar('Downloading ${downloadResponse.fileName}...');
-      
-      // Download file content using dio
-      final dio = Dio();
-      final response = await dio.get(
-        downloadResponse.downloadUrl,
-        options: Options(
-          responseType: ResponseType.bytes,
-          receiveTimeout: const Duration(minutes: 5), // 5 minute timeout for large files
+
+      await FileDownloadService.downloadFile(
+        url: downloadResponse.downloadUrl,
+        defaultFileName: downloadResponse.fileName,
+        config: FileDownloadConfig(
+          dialogTitle: 'Save ${downloadResponse.fileName}',
+          allowedExtensions: const [],
+          errorPrefix: 'Error downloading file',
+          downloadingSnackbarColor: Colors.blue,
+          showOverwriteConfirmation: !kIsWeb,
         ),
+        context: context,
+        mounted: () => mounted,
       );
-      
-      // Write to selected location
-      await outputFileObj.writeAsBytes(response.data);
-      
-      // Show success message with file location
-      final fileName = outputFileObj.path.split(Platform.pathSeparator).last;
-      final directory = outputFileObj.parent.path;
-      _showSuccessSnackBar('Saved "$fileName" to $directory');
-      
+
     } catch (e) {
       String errorMessage = 'Error downloading file: ';
       if (e is DioException) {
@@ -772,27 +753,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
       }
       _showErrorSnackBar(errorMessage);
     }
-  }
-
-  Future<bool> _showOverwriteConfirmDialog(String filePath) async {
-    return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('File Already Exists'),
-        content: Text('The file "$filePath" already exists. Do you want to overwrite it?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.orange),
-            child: const Text('Overwrite'),
-          ),
-        ],
-      ),
-    ) ?? false;
   }
 
   Future<void> _viewMarkdownFile(KnowledgeBaseFile file) async {

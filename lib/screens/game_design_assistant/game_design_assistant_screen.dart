@@ -1,11 +1,15 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gen_ai_chat_ui/flutter_gen_ai_chat_ui.dart';
 import 'package:provider/provider.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:universal_io/io.dart';
 import 'package:uuid/uuid.dart';
-import 'package:dio/dio.dart';
-import 'dart:io';
 
 import 'models/chat_message.dart' as app_models;
 import 'models/api_models.dart';
@@ -13,11 +17,13 @@ import 'models/project_model.dart';
 import '../../providers/auth_provider.dart';
 import 'services/chat_api_service.dart';
 import 'services/document_extractor.dart';
-import 'services/langchain_message_parser.dart';  
+import 'services/langchain_message_parser.dart';
 import 'widgets/chat_history_sidebar.dart';
 import '../../providers/settings_provider.dart';
 import '../../utils/app_constants.dart' as app_utils;
 import '../../services/mutation_design_service.dart';
+import '../../utils/web_file_picker_stub.dart'
+    if (dart.library.html) '../../utils/web_file_picker.dart';
 import '../../services/feedback_discussion_service.dart';
 import '../../services/projects_api_service.dart';
 import '../../models/feedback_models.dart' as feedback_models;
@@ -599,22 +605,29 @@ Ask me anything about game design, or try one of the example questions below!
         throw Exception('No extractable markdown content found');
       }
       
-      // Create temporary markdown file
-      final tempDir = await Directory.systemTemp.createTemp('arcane_forge_docs');
       final cleanFileName = _getFileNameFromMarkdown(markdownContent);
       final fileName = '$cleanFileName.md';
-      final tempFile = File('${tempDir.path}/$fileName');
-      await tempFile.writeAsString(markdownContent);
-      
+      final markdownBytes = Uint8List.fromList(utf8.encode(markdownContent));
+
+      // Create temporary markdown file on desktop for compatibility
+      Directory? tempDir;
+      File? tempFile;
+      if (!kIsWeb) {
+        tempDir = await Directory.systemTemp.createTemp('arcane_forge_docs');
+        tempFile = File('${tempDir.path}/$fileName');
+        await tempFile.writeAsBytes(markdownBytes);
+      }
+
       // Create a PlatformFile-like object for the rename dialog
       final fileForDialog = PlatformFile(
         name: fileName,
-        path: tempFile.path,
-        size: await tempFile.length(),
+        path: tempFile?.path,
+        bytes: kIsWeb ? markdownBytes : null,
+        size: markdownBytes.length,
       );
-      
+
       // Show rename dialog
-      final fileNames = await showDialog<Map<String, String>>(
+      final fileNames = await showDialog<List<String>>(
         context: context,
         builder: (context) => FileRenameDialog(files: [fileForDialog]),
       );
@@ -623,8 +636,8 @@ Ask me anything about game design, or try one of the example questions below!
       if (fileNames == null) {
         // Clean up temporary file
         try {
-          await tempFile.delete();
-          await tempDir.delete();
+          await tempFile?.delete();
+          await tempDir?.delete();
         } catch (e) {
           // Ignore cleanup errors
         }
@@ -632,18 +645,19 @@ Ask me anything about game design, or try one of the example questions below!
       }
       
       // Get the renamed file name
-      final finalFileName = fileNames[tempFile.path] ?? fileName;
+      final finalFileName = fileNames.first;
       
       // Show loading state
       setState(() {
         _isGenerating = true;
       });
-      
+
       // Upload file to backend via API
       final success = await _chatApiService.uploadFile(
         widget.projectId,
-        tempFile.path,
         finalFileName,
+        filePath: kIsWeb ? null : tempFile?.path,
+        bytes: kIsWeb ? markdownBytes : null,
       );
       
       if (success) {
@@ -674,8 +688,8 @@ Ask me anything about game design, or try one of the example questions below!
       
       // Clean up temporary file
       try {
-        await tempFile.delete();
-        await tempDir.delete();
+        await tempFile?.delete();
+        await tempDir?.delete();
       } catch (e) {
         // Ignore cleanup errors
       }
@@ -702,17 +716,26 @@ Ask me anything about game design, or try one of the example questions below!
 
   Future<void> _uploadFiles() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
         allowMultiple: true,
+        withData: true,
       );
 
-      if (result != null && result.files.isNotEmpty) {
+      List<PlatformFile>? files = result?.files;
+      if (kIsWeb && (files == null || files.isEmpty || files.any((f) => f.bytes == null))) {
+        files = await pickFilesWithWebFallback(
+          allowedExtensions: const ['pdf', 'txt', 'md', 'doc', 'docx'],
+          allowMultiple: true,
+        );
+      }
+
+      if (files != null && files.isNotEmpty) {
         // Show rename dialog
-        final fileNames = await showDialog<Map<String, String>>(
+        final fileNames = await showDialog<List<String>>(
           context: context,
-          builder: (context) => FileRenameDialog(files: result.files),
+          builder: (context) => FileRenameDialog(files: files!),
         );
 
         // User cancelled the dialog
@@ -720,23 +743,23 @@ Ask me anything about game design, or try one of the example questions below!
           return;
         }
 
-        for (final file in result.files) {
-          if (file.path != null) {
-            final fileName = fileNames[file.path!] ?? file.name;
-            // Upload file using the API service
-            await _chatApiService.uploadFile(
-              widget.projectId,
-              file.path!,
-              fileName,
-            );
-            // API handles adding to knowledge base
-          }
+        for (var i = 0; i < files.length; i++) {
+          final file = files[i];
+          final fileName = fileNames[i];
+          // Upload file using the API service
+          await _chatApiService.uploadFile(
+            widget.projectId,
+            fileName,
+            filePath: kIsWeb ? null : file.path,
+            bytes: file.bytes,
+          );
+          // API handles adding to knowledge base
         }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Uploaded ${result.files.length} file(s) to knowledge base'),
+              content: Text('Uploaded ${files.length} file(s) to knowledge base'),
               backgroundColor: Colors.green,
             ),
           );

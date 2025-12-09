@@ -1,7 +1,11 @@
-import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:universal_io/io.dart';
+import 'file_download_web_stub.dart'
+    if (dart.library.html) 'file_download_web.dart';
 
 /// Configuration for file download
 class FileDownloadConfig {
@@ -52,7 +56,44 @@ class FileDownloadService {
     }
 
     try {
-      // Show "Save As" dialog
+      if (kIsWeb) {
+        // Show downloading indicator with web-specific copy
+        if (mounted == null || mounted()) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                'Downloading $defaultFileName... (browser will save to its default location; no overwrite prompt)',
+              ),
+              backgroundColor: config.downloadingSnackbarColor,
+            ),
+          );
+        }
+
+        // Download file content using dio
+        final dio = Dio();
+        final response = await dio.get(
+          url,
+          options: Options(
+            responseType: ResponseType.bytes,
+            receiveTimeout: const Duration(minutes: 5),
+          ),
+        );
+
+        triggerWebDownload(Uint8List.fromList(response.data), defaultFileName);
+
+        if (mounted == null || mounted()) {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text('Saved "$defaultFileName" via browser download'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        return true;
+      }
+
+      // Show "Save As" dialog (desktop)
       String? outputFile = await FilePicker.platform.saveFile(
         dialogTitle: config.dialogTitle,
         fileName: defaultFileName,
@@ -70,7 +111,7 @@ class FileDownloadService {
       if (config.showOverwriteConfirmation && await outputFileObj.exists()) {
         // Check mounted before showing dialog
         if (mounted != null && !mounted()) return false;
-        
+
         final shouldOverwrite = await _showOverwriteConfirmDialog(
           context,
           outputFileObj.path,

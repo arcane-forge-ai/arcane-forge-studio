@@ -1,12 +1,17 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:dio/dio.dart';
-import 'dart:io';
+import 'package:universal_io/io.dart';
 import '../providers/settings_provider.dart';
 import '../models/extracted_asset_models.dart';
 import '../screens/game_design_assistant/models/api_models.dart';
 import '../screens/game_design_assistant/services/chat_api_service.dart';
+import '../utils/web_file_picker_stub.dart'
+    if (dart.library.html) '../utils/web_file_picker.dart';
 
 /// Generic interface for providers that support asset creation from documents
 abstract class AssetCreationProvider {
@@ -102,17 +107,36 @@ class _CreateAssetsFromDocDialogState extends State<CreateAssetsFromDocDialog> {
 
   Future<void> _pickLocalFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
         allowMultiple: false,
+        withData: true,
       );
 
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        final content = await file.readAsString();
+      List<PlatformFile>? files = result?.files;
+      if (kIsWeb && (files == null || files.isEmpty || files.first.bytes == null)) {
+        files = await pickFilesWithWebFallback(
+          allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
+          allowMultiple: false,
+        );
+      }
+
+      if (files != null && files.isNotEmpty) {
+        final file = files.single;
+
+        String? content;
+        if (!kIsWeb && file.path != null) {
+          content = await File(file.path!).readAsString();
+        } else if (file.bytes != null) {
+          content = utf8.decode(file.bytes!);
+        }
+
+        if (content == null) {
+          throw Exception('Selected file could not be read.');
+        }
         setState(() {
-          _documentContent = content;
+          _documentContent = content!;
           _selectedSource = 'local';
         });
         _extractAssets();

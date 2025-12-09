@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 // import 'package:web_socket_channel/io.dart'; // Temporarily unused - for future WebSocket implementation
@@ -149,7 +151,12 @@ class ChatApiService {
   }
 
   /// Upload file to knowledge base
-  Future<bool> uploadFile(String projectId, String filePath, String fileName) async {
+  Future<bool> uploadFile(
+    String projectId,
+    String fileName, {
+    String? filePath,
+    Uint8List? bytes,
+  }) async {
     if (_useMockMode) {
       await Future.delayed(const Duration(seconds: 2)); // Simulate upload
       return true;
@@ -158,9 +165,16 @@ class ChatApiService {
     final url = '$_apiUrl/projects/$projectId/files';
 
     try {
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(filePath, filename: fileName),
-      });
+      MultipartFile multipartFile;
+      if (bytes != null) {
+        multipartFile = MultipartFile.fromBytes(bytes, filename: fileName);
+      } else if (filePath != null) {
+        multipartFile = await MultipartFile.fromFile(filePath, filename: fileName);
+      } else {
+        throw ArgumentError('Either filePath or bytes must be provided.');
+      }
+
+      final formData = FormData.fromMap({'file': multipartFile});
 
       final response = await _dio.post('/projects/$projectId/files', data: formData);
       final responseData = response.data;

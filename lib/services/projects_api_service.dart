@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:universal_io/io.dart';
 import '../screens/game_design_assistant/models/project_model.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
@@ -349,7 +350,9 @@ class ProjectsApiService {
   /// The API endpoint expects a multipart/form-data file upload
   Future<Map<String, dynamic>> uploadCodeMapFile({
     required int projectId,
-    required File file,
+    File? file,
+    Uint8List? bytes,
+    String? fileName,
   }) async {
     if (_useMockMode) {
       // In mock mode, simulate a successful upload
@@ -363,13 +366,20 @@ class ProjectsApiService {
     final url = '$baseUrl/api/v1/projects/$projectId/code_map/upload';
 
     try {
-      // Create form data with the file
-      final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
+      MultipartFile multipartFile;
+      if (bytes != null && fileName != null) {
+        multipartFile = MultipartFile.fromBytes(bytes, filename: fileName);
+      } else if (file != null) {
+        multipartFile = await MultipartFile.fromFile(
           file.path,
           filename: file.path.split('/').last,
-        ),
-      });
+        );
+      } else {
+        throw ArgumentError('Either file bytes or file reference must be provided.');
+      }
+
+      // Create form data with the file
+      final formData = FormData.fromMap({'file': multipartFile});
 
       final response = await _dio.post(
         url,
@@ -384,7 +394,7 @@ class ProjectsApiService {
     } catch (e) {
       print('Code Map Upload API Error: $e');
       print('Request URL: $url');
-      print('File: ${file.path}');
+      print('File: ${file?.path ?? "bytes upload"}');
       rethrow;
     }
   }
