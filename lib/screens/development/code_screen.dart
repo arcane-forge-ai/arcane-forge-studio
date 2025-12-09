@@ -1,14 +1,19 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:file_picker/file_picker.dart';
-import 'dart:io';
+import 'package:universal_io/io.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../constants.dart';
 import '../../services/projects_api_service.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/web_file_picker_stub.dart'
+    if (dart.library.html) '../../utils/web_file_picker.dart';
 
 class CodeScreen extends StatefulWidget {
   final String projectId;
@@ -116,20 +121,39 @@ class _CodeScreenState extends State<CodeScreen> {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['md', 'txt', 'json'],
-        withData: false,
-        withReadStream: true,
+        withData: true,
       );
 
-      if (result != null && result.files.single.path != null) {
+      List<PlatformFile>? files = result?.files;
+      if (kIsWeb && (files == null || files.isEmpty || files.first.bytes == null)) {
+        files = await pickFilesWithWebFallback(
+          allowedExtensions: const ['md', 'txt', 'json'],
+          allowMultiple: false,
+        );
+      }
+
+      if (files != null && files.isNotEmpty) {
         if (!mounted) return;
         setState(() => _isUploading = true);
 
-        final file = File(result.files.single.path!);
-        
+        final file = files.single;
+
+        Uint8List? bytes = file.bytes;
+        if (bytes == null && file.path != null) {
+          bytes = await File(file.path!).readAsBytes();
+        }
+
+        final fileName = file.name;
+        if (bytes == null) {
+          throw Exception('Unable to read selected file.');
+        }
+
         // Upload via API
         await _projectsApiService.uploadCodeMapFile(
           projectId: int.parse(widget.projectId),
-          file: file,
+          file: kIsWeb ? null : (file.path != null ? File(file.path!) : null),
+          bytes: bytes,
+          fileName: fileName,
         );
 
         // Reload project to get updated code map URL

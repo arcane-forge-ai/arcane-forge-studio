@@ -14,39 +14,32 @@ class FileRenameDialog extends StatefulWidget {
 }
 
 class _FileRenameDialogState extends State<FileRenameDialog> {
-  late Map<String, TextEditingController> _controllers;
-  late Map<String, String> _fileExtensions;
-  final Map<String, String?> _errors = {};
+  late List<TextEditingController> _controllers;
+  late List<String> _fileExtensions;
+  final Map<int, String?> _errors = {};
 
   @override
   void initState() {
     super.initState();
-    _controllers = {};
-    _fileExtensions = {};
+    _controllers = [];
+    _fileExtensions = [];
 
     for (final file in widget.files) {
       final fileName = file.name;
       final lastDotIndex = fileName.lastIndexOf('.');
-      
-      String nameWithoutExt;
-      String extension;
-      
-      if (lastDotIndex != -1 && lastDotIndex > 0) {
-        nameWithoutExt = fileName.substring(0, lastDotIndex);
-        extension = fileName.substring(lastDotIndex); // includes the dot
-      } else {
-        nameWithoutExt = fileName;
-        extension = '';
-      }
 
-      _controllers[file.path!] = TextEditingController(text: nameWithoutExt);
-      _fileExtensions[file.path!] = extension;
+      final nameWithoutExt =
+          lastDotIndex > 0 ? fileName.substring(0, lastDotIndex) : fileName;
+      final extension = lastDotIndex > 0 ? fileName.substring(lastDotIndex) : '';
+
+      _controllers.add(TextEditingController(text: nameWithoutExt));
+      _fileExtensions.add(extension);
     }
   }
 
   @override
   void dispose() {
-    for (final controller in _controllers.values) {
+    for (final controller in _controllers) {
       controller.dispose();
     }
     super.dispose();
@@ -55,28 +48,23 @@ class _FileRenameDialogState extends State<FileRenameDialog> {
   bool _validateNames() {
     _errors.clear();
     
-    // Check for empty names
-    for (final entry in _controllers.entries) {
-      final name = entry.value.text.trim();
+    for (var i = 0; i < _controllers.length; i++) {
+      final name = _controllers[i].text.trim();
       if (name.isEmpty) {
-        _errors[entry.key] = 'Name cannot be empty';
+        _errors[i] = 'Name cannot be empty';
       }
     }
 
-    // Check for duplicate names (including extensions)
-    final Map<String, List<String>> nameOccurrences = {};
-    for (final entry in _controllers.entries) {
-      final fullName = entry.value.text.trim() + _fileExtensions[entry.key]!;
-      if (!nameOccurrences.containsKey(fullName)) {
-        nameOccurrences[fullName] = [];
-      }
-      nameOccurrences[fullName]!.add(entry.key);
+    final Map<String, List<int>> nameOccurrences = {};
+    for (var i = 0; i < _controllers.length; i++) {
+      final fullName = _controllers[i].text.trim() + _fileExtensions[i];
+      nameOccurrences.putIfAbsent(fullName, () => []).add(i);
     }
 
     for (final entry in nameOccurrences.entries) {
       if (entry.value.length > 1) {
-        for (final path in entry.value) {
-          _errors[path] = 'Duplicate file name';
+        for (final index in entry.value) {
+          _errors[index] = 'Duplicate file name';
         }
       }
     }
@@ -84,12 +72,11 @@ class _FileRenameDialogState extends State<FileRenameDialog> {
     return _errors.isEmpty;
   }
 
-  Map<String, String> _getFileNames() {
-    final result = <String, String>{};
-    for (final entry in _controllers.entries) {
-      result[entry.key] = entry.value.text.trim() + _fileExtensions[entry.key]!;
-    }
-    return result;
+  List<String> _getFileNames() {
+    return List.generate(
+      _controllers.length,
+      (index) => _controllers[index].text.trim() + _fileExtensions[index],
+    );
   }
 
   void _onConfirm() {
@@ -133,9 +120,9 @@ class _FileRenameDialogState extends State<FileRenameDialog> {
                 itemCount: widget.files.length,
                 itemBuilder: (context, index) {
                   final file = widget.files[index];
-                  final controller = _controllers[file.path!]!;
-                  final extension = _fileExtensions[file.path!]!;
-                  final error = _errors[file.path!];
+                  final controller = _controllers[index];
+                  final extension = _fileExtensions[index];
+                  final error = _errors[index];
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 16.0),
