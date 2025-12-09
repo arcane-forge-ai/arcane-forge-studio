@@ -759,7 +759,7 @@ Ask me anything about game design, or try one of the example questions below!
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Uploaded ${result.files.length} file(s) to knowledge base'),
+              content: Text('Uploaded ${files.length} file(s) to knowledge base'),
               backgroundColor: Colors.green,
             ),
           );

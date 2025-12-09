@@ -151,7 +151,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           await _loadFiles(); // Refresh the file list
         }
 
-        if (successCount < result.files.length) {
+        if (successCount < files.length) {
           _showErrorSnackBar('Some files failed to upload');
         }
       }

@@ -136,7 +136,7 @@ class _CreateAssetsFromDocDialogState extends State<CreateAssetsFromDocDialog> {
           throw Exception('Selected file could not be read.');
         }
         setState(() {
-          _documentContent = content;
+          _documentContent = content!;
           _selectedSource = 'local';
         });
         _extractAssets();

@@ -394,7 +394,7 @@ class ProjectsApiService {
     } catch (e) {
       print('Code Map Upload API Error: $e');
       print('Request URL: $url');
-      print('File: ${file.path}');
+      print('File: ${file?.path ?? "bytes upload"}');
       rethrow;
     }
   }
