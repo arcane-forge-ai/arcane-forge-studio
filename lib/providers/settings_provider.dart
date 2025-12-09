@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,12 +52,18 @@ class SettingsProvider extends ChangeNotifier {
 
     // Load settings from storage asynchronously
     _loadSettingsFromStorage();
-    
+
     // Check if A1111 is already installed
-    _checkA1111Installation();
+    if (!kIsWeb) {
+      _checkA1111Installation();
+    } else {
+      a1111Status = InstallerStatus.completed;
+    }
   }
-  
+
   Future<void> _checkA1111Installation() async {
+    if (kIsWeb) return;
+
     final packagesDir = Directory('packages');
     final isInstalled = await _installer.isInstalled(packagesDir);
     if (isInstalled) {
