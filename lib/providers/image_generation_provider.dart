@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import '../models/image_generation_models.dart';
 import '../models/extracted_asset_models.dart';
 import '../services/comfyui_service.dart';
@@ -6,8 +8,8 @@ import '../services/comfyui_service_manager.dart';
 import '../services/image_generation_services.dart';
 import '../providers/settings_provider.dart';
 import '../utils/app_constants.dart';
+import '../utils/io_web_stub.dart' if (dart.library.io) 'dart:io' as io;
 import '../widgets/create_assets_from_doc_dialog.dart';
-import 'dart:io';
 
 class ImageGenerationProvider extends ChangeNotifier implements AssetCreationProvider {
   final SettingsProvider _settingsProvider;
@@ -51,6 +53,10 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
     // Test API connection if using API service
     if (!_settingsProvider.useMockMode && _assetService is ApiImageAssetService) {
       _testApiConnection();
+    }
+
+    if (kIsWeb) {
+      Future.microtask(() => _serviceManager.startService(_settingsProvider));
     }
   }
   
@@ -590,6 +596,12 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
 
   // Service management methods (unchanged)
   Future<void> startService() async {
+    if (kIsWeb) {
+      await _serviceManager.startService(_settingsProvider);
+      notifyListeners();
+      return;
+    }
+
     if (_isStartingService || isServiceRunning) return;
 
     _isStartingService = true;
@@ -606,6 +618,12 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   }
 
   Future<void> stopService() async {
+    if (kIsWeb) {
+      await _serviceManager.stopService();
+      notifyListeners();
+      return;
+    }
+
     if (!isServiceRunning) return;
 
     try {
@@ -645,37 +663,55 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
       // Generate the image using the A1111 service
       final imageData = await _a1111Service.generateImage(request);
 
-      // Build output path: $output_directory/$project_name_with_id/assets/$asset_name/$server_generation_id.png
-      final outputDir = _settingsProvider.outputDirectory.isNotEmpty
-        ? _settingsProvider.outputDirectory
-        : 'output';
-      final safeProjectName = projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      final safeAssetName = asset.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      final projectFolder = '${safeProjectName}_${projectId}';
-      final assetDir = Directory('$outputDir/$projectFolder/assets/$safeAssetName');
-      if (!assetDir.existsSync()) {
-        assetDir.createSync(recursive: true);
+      Map<String, dynamic> uploadResult = {};
+
+      if (!kIsWeb) {
+        final outputDir = _settingsProvider.outputDirectory.isNotEmpty
+            ? _settingsProvider.outputDirectory
+            : 'output';
+        final safeProjectName = projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+        final safeAssetName = asset.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+        final projectFolder = '${safeProjectName}_${projectId}';
+        final assetDir = io.Directory('$outputDir/$projectFolder/assets/$safeAssetName');
+        if (!assetDir.existsSync()) {
+          assetDir.createSync(recursive: true);
+        }
+
+        final imageFile = io.File('${assetDir.path}/${generation.id}.png');
+        await imageFile.writeAsBytes(imageData);
+
+        uploadResult = await _assetService.uploadGenerationImage(
+          generation.id,
+          imageData,
+          '${generation.id}.png',
+        );
+
+        final updatedGeneration = generation.copyWith(
+          status: GenerationStatus.completed,
+          imagePath: imageFile.path,
+          imageUrl: uploadResult['image_url'],
+        );
+
+        await _assetService.updateGeneration(updatedGeneration);
+      } else {
+        _serviceManager.getService(_settingsProvider).clearLogs();
+        uploadResult = await _assetService.uploadGenerationImage(
+          generation.id,
+          imageData,
+          '${generation.id}.png',
+        );
+
+        final updatedGeneration = generation.copyWith(
+          status: GenerationStatus.completed,
+          imagePath: '',
+          imageUrl: uploadResult['image_url'],
+        );
+
+        await _assetService.updateGeneration(updatedGeneration);
       }
-      // Use the server-generated ID for the filename
-      final imageFile = File('${assetDir.path}/${generation.id}.png');
-      await imageFile.writeAsBytes(imageData);
 
-      // Upload the image to Supabase
-      final uploadResult = await _assetService.uploadGenerationImage(
-        generation.id,
-        imageData,
-        '${generation.id}.png',
-      );
-
-      // Update the generation with completed status, local path and online URL
-      final updatedGeneration = generation.copyWith(
-        status: GenerationStatus.completed,
-        imagePath: imageFile.path,
-        imageUrl: uploadResult['image_url'],
-      );
-      
-      await _assetService.updateGeneration(updatedGeneration);
-      await _refreshSingleAsset(assetId); // Refresh to get updated asset
+      // Refresh to get updated asset state
+      await _refreshSingleAsset(assetId);
 
     } catch (e) {
       // Handle generation error - find and update the generation
