@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -676,156 +677,174 @@ class _SettingsScreenState extends State<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (backend == ImageGenerationBackend.automatic1111)
-                  Consumer<SettingsProvider>(
-                    builder: (context, sp, _) {
-                      // Show success snackbar once
-                      if (sp.a1111Status == InstallerStatus.completed && !_a1111SnackShown) {
-                        _a1111SnackShown = true;
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('A1111 installed successfully'),
-                              backgroundColor: Colors.green,
-                              duration: Duration(seconds: 3),
-                            ),
-                          );
-                        });
-                      }
+                  if (!kIsWeb)
+                    Consumer<SettingsProvider>(
+                      builder: (context, sp, _) {
+                        // Show success snackbar once
+                        if (sp.a1111Status == InstallerStatus.completed && !_a1111SnackShown) {
+                          _a1111SnackShown = true;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('A1111 installed successfully'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                          });
+                        }
 
-                      Widget content;
-                      switch (sp.a1111Status) {
-                        case InstallerStatus.downloading:
-                          final percent = sp.a1111Progress != null
-                              ? (sp.a1111Progress! * 100).clamp(0, 100).toStringAsFixed(0)
-                              : null;
-                          content = Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.download, color: colorScheme.primary),
-                                  const SizedBox(width: 8),
-                                  const Text('Downloading A1111 from Supabase'),
-                                  const Spacer(),
-                                  TextButton(
-                                    onPressed: sp.cancelA1111Install,
-                                    child: const Text('Cancel'),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              LinearProgressIndicator(value: sp.a1111Progress),
-                              const SizedBox(height: 8),
-                              Text(
-                                percent != null
-                                    ? '$percent%'
-                                    : 'Downloading...',
-                                style: TextStyle(color: colorScheme.primary),
-                              ),
-                            ],
-                          );
-                          break;
-                        case InstallerStatus.extracting:
-                          content = Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.archive_outlined, color: colorScheme.primary),
-                                  const SizedBox(width: 8),
-                                  const Text('Extracting A1111...'),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              const LinearProgressIndicator(),
-                            ],
-                          );
-                          break;
-                        case InstallerStatus.completed:
-                          content = Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.check_circle, color: Colors.green),
-                                  const SizedBox(width: 8),
-                                  const Expanded(
-                                    child: Text('A1111 is installed'),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Location: ./packages/automatic1111/',
-                                style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
-                              ),
-                            ],
-                          );
-                          break;
-                        case InstallerStatus.error:
-                          content = Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.error, color: Colors.red),
-                                  const SizedBox(width: 8),
-                                  const Expanded(
-                                    child: Text('Installation failed'),
-                                  ),
-                                  ElevatedButton.icon(
-                                    onPressed: () => sp.startA1111Install(),
-                                    icon: const Icon(Icons.refresh),
-                                    label: const Text('Retry'),
-                                  ),
-                                ],
-                              ),
-                              if (sp.a1111Error != null) ...[
+                        Widget content;
+                        switch (sp.a1111Status) {
+                          case InstallerStatus.downloading:
+                            final percent = sp.a1111Progress != null
+                                ? (sp.a1111Progress! * 100).clamp(0, 100).toStringAsFixed(0)
+                                : null;
+                            content = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.download, color: colorScheme.primary),
+                                    const SizedBox(width: 8),
+                                    const Text('Downloading A1111 from Supabase'),
+                                    const Spacer(),
+                                    TextButton(
+                                      onPressed: sp.cancelA1111Install,
+                                      child: const Text('Cancel'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                LinearProgressIndicator(value: sp.a1111Progress),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Error: ${sp.a1111Error}',
-                                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                                  percent != null
+                                      ? '$percent%'
+                                      : 'Downloading...',
+                                  style: TextStyle(color: colorScheme.primary),
                                 ),
                               ],
-                            ],
-                          );
-                          break;
-                        case InstallerStatus.idle:
-                          content = Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(Icons.cloud_download, color: colorScheme.primary),
-                                  const SizedBox(width: 8),
-                                  const Expanded(
-                                    child: Text('Download and install Automatic1111 from Supabase'),
-                                  ),
-                                  ElevatedButton.icon(
-                                    onPressed: () => sp.startA1111Install(),
-                                    icon: const Icon(Icons.download),
-                                    label: const Text('Download'),
+                            );
+                            break;
+                          case InstallerStatus.extracting:
+                            content = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.archive_outlined, color: colorScheme.primary),
+                                    const SizedBox(width: 8),
+                                    const Text('Extracting A1111...'),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                const LinearProgressIndicator(),
+                              ],
+                            );
+                            break;
+                          case InstallerStatus.completed:
+                            content = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.check_circle, color: Colors.green),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text('A1111 is installed'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Location: ./packages/automatic1111/',
+                                  style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
+                                ),
+                              ],
+                            );
+                            break;
+                          case InstallerStatus.error:
+                            content = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.error, color: Colors.red),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text('Installation failed'),
+                                    ),
+                                    ElevatedButton.icon(
+                                      onPressed: () => sp.startA1111Install(),
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('Retry'),
+                                    ),
+                                  ],
+                                ),
+                                if (sp.a1111Error != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Error: ${sp.a1111Error}',
+                                    style: const TextStyle(color: Colors.red, fontSize: 12),
                                   ),
                                 ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Downloads to ./packages/, installs to ./packages/automatic1111/',
-                                style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
-                              ),
-                            ],
-                          );
-                      }
+                              ],
+                            );
+                            break;
+                          case InstallerStatus.idle:
+                            content = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.cloud_download, color: colorScheme.primary),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text('Download and install Automatic1111 from Supabase'),
+                                    ),
+                                    ElevatedButton.icon(
+                                      onPressed: () => sp.startA1111Install(),
+                                      icon: const Icon(Icons.download),
+                                      label: const Text('Download'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Downloads to ./packages/, installs to ./packages/automatic1111/',
+                                  style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12),
+                                ),
+                              ],
+                            );
+                        }
 
-                      return Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: content,
+                        return Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: content,
+                          ),
+                        );
+                      },
+                    )
+                  else
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Icon(Icons.cloud_queue, color: colorScheme.primary),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Web builds use the cloud backend for image generation. Local Automatic1111 installation is not available.',
+                              ),
+                            ),
+                          ],
                         ),
-                      );
-                    },
-                  ),
-                if (backend == ImageGenerationBackend.automatic1111)
+                      ),
+                    ),
+                if (backend == ImageGenerationBackend.automatic1111 && !kIsWeb)
                   const SizedBox(height: 16),
                 // Start Command
                 Text(
