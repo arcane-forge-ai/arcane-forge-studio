@@ -847,53 +847,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (backend == ImageGenerationBackend.automatic1111 && !kIsWeb)
                   const SizedBox(height: 16),
                 // Start Command
-                Text(
-                  'Start Command',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.primary,
+                if (!kIsWeb) ...[
+                  Text(
+                    'Start Command',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _commandControllers[backend],
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: 'Enter the command to start the server...',
-                    contentPadding: EdgeInsets.all(12),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _commandControllers[backend],
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Enter the command to start the server...',
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+                    maxLines: 3,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    onChanged: (value) {
+                      _commands[backend] = value;
+                      _markAsChanged();
+                    },
                   ),
-                  maxLines: 3,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                  onChanged: (value) {
-                    _commands[backend] = value;
-                    _markAsChanged();
-                  },
-                ),
-                const SizedBox(height: 16),
-                
-                // Working Directory
-                Text(
-                  'Working Directory',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.primary,
+                  const SizedBox(height: 16),
+                  
+                  // Working Directory
+                  Text(
+                    'Working Directory',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _workingDirControllers[backend],
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: 'Enter the working directory path...',
-                    contentPadding: EdgeInsets.all(12),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _workingDirControllers[backend],
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Enter the working directory path...',
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    onChanged: (value) {
+                      _workingDirectories[backend] = value;
+                      _markAsChanged();
+                    },
                   ),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                  onChanged: (value) {
-                    _workingDirectories[backend] = value;
-                    _markAsChanged();
-                  },
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
                 
                 // API Endpoint
                 Text(
