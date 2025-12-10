@@ -100,7 +100,7 @@ class SettingsProvider extends ChangeNotifier {
   /// Load settings from dotenv (for development)
   void _loadFromEnvironment() {
     // API Settings from dotenv
-    _apiBaseUrl = dotenv.env['API_BASE_URL'] ?? ApiConfig.defaultBaseUrl;
+    _apiBaseUrl = _normalizeApiUrl(dotenv.env['API_BASE_URL'] ?? ApiConfig.defaultBaseUrl);
     _useApiService = dotenv.env['USE_API_SERVICE']?.toLowerCase() == 'true' || ApiConfig.useApiService;
 
     debugPrint('🌍 Loaded from environment:');
@@ -125,7 +125,7 @@ class SettingsProvider extends ChangeNotifier {
     // Update fields with loaded data
     _useMockMode = settingsData.useMockMode;
     _isDarkMode = settingsData.isDarkMode;
-    _apiBaseUrl = settingsData.apiBaseUrl;
+    _apiBaseUrl = _normalizeApiUrl(settingsData.apiBaseUrl);
     _useApiService = settingsData.useApiService;
     _defaultGenerationServer = settingsData.defaultGenerationServer;
     _outputDirectory = settingsData.outputDirectory;
@@ -175,6 +175,15 @@ class SettingsProvider extends ChangeNotifier {
       notifyListeners();
       _saveSettings();
     }
+  }
+
+  // Helper method to normalize API URL by removing trailing slashes
+  String _normalizeApiUrl(String url) {
+    // Remove all trailing slashes
+    while (url.endsWith('/') && url.length > 1) {
+      url = url.substring(0, url.length - 1);
+    }
+    return url;
   }
 
   // Existing getters
@@ -250,8 +259,10 @@ class SettingsProvider extends ChangeNotifier {
   
   // API methods
   void setApiBaseUrl(String url) {
-    if (_apiBaseUrl != url) {
-      _apiBaseUrl = url;
+    // Normalize URL to remove trailing slashes
+    final normalizedUrl = _normalizeApiUrl(url);
+    if (_apiBaseUrl != normalizedUrl) {
+      _apiBaseUrl = normalizedUrl;
       notifyListeners();
       _saveSettings();
     }
@@ -428,7 +439,9 @@ class SettingsProvider extends ChangeNotifier {
   SettingsProvider._fromLoadedData(SettingsData data)
       : _useMockMode = data.useMockMode,
         _isDarkMode = data.isDarkMode,
-        _apiBaseUrl = data.apiBaseUrl,
+        _apiBaseUrl = data.apiBaseUrl.endsWith('/') && data.apiBaseUrl.length > 1
+            ? data.apiBaseUrl.substring(0, data.apiBaseUrl.length - 1)
+            : data.apiBaseUrl,
         _useApiService = data.useApiService,
         _defaultGenerationServer = data.defaultGenerationServer,
         _outputDirectory = data.outputDirectory,

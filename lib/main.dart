@@ -126,7 +126,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       child: Builder(
         builder: (context) => MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: 'Flutter Admin Panel',
+          title: 'Arcane Forge Studio',
           theme: ThemeData.light().copyWith(
             primaryColor: primaryColor,
             colorScheme: ColorScheme.light(
