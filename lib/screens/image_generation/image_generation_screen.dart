@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,7 +7,7 @@ import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../services/comfyui_service.dart';
-import 'dart:io';
+import '../../utils/io_web_stub.dart' if (dart.library.io) 'dart:io' as io;
 import 'dart:convert';
 
 import 'widgets/image_detail_dialog.dart';
@@ -336,6 +337,25 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildAIServiceControls(ImageGenerationProvider provider) {
+    if (kIsWeb) {
+      return Row(
+        children: [
+          const Icon(Icons.cloud_done, color: Colors.lightBlueAccent),
+          const SizedBox(width: 8),
+          const Text(
+            'Web build uses hosted Automatic1111 backend',
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: () => _showServiceLogs(provider),
+            icon: const Icon(Icons.article, color: Colors.white54),
+            tooltip: 'Show Service Logs',
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
         if (!provider.isServiceRunning)
@@ -1629,7 +1649,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   Widget _buildGenerationThumbnailImage(ImageGeneration generation) {
     // Prefer online URL, fallback to local file
     final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
-    final bool hasLocalFile = generation.imagePath.isNotEmpty;
+    final bool hasLocalFile = generation.imagePath.isNotEmpty && !kIsWeb;
     
     if (hasOnlineUrl) {
       return Image.network(
@@ -1639,7 +1659,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           // Fallback to local file if network fails
           if (hasLocalFile) {
             return Image.file(
-              File(generation.imagePath),
+              io.File(generation.imagePath),
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
                 return Container(
@@ -1665,7 +1685,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       );
     } else if (hasLocalFile) {
       return Image.file(
-        File(generation.imagePath),
+        io.File(generation.imagePath),
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
           return Container(
