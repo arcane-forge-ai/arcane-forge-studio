@@ -7,6 +7,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../constants.dart';
 import '../../../models/project_overview_models.dart';
 import '../../../widgets/project_flow_chart.dart';
+import '../../../utils/error_handler.dart';
 import '../../../controllers/menu_app_controller.dart';
 
 class ProjectHomeScreen extends StatefulWidget {
@@ -113,7 +114,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
             } catch (e) {
               if (!mounted) return;
               setState(() => _isSaving = false);
-              _showSnackBar('Failed to update introduction: ${e.toString()}');
+              _showSnackBar('Failed to update introduction: ${ErrorHandler.getErrorMessage(e)}');
             }
           },
         ),
@@ -539,7 +540,7 @@ class _GameIntroductionEditorScreenState
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving: ${e.toString()}')),
+          SnackBar(content: Text('Error saving: ${ErrorHandler.getErrorMessage(e)}')),
         );
       }
     }

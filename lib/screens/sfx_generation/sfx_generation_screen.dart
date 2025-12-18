@@ -5,6 +5,7 @@ import '../../providers/sfx_generation_provider.dart';
 import '../../models/sfx_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
+import '../../utils/error_handler.dart';
 import 'widgets/audio_detail_dialog.dart';
 
 class SfxGenerationScreen extends StatefulWidget {
@@ -103,7 +104,7 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
       }
     } catch (e) {
       if (mounted) {
-        _showErrorDialog('Failed to refresh generations: ${e.toString()}');
+        _showErrorDialog('Failed to refresh generations: ${ErrorHandler.getErrorMessage(e)}');
       }
     } finally {
       if (mounted) {
@@ -949,7 +950,7 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
           _currentBatchIndex = 0;
         });
       }
-      _showErrorDialog('Failed to generate SFX: ${e.toString()}');
+      _showErrorDialog('Failed to generate SFX: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -1268,7 +1269,7 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
                     _selectedAssetGenerations = asset.generations;
                   });
                 } catch (e) {
-                  _showErrorDialog('Failed to create asset: ${e.toString()}');
+                  _showErrorDialog('Failed to create asset: ${ErrorHandler.getErrorMessage(e)}');
                 }
               }
             },
@@ -1289,7 +1290,7 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A2A2A),
         title: const Text('Error', style: TextStyle(color: Colors.red)),
-        content: Text(message, style: const TextStyle(color: Colors.white)),
+        content: SelectableText(message, style: const TextStyle(color: Colors.white)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),

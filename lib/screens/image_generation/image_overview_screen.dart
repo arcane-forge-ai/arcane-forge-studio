@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import '../../providers/image_generation_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../widgets/create_assets_from_doc_dialog.dart';
+import '../../widgets/quota_status_widget.dart';
 import '../../services/file_download_service.dart';
 import 'widgets/asset_detail_screen.dart';
 
@@ -91,6 +93,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                   color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
+              const SizedBox(width: 16),
+              QuotaStatusWidget.compact('image_generation'),
               const Spacer(),
               _buildActionButtons(context, provider),
             ],

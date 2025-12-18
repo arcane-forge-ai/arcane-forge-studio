@@ -3,9 +3,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Centralized application constants and utilities
 class AppConstants {
-  /// UUID for visitor mode - centralized so we can easily change it if needed
-  static const String visitorUserId = '00000000-0000-0000-0000-000000000000';
-
   /// Default output directory for all generated contents
   static const String defaultOutputDirectory = 'output';
 }
@@ -21,10 +18,22 @@ enum ImageGenerationBackend {
   final String displayName;
 }
 
+/// A1111 Mode - Local vs Online
+enum A1111Mode {
+  local('Local'),
+  online('Online');
+
+  const A1111Mode(this.displayName);
+  final String displayName;
+}
+
 /// Image generation configuration constants
 class ImageGenerationConstants {
   /// Default backend
   static const ImageGenerationBackend defaultBackend = ImageGenerationBackend.automatic1111;
+  
+  /// Default A1111 mode (local for backward compatibility)
+  static const A1111Mode defaultA1111Mode = A1111Mode.local;
   
   /// Default commands for each backend
   static const Map<ImageGenerationBackend, String> defaultCommands = {

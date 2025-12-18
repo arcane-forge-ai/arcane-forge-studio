@@ -4,16 +4,24 @@ import '../models/extracted_asset_models.dart';
 import '../services/comfyui_service.dart';
 import '../services/comfyui_service_manager.dart';
 import '../services/image_generation_services.dart';
+import '../services/api_client.dart';
+import '../services/a1111_online_service.dart';
 import '../providers/settings_provider.dart';
+import '../providers/auth_provider.dart';
 import '../utils/app_constants.dart';
+import '../utils/subscription_exceptions.dart';
 import '../widgets/create_assets_from_doc_dialog.dart';
 import 'dart:io';
 
 class ImageGenerationProvider extends ChangeNotifier implements AssetCreationProvider {
   final SettingsProvider _settingsProvider;
+  final AuthProvider? _authProvider;
   final AIImageGenerationServiceManager _serviceManager = AIImageGenerationServiceManager.instance;
   final A1111ImageGenerationService _a1111Service;
   late final ImageAssetService _assetService;
+  
+  // Callback for quota refresh (set by external provider)
+  Function()? _quotaRefreshCallback;
   
   // Asset-based state instead of flat image list
   List<ImageAsset> _assets = [];
@@ -39,19 +47,35 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   bool get isA1111ServerReachable => _isA1111ServerReachable;
   
   ImageGenerationProvider(
-    this._settingsProvider,
-  ) : _a1111Service = A1111ImageGenerationService(_settingsProvider) {
+    this._settingsProvider, {
+    AuthProvider? authProvider,
+  }) : _authProvider = authProvider,
+       _a1111Service = A1111ImageGenerationService(
+         _settingsProvider,
+         onlineService: A1111OnlineService(
+           apiClient: ApiClient(
+             settingsProvider: _settingsProvider,
+             authProvider: authProvider,
+           ),
+         ),
+       ) {
     // Initialize the asset service using the factory
     // Read API settings from SettingsProvider for dynamic updates
     _assetService = ImageAssetServiceFactory.create(
       useApiService: !_settingsProvider.useMockMode, // Use API when NOT in mock mode
       settingsProvider: _settingsProvider, // Pass provider for dynamic URL reading
+      authProvider: _authProvider,
     );
     
     // Test API connection if using API service
     if (!_settingsProvider.useMockMode && _assetService is ApiImageAssetService) {
       _testApiConnection();
     }
+  }
+  
+  /// Set callback for quota refresh (called from external subscription provider)
+  void setQuotaRefreshCallback(Function() callback) {
+    _quotaRefreshCallback = callback;
   }
   
   bool _isApiConnected = false;
@@ -616,15 +640,43 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
     }
   }
 
-  Future<void> generateImage(GenerationRequest request, {required String projectName, required String projectId, required String assetId}) async {
+  Future<void> generateImage(GenerationRequest request, {required String projectName, required String projectId, required String assetId, Function? checkQuota}) async {
     if (_isGenerating) return;
 
     _isGenerating = true;
-    _currentRequest = request;
+    // Ensure request has assetId for online mode (backend endpoint requires it in URL path)
+    final requestWithAssetId = GenerationRequest(
+      assetId: assetId,
+      positivePrompt: request.positivePrompt,
+      negativePrompt: request.negativePrompt,
+      model: request.model,
+      width: request.width,
+      height: request.height,
+      steps: request.steps,
+      cfgScale: request.cfgScale,
+      sampler: request.sampler,
+      scheduler: request.scheduler,
+      seed: request.seed,
+      loras: request.loras,
+    );
+
+    _currentRequest = requestWithAssetId;
     notifyListeners();
 
     try {
-      if (!isServiceRunning) {
+      // Check quota before generation if callback provided
+      if (checkQuota != null) {
+        final hasQuota = await checkQuota();
+        if (!hasQuota) {
+          throw QuotaExceededException('image_generation');
+        }
+      }
+      
+      // Skip service running check for online mode
+      final isOnlineMode = currentBackendName == 'Automatic1111' && 
+                           _settingsProvider.a1111Mode == A1111Mode.online;
+      
+      if (!isOnlineMode && !isServiceRunning) {
         throw Exception('${currentBackendName} service is not running. Please start the service first.');
       }
 
@@ -634,48 +686,73 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
         throw Exception('Asset not found: $assetId');
       }
 
-      // Add generation to asset (server will generate the ID)
-      final generation = await _assetService.addGeneration(
-        assetId, 
-        request.toParameters(), 
-        status: GenerationStatus.generating,
-      );
-      await _refreshSingleAsset(assetId); // Refresh to get updated asset
+      if (isOnlineMode) {
+        // ONLINE MODE: Submit the job and return immediately.
+        // The backend creates the generation via POST /assets/{assetId}/generations.
+        await _a1111Service.submitGenerationOnline(requestWithAssetId);
 
-      // Generate the image using the A1111 service
-      final imageData = await _a1111Service.generateImage(request);
+        // Refresh quota after successful submission
+        if (_quotaRefreshCallback != null) {
+          await _quotaRefreshCallback!();
+        }
 
-      // Build output path: $output_directory/$project_name_with_id/assets/$asset_name/$server_generation_id.png
-      final outputDir = _settingsProvider.outputDirectory.isNotEmpty
-        ? _settingsProvider.outputDirectory
-        : 'output';
-      final safeProjectName = projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      final safeAssetName = asset.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-      final projectFolder = '${safeProjectName}_${projectId}';
-      final assetDir = Directory('$outputDir/$projectFolder/assets/$safeAssetName');
-      if (!assetDir.existsSync()) {
-        assetDir.createSync(recursive: true);
+        // Refresh asset to get the new generation from server (status pending/generating)
+        await _refreshSingleAsset(assetId);
+      } else {
+        // Build output path components (local mode only)
+        final outputDir = _settingsProvider.outputDirectory.isNotEmpty
+            ? _settingsProvider.outputDirectory
+            : 'output';
+        final safeProjectName =
+            projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+        final safeAssetName =
+            asset.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+        final projectFolder = '${safeProjectName}_${projectId}';
+        final assetDir =
+            Directory('$outputDir/$projectFolder/assets/$safeAssetName');
+        if (!assetDir.existsSync()) {
+          assetDir.createSync(recursive: true);
+        }
+
+        // LOCAL MODE: Use the existing flow
+        // Add generation to asset (server will generate the ID)
+        final generation = await _assetService.addGeneration(
+          assetId, 
+          request.toParameters(), 
+          status: GenerationStatus.generating,
+        );
+        
+        // Refresh quota after successful generation
+        if (_quotaRefreshCallback != null) {
+          await _quotaRefreshCallback!();
+        }
+        
+        await _refreshSingleAsset(assetId); // Refresh to get updated asset
+
+        // Generate the image using the A1111 service
+        final imageData = await _a1111Service.generateImage(requestWithAssetId);
+
+        // Use the server-generated ID for the filename
+        final imageFile = File('${assetDir.path}/${generation.id}.png');
+        await imageFile.writeAsBytes(imageData);
+
+        // Upload the image to Supabase
+        final uploadResult = await _assetService.uploadGenerationImage(
+          generation.id,
+          imageData,
+          '${generation.id}.png',
+        );
+
+        // Update the generation with completed status, local path and online URL
+        final updatedGeneration = generation.copyWith(
+          status: GenerationStatus.completed,
+          imagePath: imageFile.path,
+          imageUrl: uploadResult['image_url'],
+        );
+        
+        await _assetService.updateGeneration(updatedGeneration);
+        await _refreshSingleAsset(assetId); // Refresh to get updated asset
       }
-      // Use the server-generated ID for the filename
-      final imageFile = File('${assetDir.path}/${generation.id}.png');
-      await imageFile.writeAsBytes(imageData);
-
-      // Upload the image to Supabase
-      final uploadResult = await _assetService.uploadGenerationImage(
-        generation.id,
-        imageData,
-        '${generation.id}.png',
-      );
-
-      // Update the generation with completed status, local path and online URL
-      final updatedGeneration = generation.copyWith(
-        status: GenerationStatus.completed,
-        imagePath: imageFile.path,
-        imageUrl: uploadResult['image_url'],
-      );
-      
-      await _assetService.updateGeneration(updatedGeneration);
-      await _refreshSingleAsset(assetId); // Refresh to get updated asset
 
     } catch (e) {
       // Handle generation error - find and update the generation
@@ -817,34 +894,45 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
     notifyListeners();
     
     try {
-      // Check server status first
-      await checkA1111ServerStatus();
-      
-      if (!_isA1111ServerReachable) {
-        _a1111Checkpoints = [];
-        _a1111Loras = [];
-        _currentA1111Checkpoint = null;
-        return;
-      }
+      // Online mode: skip server status check and directly fetch from backend
+      if (_settingsProvider.a1111Mode == A1111Mode.online) {
+        _isA1111ServerReachable = true; // Backend API is assumed to be available
+        
+        // Only get checkpoints for online mode (LoRAs not yet supported, current checkpoint N/A)
+        _a1111Checkpoints = await _a1111Service.getAvailableCheckpoints();
+        _a1111Loras = []; // LoRAs not supported in online mode yet
+        _currentA1111Checkpoint = null; // No current checkpoint concept in online mode
+      } else {
+        // Local mode: check server status first
+        await checkA1111ServerStatus();
+        
+        if (!_isA1111ServerReachable) {
+          _a1111Checkpoints = [];
+          _a1111Loras = [];
+          _currentA1111Checkpoint = null;
+          return;
+        }
 
-      // Get checkpoints, LoRAs, and current checkpoint in parallel
-      final futures = [
-        _a1111Service.getAvailableCheckpoints(),
-        _a1111Service.getAvailableLoras(),
-        _a1111Service.getCurrentCheckpoint(),
-      ];
-      
-      final results = await Future.wait(futures);
-      
-      _a1111Checkpoints = results[0] as List<A1111Checkpoint>;
-      _a1111Loras = results[1] as List<A1111Lora>;
-      _currentA1111Checkpoint = results[2] as String?;
+        // Get checkpoints, LoRAs, and current checkpoint in parallel
+        final futures = [
+          _a1111Service.getAvailableCheckpoints(),
+          _a1111Service.getAvailableLoras(),
+          _a1111Service.getCurrentCheckpoint(),
+        ];
+        
+        final results = await Future.wait(futures);
+        
+        _a1111Checkpoints = results[0] as List<A1111Checkpoint>;
+        _a1111Loras = results[1] as List<A1111Lora>;
+        _currentA1111Checkpoint = results[2] as String?;
+      }
       
     } catch (e) {
       _isA1111ServerReachable = false;
       _a1111Checkpoints = [];
       _a1111Loras = [];
       _currentA1111Checkpoint = null;
+      print('Error refreshing A1111 models: $e');
     } finally {
       _isLoadingA1111Models = false;
       notifyListeners();

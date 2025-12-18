@@ -3,6 +3,7 @@ import 'package:arcane_forge/controllers/menu_app_controller.dart';
 import 'package:arcane_forge/screens/projects/projects_dashboard_screen.dart';
 import 'package:arcane_forge/providers/settings_provider.dart';
 import 'package:arcane_forge/providers/auth_provider.dart';
+import 'package:arcane_forge/providers/subscription_provider.dart';
 import 'package:arcane_forge/providers/image_generation_provider.dart';
 import 'package:arcane_forge/providers/sfx_generation_provider.dart';
 import 'package:arcane_forge/services/sfx_generation_services.dart';
@@ -86,39 +87,60 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ChangeNotifierProvider(create: (context) => MenuAppController()..changeScreen(ScreenType.projects)),
         ChangeNotifierProvider(create: (context) => SettingsProvider()),
         ChangeNotifierProvider(create: (context) => AuthProvider()),
-        ChangeNotifierProxyProvider<SettingsProvider, ImageGenerationProvider>(
+        ChangeNotifierProxyProvider2<SettingsProvider, AuthProvider, SubscriptionProvider>(
+          create: (context) => SubscriptionProvider.create(
+            settingsProvider: context.read<SettingsProvider>(),
+            authProvider: context.read<AuthProvider>(),
+          ),
+          update: (context, settingsProvider, authProvider, previous) {
+            if (previous == null) {
+              return SubscriptionProvider.create(
+                settingsProvider: settingsProvider,
+                authProvider: authProvider,
+              );
+            }
+            return previous;
+          },
+        ),
+        ChangeNotifierProxyProvider2<SettingsProvider, AuthProvider, ImageGenerationProvider>(
           create: (context) => ImageGenerationProvider(
             context.read<SettingsProvider>(),
+            authProvider: context.read<AuthProvider>(),
           ),
-          update: (context, settingsProvider, previous) => previous ?? ImageGenerationProvider(
+          update: (context, settingsProvider, authProvider, previous) => previous ?? ImageGenerationProvider(
             settingsProvider,
+            authProvider: authProvider,
           ),
         ),
-        ChangeNotifierProxyProvider<SettingsProvider, SfxGenerationProvider>(
+        ChangeNotifierProxyProvider2<SettingsProvider, AuthProvider, SfxGenerationProvider>(
           create: (context) => SfxGenerationProvider(
             SfxAssetServiceFactory.create(
               useApiService: !context.read<SettingsProvider>().useMockMode,
               settingsProvider: context.read<SettingsProvider>(),
+              authProvider: context.read<AuthProvider>(),
             ),
           ),
-          update: (context, settingsProvider, previous) => previous ?? SfxGenerationProvider(
+          update: (context, settingsProvider, authProvider, previous) => previous ?? SfxGenerationProvider(
             SfxAssetServiceFactory.create(
               useApiService: !settingsProvider.useMockMode,
               settingsProvider: settingsProvider,
+              authProvider: authProvider,
             ),
           ),
         ),
-        ChangeNotifierProxyProvider<SettingsProvider, MusicGenerationProvider>(
+        ChangeNotifierProxyProvider2<SettingsProvider, AuthProvider, MusicGenerationProvider>(
           create: (context) => MusicGenerationProvider(
             MusicAssetServiceFactory.create(
               useApiService: !context.read<SettingsProvider>().useMockMode,
               settingsProvider: context.read<SettingsProvider>(),
+              authProvider: context.read<AuthProvider>(),
             ),
           ),
-          update: (context, settingsProvider, previous) => previous ?? MusicGenerationProvider(
+          update: (context, settingsProvider, authProvider, previous) => previous ?? MusicGenerationProvider(
             MusicAssetServiceFactory.create(
               useApiService: !settingsProvider.useMockMode,
               settingsProvider: settingsProvider,
+              authProvider: authProvider,
             ),
           ),
         ),
@@ -296,9 +318,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   ),
                 );
               }
-              return Consumer<AuthProvider>(
-                builder: (context, auth, child) {
-                  if (auth.isAuthenticated || auth.isVisitor) {
+              return Consumer2<AuthProvider, SubscriptionProvider>(
+                builder: (context, auth, subscription, child) {
+                  if (auth.isAuthenticated) {
+                    // Initialize subscription data ONCE when user is authenticated
+                    if (!subscription.isInitialized && !subscription.isLoading) {
+                      // Initialize subscription in background (only once)
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!subscription.isInitialized && !subscription.isLoading) {
+                          subscription.initialize();
+                        }
+                      });
+                    }
                     return const ProjectsDashboardScreen();
                   }
                   return const LoginScreen();

@@ -5,6 +5,7 @@ import '../../providers/music_generation_provider.dart';
 import '../../models/music_generation_models.dart';
 import '../../models/sfx_generation_models.dart'; // For GenerationStatus
 import '../../responsive.dart';
+import '../../utils/error_handler.dart';
 import 'widgets/music_detail_dialog.dart';
 import '../../controllers/menu_app_controller.dart';
 
@@ -99,7 +100,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
       }
     } catch (e) {
       if (mounted) {
-        _showErrorDialog('Failed to refresh generations: ${e.toString()}');
+        _showErrorDialog('Failed to refresh generations: ${ErrorHandler.getErrorMessage(e)}');
       }
     } finally {
       if (mounted) {
@@ -935,7 +936,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
           _currentBatchIndex = 0;
         });
       }
-      _showErrorDialog('Failed to generate music: ${e.toString()}');
+      _showErrorDialog('Failed to generate music: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -1012,7 +1013,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
                     _selectedAssetGenerations = asset.generations;
                   });
                 } catch (e) {
-                  _showErrorDialog('Failed to create asset: ${e.toString()}');
+                  _showErrorDialog('Failed to create asset: ${ErrorHandler.getErrorMessage(e)}');
                 }
               }
             },
@@ -1033,7 +1034,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF2A2A2A),
         title: const Text('Error', style: TextStyle(color: Colors.red)),
-        content: Text(message, style: const TextStyle(color: Colors.white)),
+        content: SelectableText(message, style: const TextStyle(color: Colors.white)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),

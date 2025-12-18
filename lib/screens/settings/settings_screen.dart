@@ -659,6 +659,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildBackendConfigCard(BuildContext context, ImageGenerationBackend backend) {
     final colorScheme = Theme.of(context).colorScheme;
+    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
     
     return Card(
       child: ExpansionTile(
@@ -676,7 +677,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (backend == ImageGenerationBackend.automatic1111)
+                // A1111 Mode Selector (Local/Online)
+                if (backend == ImageGenerationBackend.automatic1111) ...[
+                  Consumer<SettingsProvider>(
+                    builder: (context, sp, _) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.settings_input_composite,
+                                color: colorScheme.primary,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'A1111 Mode',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<A1111Mode>(
+                            value: sp.a1111Mode,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                            items: A1111Mode.values.map((mode) {
+                              return DropdownMenuItem(
+                                value: mode,
+                                child: Text(mode.displayName),
+                              );
+                            }).toList(),
+                            onChanged: (A1111Mode? newValue) {
+                              if (newValue != null) {
+                                sp.setA1111Mode(newValue);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          if (sp.a1111Mode == A1111Mode.online)
+                            Card(
+                              color: Colors.blue.withOpacity(0.1),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Online mode uses backend API. Configure API Base URL in Backend API Configuration section.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 16),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+                if (backend == ImageGenerationBackend.automatic1111 && settingsProvider.a1111Mode == A1111Mode.local)
                   if (!kIsWeb)
                     Consumer<SettingsProvider>(
                       builder: (context, sp, _) {
@@ -844,10 +917,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ),
-                if (backend == ImageGenerationBackend.automatic1111 && !kIsWeb)
+                if (backend == ImageGenerationBackend.automatic1111 && settingsProvider.a1111Mode == A1111Mode.local && !kIsWeb)
                   const SizedBox(height: 16),
-                // Start Command
-                if (!kIsWeb) ...[
+                // Start Command - Only for local A1111 or other backends
+                if (backend != ImageGenerationBackend.automatic1111 && !kIsWeb ||
+                    backend == ImageGenerationBackend.automatic1111 && settingsProvider.a1111Mode == A1111Mode.local && !kIsWeb) ...[
                   Text(
                     'Start Command',
                     style: TextStyle(
@@ -897,52 +971,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 16),
                 ],
                 
-                // API Endpoint
-                Text(
-                  'API Endpoint',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.primary,
+                // API Endpoint - Only show for non-A1111 or local A1111 mode
+                if (backend != ImageGenerationBackend.automatic1111 || settingsProvider.a1111Mode == A1111Mode.local) ...[
+                  Text(
+                    'API Endpoint',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _endpointControllers[backend],
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: 'Enter the API endpoint URL...',
-                    contentPadding: EdgeInsets.all(12),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _endpointControllers[backend],
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Enter the API endpoint URL...',
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    onChanged: (value) {
+                      _endpoints[backend] = value;
+                      _markAsChanged();
+                    },
                   ),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                  onChanged: (value) {
-                    _endpoints[backend] = value;
-                    _markAsChanged();
-                  },
-                ),
-                const SizedBox(height: 16),
-                
-                // Health Check Endpoint
-                Text(
-                  'Health Check Endpoint',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.primary,
+                  const SizedBox(height: 16),
+                  
+                  // Health Check Endpoint
+                  Text(
+                    'Health Check Endpoint',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _healthCheckEndpointControllers[backend],
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: 'Enter the health check endpoint path...',
-                    contentPadding: EdgeInsets.all(12),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _healthCheckEndpointControllers[backend],
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Enter the health check endpoint path...',
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    onChanged: (value) {
+                      _healthCheckEndpoints[backend] = value;
+                      _markAsChanged();
+                    },
                   ),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                  onChanged: (value) {
-                    _healthCheckEndpoints[backend] = value;
-                    _markAsChanged();
-                  },
-                ),
+                ],
                 const SizedBox(height: 16),
                 
                 // Reset to Defaults Button

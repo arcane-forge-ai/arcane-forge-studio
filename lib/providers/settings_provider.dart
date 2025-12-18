@@ -21,6 +21,7 @@ class SettingsProvider extends ChangeNotifier {
 
   // Image Generation Settings
   ImageGenerationBackend _defaultGenerationServer = ImageGenerationConstants.defaultBackend;
+  A1111Mode _a1111Mode = ImageGenerationConstants.defaultA1111Mode;
 
   // A1111 installer state
   InstallerStatus a1111Status = InstallerStatus.idle;
@@ -129,6 +130,7 @@ class SettingsProvider extends ChangeNotifier {
     _useApiService = settingsData.useApiService;
     _defaultGenerationServer = settingsData.defaultGenerationServer;
     _outputDirectory = settingsData.outputDirectory;
+    _a1111Mode = settingsData.a1111Mode;
     _customCommands = Map.from(settingsData.customCommands);
     _customWorkingDirectories = Map.from(settingsData.customWorkingDirectories);
     _customEndpoints = Map.from(settingsData.customEndpoints);
@@ -197,6 +199,7 @@ class SettingsProvider extends ChangeNotifier {
   
   // Image Generation getters
   ImageGenerationBackend get defaultGenerationServer => _defaultGenerationServer;
+  A1111Mode get a1111Mode => _a1111Mode;
   
   String getStartCommand(ImageGenerationBackend backend) {
     return _customCommands[backend] ?? ImageGenerationConstants.defaultCommands[backend] ?? '';
@@ -289,6 +292,14 @@ class SettingsProvider extends ChangeNotifier {
     if (_defaultGenerationServer != backend) {
       _defaultGenerationServer = backend;
       notifyListeners();
+    }
+  }
+
+  void setA1111Mode(A1111Mode mode) {
+    if (_a1111Mode != mode) {
+      _a1111Mode = mode;
+      notifyListeners();
+      _saveSettings();
     }
   }
 
@@ -418,6 +429,7 @@ class SettingsProvider extends ChangeNotifier {
         useApiService: _useApiService,
         defaultGenerationServer: _defaultGenerationServer,
         outputDirectory: _outputDirectory,
+        a1111Mode: _a1111Mode,
         customCommands: _customCommands,
         customWorkingDirectories: _customWorkingDirectories,
         customEndpoints: _customEndpoints,
@@ -445,6 +457,7 @@ class SettingsProvider extends ChangeNotifier {
         _useApiService = data.useApiService,
         _defaultGenerationServer = data.defaultGenerationServer,
         _outputDirectory = data.outputDirectory,
+        _a1111Mode = data.a1111Mode,
         _customCommands = Map.from(data.customCommands),
         _customWorkingDirectories = Map.from(data.customWorkingDirectories),
         _customEndpoints = Map.from(data.customEndpoints),

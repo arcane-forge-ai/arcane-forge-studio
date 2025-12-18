@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import '../models/sfx_generation_models.dart';
 import '../models/extracted_asset_models.dart';
 import '../services/sfx_generation_services.dart';
+import '../utils/error_handler.dart';
+import '../utils/subscription_exceptions.dart';
 import '../widgets/create_assets_from_doc_dialog.dart';
 
 class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvider {
   final SfxAssetService _assetService;
+  
+  // Callback for quota refresh (set by external provider)
+  Function()? _quotaRefreshCallback;
 
   // Asset management
   List<SfxAsset> _assets = [];
@@ -22,6 +27,11 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
   SfxAsset? _selectedAsset;
 
   SfxGenerationProvider(this._assetService);
+  
+  /// Set callback for quota refresh (called from external subscription provider)
+  void setQuotaRefreshCallback(Function() callback) {
+    _quotaRefreshCallback = callback;
+  }
 
   // Getters
   List<SfxAsset> get assets => _assets;
@@ -103,7 +113,7 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
       notifyListeners();
       return asset;
     } catch (e) {
-      throw Exception('Failed to create SFX asset: $e');
+      throw Exception('Failed to create SFX asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -119,7 +129,7 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
         notifyListeners();
       }
     } catch (e) {
-      throw Exception('Failed to update SFX asset: $e');
+      throw Exception('Failed to update SFX asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -132,7 +142,7 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
       }
       notifyListeners();
     } catch (e) {
-      throw Exception('Failed to delete SFX asset: $e');
+      throw Exception('Failed to delete SFX asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -160,6 +170,7 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
     SfxGenerationRequest request, {
     required String projectId,
     required String assetId,
+    Function? checkQuota, // Callback to check quota availability
   }) async {
     if (_isGenerating) return;
 
@@ -169,6 +180,14 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
     notifyListeners();
 
     try {
+      // Check quota before generation if callback provided
+      if (checkQuota != null) {
+        final hasQuota = await checkQuota();
+        if (!hasQuota) {
+          throw QuotaExceededException('sfx_generation');
+        }
+      }
+      
       // Find the target asset
       final asset = await getAsset(assetId);
       if (asset == null) {
@@ -181,6 +200,11 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
         request,
         status: GenerationStatus.generating,
       );
+
+      // Refresh quota after successful generation
+      if (_quotaRefreshCallback != null) {
+        await _quotaRefreshCallback!();
+      }
 
       // Refresh the specific asset to get updated generation
       await _refreshSingleAsset(assetId);
@@ -237,7 +261,7 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
         notifyListeners();
       }
     } catch (e) {
-      throw Exception('Failed to set favorite SFX generation: $e');
+      throw Exception('Failed to set favorite SFX generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 

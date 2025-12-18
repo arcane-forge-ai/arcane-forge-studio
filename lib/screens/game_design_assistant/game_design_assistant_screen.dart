@@ -21,6 +21,7 @@ import 'services/langchain_message_parser.dart';
 import 'widgets/chat_history_sidebar.dart';
 import '../../providers/settings_provider.dart';
 import '../../utils/app_constants.dart' as app_utils;
+import '../../utils/error_handler.dart';
 import '../../services/mutation_design_service.dart';
 import '../../utils/web_file_picker_stub.dart'
     if (dart.library.html) '../../utils/web_file_picker.dart';
@@ -92,9 +93,13 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize chat API service with settings provider
+    // Initialize chat API service with settings and auth providers
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    _chatApiService = ChatApiService(settingsProvider: settingsProvider);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    _chatApiService = ChatApiService(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
     
     _initializeExampleQuestions();
     _addWelcomeMessage();
@@ -338,7 +343,7 @@ Ask me anything about game design, or try one of the example questions below!
     
     // Only include user ID if we have a valid authenticated user
     final authUserId = authProvider.userId;
-    if (authUserId.isNotEmpty && authUserId != app_utils.AppConstants.visitorUserId) {
+    if (authUserId.isNotEmpty) {
       userId = authUserId;
     }
 
@@ -430,14 +435,14 @@ Ask me anything about game design, or try one of the example questions below!
         print('  - Request data: ${e.requestOptions.data}');
       }
       
-      final errorMessage = 'Sorry, I encountered an error: ${e.toString()}';
+      final errorMessage = 'Sorry, I encountered an error: ${ErrorHandler.getErrorMessage(e)}';
       final updatedMessage = aiMessage.copyWith(text: errorMessage);
       _chatController.updateMessage(updatedMessage);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error sending message: ${e.toString()}'),
+            content: Text('Error sending message: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -472,7 +477,7 @@ Ask me anything about game design, or try one of the example questions below!
     
     // Only include user ID if we have a valid authenticated user
     final authUserId = authProvider.userId;
-    if (authUserId.isNotEmpty && authUserId != app_utils.AppConstants.visitorUserId) {
+    if (authUserId.isNotEmpty) {
       userId = authUserId;
     }
 
@@ -564,7 +569,7 @@ Ask me anything about game design, or try one of the example questions below!
       }
       
       final errorMessage = aiMessage.copyWith(
-        text: "Sorry, I encountered an error: ${e.toString()}",
+        text: "Sorry, I encountered an error: ${ErrorHandler.getErrorMessage(e)}",
       );
       _chatController.updateMessage(errorMessage);
       
@@ -578,7 +583,7 @@ Ask me anything about game design, or try one of the example questions below!
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error sending message: ${e.toString()}'),
+            content: Text('Error sending message: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -699,7 +704,7 @@ Ask me anything about game design, or try one of the example questions below!
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error saving document: ${e.toString()}'),
+            content: Text('Error saving document: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -769,7 +774,7 @@ Ask me anything about game design, or try one of the example questions below!
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error uploading files: ${e.toString()}'),
+            content: Text('Error uploading files: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -990,7 +995,7 @@ Ask me anything about game design, or try one of the example questions below!
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error starting new conversation: ${e.toString()}'),
+            content: Text('Error starting new conversation: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -1078,7 +1083,7 @@ Ask me anything about game design, or try one of the example questions below!
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load chat history: ${e.toString()}'),
+            content: Text('Failed to load chat history: ${ErrorHandler.getErrorMessage(e)}'),
             duration: const Duration(seconds: 3),
             backgroundColor: Colors.red,
           ),

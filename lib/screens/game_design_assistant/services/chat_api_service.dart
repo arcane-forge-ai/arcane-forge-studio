@@ -7,7 +7,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'dart:async';
 import '../models/api_models.dart';
 import '../../../providers/settings_provider.dart';
-import '../../../utils/app_constants.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../services/api_client.dart';
 
 class ChatApiService {
   static const String _apiVersion = 'v1';
@@ -21,27 +22,25 @@ class ChatApiService {
   // 3. Update streamChatResponse method to use real WebSocket connection
   
   final SettingsProvider? _settingsProvider;
-
-  final Dio _dio;
+  late final ApiClient _apiClient;
   WebSocketChannel? _wsChannel;
 
-  ChatApiService({SettingsProvider? settingsProvider})
-      : _settingsProvider = settingsProvider,
-        _dio = Dio() {
-    _dio.options.headers['Content-Type'] = 'application/json';
-    _dio.options.connectTimeout = const Duration(seconds: 10);
-    _dio.options.receiveTimeout = const Duration(seconds: 120);
-    _dio.options.baseUrl = _apiUrl;
+  ChatApiService({SettingsProvider? settingsProvider, AuthProvider? authProvider})
+      : _settingsProvider = settingsProvider {
+    _apiClient = ApiClient(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
   }
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? false;
   
   /// Get API base URL from settings provider with fallback to default
-  String get _baseUrl => _settingsProvider?.apiBaseUrl ?? ApiConfig.defaultBaseUrl;
+  String get _baseUrl => _apiClient.baseUrl;
   
   /// Get full API URL with version
-  String get _apiUrl => '$_baseUrl/api/$_apiVersion';
+  String get _apiUrl => _apiClient.apiUrl;
 
   /// Send chat message via HTTP API (non-streaming)
   Future<ChatResponse> sendChatMessage(ChatRequest request) async {
@@ -51,21 +50,15 @@ class ChatApiService {
       return _mockChatResponse(request);
     }
 
-    final url = '$_apiUrl/chat';
     final requestBody = request.toJson();
-    print('ChatApiService: Making real API call to $url');
+    print('ChatApiService: Making real API call to $_apiUrl/chat');
 
     try {
-      final response = await _dio.post('/chat', data: requestBody);
+      final response = await _apiClient.post('/chat', data: requestBody);
       print('ChatApiService: API call successful, status: ${response.statusCode}');
       return ChatResponse.fromJson(response.data);
     } catch (e) {
       print('Chat API Error: $e');
-      print('Request URL: $url');
-      print('Request Body: $requestBody');
-      print('Headers: ${_dio.options.headers}');
-      
-      // Don't fallback to mock - rethrow the error so we can see what's wrong
       rethrow;
     }
   }
@@ -135,17 +128,13 @@ class ChatApiService {
       return _mockKnowledgeBaseFiles();
     }
 
-    final url = '$_apiUrl/projects/$projectId/files';
-
     try {
-      final response = await _dio.get('/projects/$projectId/files');
+      final response = await _apiClient.get('/projects/$projectId/files');
       final Map<String, dynamic> responseData = response.data;
       final List<dynamic> files = responseData['files'] ?? [];
       return files.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
     } catch (e) {
       print('Knowledge Base API Error: $e');
-      print('Request URL: $url');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -162,29 +151,31 @@ class ChatApiService {
       return true;
     }
 
-    final url = '$_apiUrl/projects/$projectId/files';
-
     try {
-      MultipartFile multipartFile;
+      Response response;
+      
       if (bytes != null) {
-        multipartFile = MultipartFile.fromBytes(bytes, filename: fileName);
+        response = await _apiClient.uploadFileFromBytes(
+          '/projects/$projectId/files',
+          fileFieldName: 'file',
+          bytes: bytes,
+          fileName: fileName,
+        );
       } else if (filePath != null) {
-        multipartFile = await MultipartFile.fromFile(filePath, filename: fileName);
+        response = await _apiClient.uploadFile(
+          '/projects/$projectId/files',
+          fileFieldName: 'file',
+          filePath: filePath,
+          fileName: fileName,
+        );
       } else {
         throw ArgumentError('Either filePath or bytes must be provided.');
       }
 
-      final formData = FormData.fromMap({'file': multipartFile});
-
-      final response = await _dio.post('/projects/$projectId/files', data: formData);
       final responseData = response.data;
       return responseData['success'] == true || response.statusCode == 200;
     } catch (e) {
       print('File Upload Error: $e');
-      print('Request URL: $url');
-      print('File Path: $filePath');
-      print('File Name: $fileName');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -196,15 +187,11 @@ class ChatApiService {
       return true;
     }
 
-    final url = '$_apiUrl/projects/$projectId/files/$fileId';
-
     try {
-      final response = await _dio.delete('/projects/$projectId/files/$fileId');
+      final response = await _apiClient.delete('/projects/$projectId/files/$fileId');
       return response.data['success'] == true;
     } catch (e) {
       print('File Delete Error: $e');
-      print('Request URL: $url');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -222,15 +209,11 @@ class ChatApiService {
       );
     }
 
-    final url = '$_apiUrl/projects/$projectId/files/$fileId/download';
-
     try {
-      final response = await _dio.get('/projects/$projectId/files/$fileId/download');
+      final response = await _apiClient.get('/projects/$projectId/files/$fileId/download');
       return FileDownloadResponse.fromJson(response.data);
     } catch (e) {
       print('File Download URL Error: $e');
-      print('Request URL: $url');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -241,16 +224,12 @@ class ChatApiService {
       return _mockChatSessions(projectId);
     }
 
-    final url = '$_apiUrl/projects/$projectId/chat/sessions';
-
     try {
-      final response = await _dio.get(url);
+      final response = await _apiClient.get('/projects/$projectId/chat/sessions');
       final List<dynamic> sessions = response.data;
       return sessions.map((item) => ChatSession.fromJson(item)).toList();
     } catch (e) {
       print('Chat Sessions API Error: $e');
-      print('Request URL: $url');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -261,21 +240,17 @@ class ChatApiService {
       return _mockCreateChatSession(projectId, userId, sessionId: sessionId);
     }
 
-    final url = '$_apiUrl/projects/$projectId/chat/sessions';
     final request = ChatSessionCreateRequest(userId: userId, sessionId: sessionId);
     final requestBody = request.toJson();
 
     try {
-      final response = await _dio.post(
+      final response = await _apiClient.post(
         '/projects/$projectId/chat/sessions',
         data: requestBody,
       );
       return ChatSessionCreateResponse.fromJson(response.data);
     } catch (e) {
       print('Create Chat Session API Error: $e');
-      print('Request URL: $url');
-      print('Request Body: $requestBody');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -286,15 +261,11 @@ class ChatApiService {
       return _mockChatHistory(sessionId);
     }
 
-    final url = '$_apiUrl/chat/sessions/$sessionId/messages';
-
     try {
-      final response = await _dio.get(url);
+      final response = await _apiClient.get('/chat/sessions/$sessionId/messages');
       return ChatHistoryResponse.fromJson(response.data);
     } catch (e) {
       print('Chat History API Error: $e');
-      print('Request URL: $url');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }

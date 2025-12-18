@@ -7,6 +7,7 @@ import 'package:universal_io/io.dart';
 import '../game_design_assistant/models/api_models.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/auth_provider.dart';
 import '../../widgets/file_rename_dialog.dart';
 import '../../services/file_download_service.dart';
 import '../../utils/web_file_picker_stub.dart'
@@ -38,9 +39,13 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize chat API service with settings provider
+    // Initialize chat API service with settings and auth providers
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    _chatApiService = ChatApiService(settingsProvider: settingsProvider);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    _chatApiService = ChatApiService(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
     _loadFiles();
   }
 

@@ -3,10 +3,15 @@ import '../models/music_generation_models.dart';
 import '../models/sfx_generation_models.dart'; // For GenerationStatus
 import '../models/extracted_asset_models.dart';
 import '../services/music_generation_services.dart';
+import '../utils/error_handler.dart';
+import '../utils/subscription_exceptions.dart';
 import '../widgets/create_assets_from_doc_dialog.dart';
 
 class MusicGenerationProvider extends ChangeNotifier implements AssetCreationProvider {
   final MusicAssetService _assetService;
+  
+  // Callback for quota refresh (set by external provider)
+  Function()? _quotaRefreshCallback;
 
   // Asset management
   List<MusicAsset> _assets = [];
@@ -22,6 +27,11 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
   MusicAsset? _selectedAsset;
 
   MusicGenerationProvider(this._assetService);
+  
+  /// Set callback for quota refresh (called from external subscription provider)
+  void setQuotaRefreshCallback(Function() callback) {
+    _quotaRefreshCallback = callback;
+  }
 
   // Getters
   List<MusicAsset> get assets => _assets;
@@ -108,7 +118,7 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
       notifyListeners();
       return asset;
     } catch (e) {
-      throw Exception('Failed to create music asset: $e');
+      throw Exception('Failed to create music asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -124,7 +134,7 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
         notifyListeners();
       }
     } catch (e) {
-      throw Exception('Failed to update music asset: $e');
+      throw Exception('Failed to update music asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -137,7 +147,7 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
       }
       notifyListeners();
     } catch (e) {
-      throw Exception('Failed to delete music asset: $e');
+      throw Exception('Failed to delete music asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -165,6 +175,7 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
     MusicGenerationRequest request, {
     required String projectId,
     required String assetId,
+    Function? checkQuota, // Callback to check quota availability
   }) async {
     if (_isGenerating) return;
 
@@ -174,6 +185,14 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
     notifyListeners();
 
     try {
+      // Check quota before generation if callback provided
+      if (checkQuota != null) {
+        final hasQuota = await checkQuota();
+        if (!hasQuota) {
+          throw QuotaExceededException('music_generation');
+        }
+      }
+      
       // Find the target asset
       final asset = await getAsset(assetId);
       if (asset == null) {
@@ -186,6 +205,11 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
         request,
         status: GenerationStatus.generating,
       );
+
+      // Refresh quota after successful generation
+      if (_quotaRefreshCallback != null) {
+        await _quotaRefreshCallback!();
+      }
 
       // Refresh the specific asset to get updated generation
       await _refreshSingleAsset(assetId);
@@ -233,7 +257,7 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
         notifyListeners();
       }
     } catch (e) {
-      throw Exception('Failed to set favorite music generation: $e');
+      throw Exception('Failed to set favorite music generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 

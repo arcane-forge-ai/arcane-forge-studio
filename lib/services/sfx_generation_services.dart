@@ -1,8 +1,10 @@
 import 'dart:async';
-import 'package:dio/dio.dart';
 import '../models/sfx_generation_models.dart';
 import '../models/extracted_asset_models.dart';
 import '../providers/settings_provider.dart';
+import '../providers/auth_provider.dart';
+import '../utils/error_handler.dart';
+import 'api_client.dart';
 
 // Service interfaces
 abstract class SfxAssetService {
@@ -23,9 +25,13 @@ class SfxAssetServiceFactory {
     String? apiBaseUrl,
     bool useApiService = false,
     SettingsProvider? settingsProvider,
+    AuthProvider? authProvider,
   }) {
     if (useApiService && settingsProvider != null) {
-      return ApiSfxAssetService(settingsProvider: settingsProvider);
+      return ApiSfxAssetService(
+        settingsProvider: settingsProvider,
+        authProvider: authProvider,
+      );
     } else if (useApiService && apiBaseUrl != null) {
       // Fallback for backward compatibility
       return ApiSfxAssetService(baseUrl: apiBaseUrl);
@@ -36,38 +42,27 @@ class SfxAssetServiceFactory {
 
 // API implementation using FastAPI backend
 class ApiSfxAssetService implements SfxAssetService {
-  final Dio _dio;
-  final String? _staticBaseUrl;
-  final SettingsProvider? _settingsProvider;
+  late final ApiClient _apiClient;
   
   ApiSfxAssetService({
     String? baseUrl,
     SettingsProvider? settingsProvider,
-    Dio? dio,
-  }) : _staticBaseUrl = baseUrl != null && baseUrl.endsWith('/') 
-           ? baseUrl.substring(0, baseUrl.length - 1) 
-           : baseUrl,
-       _settingsProvider = settingsProvider,
-       _dio = dio ?? Dio() {
-    _dio.options.connectTimeout = const Duration(seconds: 30);
-    _dio.options.receiveTimeout = const Duration(seconds: 60);
-    _dio.options.headers['Content-Type'] = 'application/json';
+    AuthProvider? authProvider,
+  }) {
+    _apiClient = ApiClient(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
   }
   
-  /// Get the current base URL, reading from SettingsProvider if available
-  String get _baseUrl {
-    if (_settingsProvider != null) {
-      final url = _settingsProvider.apiBaseUrl;
-      return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
-    }
-    return _staticBaseUrl ?? 'http://localhost:8000';
-  }
+  /// Get the current base URL from ApiClient
+  String get _baseUrl => _apiClient.baseUrl;
 
   @override
   Future<List<SfxAsset>> getProjectSfxAssets(String projectId) async {
     try {
-      final response = await _dio.get(
-        '$_baseUrl/api/v1/$projectId/sfx-assets',
+      final response = await _apiClient.get(
+        '/$projectId/sfx-assets',
         queryParameters: {
           'limit': 200, // Get all assets
         },
@@ -78,7 +73,7 @@ class ApiSfxAssetService implements SfxAssetService {
       
       return assetsData.map((assetJson) => _parseSfxAsset(assetJson)).toList();
     } catch (e) {
-      throw Exception('Failed to get project SFX assets: $e');
+      throw Exception('Failed to get project SFX assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -101,8 +96,8 @@ class ApiSfxAssetService implements SfxAssetService {
       if (tags != null && tags.isNotEmpty) queryParams['tags'] = tags.join(',');
       if (hasGenerations != null) queryParams['has_generations'] = hasGenerations;
 
-      final response = await _dio.get(
-        '$_baseUrl/api/v1/$projectId/sfx-assets',
+      final response = await _apiClient.get(
+        '/$projectId/sfx-assets',
         queryParameters: queryParams,
       );
       
@@ -117,17 +112,17 @@ class ApiSfxAssetService implements SfxAssetService {
         'offset': data['offset'],
       };
     } catch (e) {
-      throw Exception('Failed to get filtered project SFX assets: $e');
+      throw Exception('Failed to get filtered project SFX assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<SfxAsset> getSfxAsset(String assetId) async {
     try {
-      final response = await _dio.get('$_baseUrl/api/v1/sfx-assets/$assetId');
+      final response = await _apiClient.get('/sfx-assets/$assetId');
       return _parseSfxAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to get SFX asset: $e');
+      throw Exception('Failed to get SFX asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -143,8 +138,8 @@ class ApiSfxAssetService implements SfxAssetService {
         'offset': offset,
       };
 
-      final response = await _dio.get(
-        '$_baseUrl/api/v1/sfx-assets/$assetId/generations',
+      final response = await _apiClient.get(
+        '/sfx-assets/$assetId/generations',
         queryParameters: queryParams,
       );
       
@@ -158,15 +153,15 @@ class ApiSfxAssetService implements SfxAssetService {
         'offset': data['offset'],
       };
     } catch (e) {
-      throw Exception('Failed to get SFX asset generations: $e');
+      throw Exception('Failed to get SFX asset generations: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<SfxAsset> createSfxAsset(String projectId, String name, String description) async {
     try {
-      final response = await _dio.post(
-        '$_baseUrl/api/v1/$projectId/sfx-assets',
+      final response = await _apiClient.post(
+        '/$projectId/sfx-assets',
         data: {
           'name': name,
           'description': description,
@@ -177,15 +172,15 @@ class ApiSfxAssetService implements SfxAssetService {
       
       return _parseSfxAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to create SFX asset: $e');
+      throw Exception('Failed to create SFX asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<SfxAsset> updateSfxAsset(SfxAsset asset) async {
     try {
-      final response = await _dio.put(
-        '$_baseUrl/api/v1/sfx-assets/${asset.id}',
+      final response = await _apiClient.put(
+        '/sfx-assets/${asset.id}',
         data: {
           'name': asset.name,
           'description': asset.description,
@@ -196,57 +191,57 @@ class ApiSfxAssetService implements SfxAssetService {
       
       return _parseSfxAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to update SFX asset: $e');
+      throw Exception('Failed to update SFX asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<void> deleteSfxAsset(String assetId) async {
     try {
-      await _dio.delete('$_baseUrl/api/v1/sfx-assets/$assetId');
+      await _apiClient.delete('/sfx-assets/$assetId');
     } catch (e) {
-      throw Exception('Failed to delete SFX asset: $e');
+      throw Exception('Failed to delete SFX asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<SfxGeneration> addSfxGeneration(String assetId, SfxGenerationRequest request, {GenerationStatus status = GenerationStatus.pending}) async {
     try {
-      final response = await _dio.post(
-        '$_baseUrl/api/v1/sfx-assets/$assetId/generations',
+      final response = await _apiClient.post(
+        '/sfx-assets/$assetId/generations',
         data: request.toJson(),
       );
       
       return _parseSfxGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to create SFX generation: $e');
+      throw Exception('Failed to create SFX generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<SfxGeneration> getSfxGeneration(String generationId) async {
     try {
-      final response = await _dio.get('$_baseUrl/api/v1/sfx-generations/$generationId');
+      final response = await _apiClient.get('/sfx-generations/$generationId');
       return _parseSfxGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to get SFX generation: $e');
+      throw Exception('Failed to get SFX generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<void> setFavoriteSfxGeneration(String assetId, String generationId) async {
     try {
-      await _dio.put('$_baseUrl/api/v1/sfx-assets/$assetId/favorite/$generationId');
+      await _apiClient.put('/sfx-assets/$assetId/favorite/$generationId');
     } catch (e) {
-      throw Exception('Failed to set favorite SFX generation: $e');
+      throw Exception('Failed to set favorite SFX generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo) async {
     try {
-      final response = await _dio.post(
-        '$_baseUrl/api/v1/$projectId/sfx-assets/generate-prompt',
+      final response = await _apiClient.post(
+        '/$projectId/sfx-assets/generate-prompt',
         data: {
           'asset_info': assetInfo,
           'generator_info': generatorInfo,
@@ -259,14 +254,14 @@ class ApiSfxAssetService implements SfxAssetService {
       }
       return prompt;
     } catch (e) {
-      throw Exception('Failed to generate SFX prompt: $e');
+      throw Exception('Failed to generate SFX prompt: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   /// Test API connection
   Future<bool> testConnection() async {
     try {
-      final response = await _dio.get('$_baseUrl/health');
+      final response = await _apiClient.dio.get('$_baseUrl/health');
       return response.statusCode == 200;
     } catch (e) {
       return false;
@@ -321,8 +316,8 @@ class ApiSfxAssetService implements SfxAssetService {
   /// Extract assets from document content using API
   Future<List<ExtractedAsset>> extractAssetsFromContent(String projectId, String content) async {
     try {
-      final response = await _dio.post(
-        '$_baseUrl/api/v1/$projectId/sfx-assets/extract',
+      final response = await _apiClient.post(
+        '/$projectId/sfx-assets/extract',
         data: {
           'file_content': content,
         },
@@ -350,7 +345,7 @@ class ApiSfxAssetService implements SfxAssetService {
         );
       }).toList();
     } catch (e) {
-      throw Exception('Failed to extract SFX assets from content: $e');
+      throw Exception('Failed to extract SFX assets from content: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -365,8 +360,8 @@ class ApiSfxAssetService implements SfxAssetService {
         'metadata': asset.metadata,
       }).toList();
 
-      final response = await _dio.post(
-        '$_baseUrl/api/v1/$projectId/sfx-assets/batch-create',
+      final response = await _apiClient.post(
+        '/$projectId/sfx-assets/batch-create',
         data: {
           'assets': assetsData,
         },
@@ -377,7 +372,7 @@ class ApiSfxAssetService implements SfxAssetService {
       
       return createdData.map((assetJson) => _parseSfxAsset(assetJson)).toList();
     } catch (e) {
-      throw Exception('Failed to batch create SFX assets: $e');
+      throw Exception('Failed to batch create SFX assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -532,7 +527,7 @@ class MockSfxAssetService implements SfxAssetService {
     final duration = (generatorInfo['duration_seconds'] ?? 2.0).toString();
     final influence = ((generatorInfo['prompt_influence'] ?? 0.5) as num).toDouble();
     final influencePct = (influence * 100).round();
-    return 'A clean, production-ready $name, ${duration}s, minimal background noise, ${influencePct}% adherence to description, crisp transients, natural decay, game-ready.';
+    return 'A clean, production-ready $name, $duration s, minimal background noise, $influencePct% adherence to description, crisp transients, natural decay, game-ready.';
   }
 
   void _generateMockAssets(String projectId) {
