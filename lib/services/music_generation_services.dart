@@ -1,8 +1,10 @@
 import 'dart:async';
-import 'package:dio/dio.dart';
 import '../models/music_generation_models.dart';
 import '../models/sfx_generation_models.dart'; // For GenerationStatus
 import '../providers/settings_provider.dart';
+import '../providers/auth_provider.dart';
+import '../utils/error_handler.dart';
+import 'api_client.dart';
 
 // Service interfaces
 abstract class MusicAssetService {
@@ -23,9 +25,13 @@ class MusicAssetServiceFactory {
     String? apiBaseUrl,
     bool useApiService = false,
     SettingsProvider? settingsProvider,
+    AuthProvider? authProvider,
   }) {
     if (useApiService && settingsProvider != null) {
-      return ApiMusicAssetService(settingsProvider: settingsProvider);
+      return ApiMusicAssetService(
+        settingsProvider: settingsProvider,
+        authProvider: authProvider,
+      );
     } else if (useApiService && apiBaseUrl != null) {
       // Fallback for backward compatibility
       return ApiMusicAssetService(baseUrl: apiBaseUrl);
@@ -36,38 +42,27 @@ class MusicAssetServiceFactory {
 
 // API implementation using FastAPI backend
 class ApiMusicAssetService implements MusicAssetService {
-  final Dio _dio;
-  final String? _staticBaseUrl;
-  final SettingsProvider? _settingsProvider;
+  late final ApiClient _apiClient;
   
   ApiMusicAssetService({
     String? baseUrl,
     SettingsProvider? settingsProvider,
-    Dio? dio,
-  }) : _staticBaseUrl = baseUrl != null && baseUrl.endsWith('/') 
-           ? baseUrl.substring(0, baseUrl.length - 1) 
-           : baseUrl,
-       _settingsProvider = settingsProvider,
-       _dio = dio ?? Dio() {
-    _dio.options.connectTimeout = const Duration(seconds: 30);
-    _dio.options.receiveTimeout = const Duration(seconds: 60);
-    _dio.options.headers['Content-Type'] = 'application/json';
+    AuthProvider? authProvider,
+  }) {
+    _apiClient = ApiClient(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
   }
   
-  /// Get the current base URL, reading from SettingsProvider if available
-  String get _baseUrl {
-    if (_settingsProvider != null) {
-      final url = _settingsProvider.apiBaseUrl;
-      return url.endsWith('/') ? url.substring(0, url.length - 1) : url;
-    }
-    return _staticBaseUrl ?? 'http://localhost:8000';
-  }
+  /// Get the current base URL from ApiClient
+  String get _baseUrl => _apiClient.baseUrl;
 
   @override
   Future<List<MusicAsset>> getProjectMusicAssets(String projectId) async {
     try {
-      final response = await _dio.get(
-        '$_baseUrl/api/v1/$projectId/music-assets',
+      final response = await _apiClient.get(
+        '/$projectId/music-assets',
         queryParameters: {
           'limit': 200, // Get all assets
         },
@@ -78,7 +73,7 @@ class ApiMusicAssetService implements MusicAssetService {
       
       return assetsData.map((assetJson) => _parseMusicAsset(assetJson)).toList();
     } catch (e) {
-      throw Exception('Failed to get project music assets: $e');
+      throw Exception('Failed to get project music assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -101,8 +96,8 @@ class ApiMusicAssetService implements MusicAssetService {
       if (tags != null && tags.isNotEmpty) queryParams['tags'] = tags.join(',');
       if (hasGenerations != null) queryParams['has_generations'] = hasGenerations;
 
-      final response = await _dio.get(
-        '$_baseUrl/api/v1/$projectId/music-assets',
+      final response = await _apiClient.get(
+        '/$projectId/music-assets',
         queryParameters: queryParams,
       );
       
@@ -117,17 +112,17 @@ class ApiMusicAssetService implements MusicAssetService {
         'offset': data['offset'],
       };
     } catch (e) {
-      throw Exception('Failed to get filtered project music assets: $e');
+      throw Exception('Failed to get filtered project music assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<MusicAsset> getMusicAsset(String assetId) async {
     try {
-      final response = await _dio.get('$_baseUrl/api/v1/music-assets/$assetId');
+      final response = await _apiClient.get('/music-assets/$assetId');
       return _parseMusicAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to get music asset: $e');
+      throw Exception('Failed to get music asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -143,8 +138,8 @@ class ApiMusicAssetService implements MusicAssetService {
         'offset': offset,
       };
 
-      final response = await _dio.get(
-        '$_baseUrl/api/v1/music-assets/$assetId/generations',
+      final response = await _apiClient.get(
+        '/music-assets/$assetId/generations',
         queryParameters: queryParams,
       );
       
@@ -158,15 +153,15 @@ class ApiMusicAssetService implements MusicAssetService {
         'offset': data['offset'],
       };
     } catch (e) {
-      throw Exception('Failed to get music asset generations: $e');
+      throw Exception('Failed to get music asset generations: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<MusicAsset> createMusicAsset(String projectId, String name, String description) async {
     try {
-      final response = await _dio.post(
-        '$_baseUrl/api/v1/$projectId/music-assets',
+      final response = await _apiClient.post(
+        '/$projectId/music-assets',
         data: {
           'name': name,
           'description': description,
@@ -177,15 +172,15 @@ class ApiMusicAssetService implements MusicAssetService {
       
       return _parseMusicAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to create music asset: $e');
+      throw Exception('Failed to create music asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<MusicAsset> updateMusicAsset(MusicAsset asset) async {
     try {
-      final response = await _dio.put(
-        '$_baseUrl/api/v1/music-assets/${asset.id}',
+      final response = await _apiClient.put(
+        '/music-assets/${asset.id}',
         data: {
           'name': asset.name,
           'description': asset.description,
@@ -196,57 +191,57 @@ class ApiMusicAssetService implements MusicAssetService {
       
       return _parseMusicAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to update music asset: $e');
+      throw Exception('Failed to update music asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<void> deleteMusicAsset(String assetId) async {
     try {
-      await _dio.delete('$_baseUrl/api/v1/music-assets/$assetId');
+      await _apiClient.delete('/music-assets/$assetId');
     } catch (e) {
-      throw Exception('Failed to delete music asset: $e');
+      throw Exception('Failed to delete music asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<MusicGeneration> addMusicGeneration(String assetId, MusicGenerationRequest request, {GenerationStatus status = GenerationStatus.pending}) async {
     try {
-      final response = await _dio.post(
-        '$_baseUrl/api/v1/music-assets/$assetId/generations',
+      final response = await _apiClient.post(
+        '/music-assets/$assetId/generations',
         data: request.toJson(),
       );
       
       return _parseMusicGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to create music generation: $e');
+      throw Exception('Failed to create music generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<MusicGeneration> getMusicGeneration(String generationId) async {
     try {
-      final response = await _dio.get('$_baseUrl/api/v1/music-generations/$generationId');
+      final response = await _apiClient.get('/music-generations/$generationId');
       return _parseMusicGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to get music generation: $e');
+      throw Exception('Failed to get music generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<void> setFavoriteMusicGeneration(String assetId, String generationId) async {
     try {
-      await _dio.put('$_baseUrl/api/v1/music-assets/$assetId/favorite/$generationId');
+      await _apiClient.put('/music-assets/$assetId/favorite/$generationId');
     } catch (e) {
-      throw Exception('Failed to set favorite music generation: $e');
+      throw Exception('Failed to set favorite music generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
   Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo) async {
     try {
-      final response = await _dio.post(
-        '$_baseUrl/api/v1/$projectId/music-assets/generate-prompt',
+      final response = await _apiClient.post(
+        '/$projectId/music-assets/generate-prompt',
         data: {
           'asset_info': assetInfo,
           'generator_info': generatorInfo,
@@ -259,14 +254,14 @@ class ApiMusicAssetService implements MusicAssetService {
       }
       return prompt;
     } catch (e) {
-      throw Exception('Failed to generate music prompt: $e');
+      throw Exception('Failed to generate music prompt: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   /// Test API connection
   Future<bool> testConnection() async {
     try {
-      final response = await _dio.get('$_baseUrl/health');
+      final response = await _apiClient.dio.get('$_baseUrl/health');
       return response.statusCode == 200;
     } catch (e) {
       return false;

@@ -6,6 +6,7 @@ import '../../../models/image_generation_models.dart';
 import '../../../responsive.dart';
 import '../../../controllers/menu_app_controller.dart';
 import 'image_detail_dialog.dart';
+import 'dart:async';
 import 'dart:io';
 
 class AssetDetailScreen extends StatefulWidget {
@@ -20,12 +21,34 @@ class AssetDetailScreen extends StatefulWidget {
 class _AssetDetailScreenState extends State<AssetDetailScreen> {
   late ImageAsset _asset;
   bool _isLoading = false;
+  Timer? _generationPollTimer;
 
   @override
   void initState() {
     super.initState();
     _asset = widget.asset;
     _refreshAsset(); // Fetch fresh data on init
+    _startGenerationPolling();
+  }
+
+  bool _hasInFlightGenerations() {
+    return _asset.generations.any((g) =>
+        g.status == GenerationStatus.pending ||
+        g.status == GenerationStatus.generating);
+  }
+
+  void _startGenerationPolling() {
+    _generationPollTimer?.cancel();
+    _generationPollTimer =
+        Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!mounted) return;
+      if (!_hasInFlightGenerations()) return;
+      try {
+        await _refreshAsset();
+      } catch (_) {
+        // Ignore polling errors; user can manually refresh.
+      }
+    });
   }
 
   Future<void> _refreshAsset() async {
@@ -59,6 +82,12 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
         });
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _generationPollTimer?.cancel();
+    super.dispose();
   }
 
   @override

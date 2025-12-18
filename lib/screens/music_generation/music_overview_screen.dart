@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/music_generation_provider.dart';
+import '../../providers/subscription_provider.dart';
 import '../../models/music_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../services/file_download_service.dart';
+import '../../widgets/quota_status_widget.dart';
 import 'widgets/music_asset_detail_screen.dart';
 import 'dart:io';
 
@@ -88,6 +90,8 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              const SizedBox(width: 16),
+              QuotaStatusWidget.compact('music_generation'),
               const Spacer(),
               _buildActionButtons(context, provider),
             ],

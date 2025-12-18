@@ -6,6 +6,8 @@ import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../services/comfyui_service.dart';
+import '../../utils/error_handler.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 
@@ -19,7 +21,7 @@ import '../game_design_assistant/services/chat_api_service.dart';
 import '../game_design_assistant/models/api_models.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
-import '../../utils/app_constants.dart' as app_utils;
+import '../../utils/app_constants.dart';
 
 class ImageGenerationScreen extends StatefulWidget {
   final String projectId;
@@ -97,6 +99,8 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   // Providers
   late ImageGenerationProvider imageGenerationProvider;
 
+  Timer? _generationPollTimer;
+
   /// Refresh generations for the currently selected asset
   Future<void> _refreshSelectedAssetGenerations() async {
     if (_selectedAsset == null) return;
@@ -130,7 +134,11 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
 
     // Initialize chat service
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    _chatApiService = ChatApiService(settingsProvider: settingsProvider);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    _chatApiService = ChatApiService(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
     _chatController.setScrollController(_chatScrollController);
 
     // Check if AI service is already running when screen loads
@@ -138,6 +146,47 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       imageGenerationProvider =
           Provider.of<ImageGenerationProvider>(context, listen: false);
       _initializeProviders(imageGenerationProvider);
+      _startGenerationPolling();
+    });
+  }
+
+  bool _hasInFlightGenerations(ImageGenerationProvider provider) {
+    List<ImageGeneration> generationsToCheck;
+    if (_selectedAsset != null) {
+      // Prefer the loaded list for the selected asset, fallback to cached asset
+      generationsToCheck = _selectedAssetGenerations.isNotEmpty
+          ? _selectedAssetGenerations
+          : (provider.getAssetFromCache(_selectedAsset!.id)?.generations ?? []);
+    } else {
+      generationsToCheck = provider.allGenerations;
+    }
+
+    return generationsToCheck.any((g) =>
+        g.status == GenerationStatus.pending ||
+        g.status == GenerationStatus.generating);
+  }
+
+  void _startGenerationPolling() {
+    _generationPollTimer?.cancel();
+    _generationPollTimer =
+        Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!mounted) return;
+
+      final provider =
+          Provider.of<ImageGenerationProvider>(context, listen: false);
+
+      // Only poll when there's something in-flight to update.
+      if (!_hasInFlightGenerations(provider)) return;
+
+      try {
+        if (_selectedAsset != null) {
+          await _refreshSelectedAssetGenerations();
+        } else {
+          await provider.refreshAssets();
+        }
+      } catch (_) {
+        // Ignore polling errors; UI will update on next successful poll/user action.
+      }
     });
   }
 
@@ -254,9 +303,14 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
             ),
           ),
           const Spacer(),
-          _buildAIServiceStatusIndicator(provider),
-          const SizedBox(width: 16),
-          _buildAIServiceControls(provider),
+          // Only show status and controls for local mode
+          if (Provider.of<SettingsProvider>(context, listen: false).a1111Mode == A1111Mode.local) ...[
+            _buildAIServiceStatusIndicator(provider),
+            const SizedBox(width: 16),
+            _buildAIServiceControls(provider),
+          ] else
+            // Show online mode indicator
+            _buildAIServiceControls(provider),
         ],
       ),
     );
@@ -307,10 +361,11 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
               '${provider.currentBackendName}: $statusText',
               style: TextStyle(color: statusColor, fontWeight: FontWeight.w500),
             ),
-            // Show current checkpoint for A1111 when running
+            // Show current checkpoint for A1111 when running (local mode only)
             if (status == AIServiceStatus.running && 
                 provider.currentBackendName == 'Automatic1111' && 
-                provider.currentA1111Checkpoint != null)
+                provider.currentA1111Checkpoint != null &&
+                Provider.of<SettingsProvider>(context, listen: false).a1111Mode == A1111Mode.local)
               Text(
                 'Checkpoint: ${_getCheckpointDisplayName(provider.currentA1111Checkpoint!)}',
                 style: TextStyle(
@@ -336,6 +391,37 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildAIServiceControls(ImageGenerationProvider provider) {
+    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final isA1111Online = provider.currentBackendName == 'Automatic1111' && 
+                          settingsProvider.a1111Mode == A1111Mode.online;
+    
+    // Online A1111 mode doesn't need local service controls
+    if (isA1111Online) {
+      return Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.blue, width: 1),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.cloud, color: Colors.blue, size: 16),
+                const SizedBox(width: 6),
+                Text(
+                  'Using Online API',
+                  style: TextStyle(color: Colors.blue, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    
+    // Local mode service controls
     return Row(
       children: [
         if (!provider.isServiceRunning)
@@ -1348,7 +1434,12 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildGenerateButton(ImageGenerationProvider provider) {
-    final canGenerate = provider.isServiceRunning &&
+    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final isOnlineMode = provider.currentBackendName == 'Automatic1111' && 
+                         settingsProvider.a1111Mode == A1111Mode.online;
+    
+    // In online mode, we don't need the service to be running locally
+    final canGenerate = (isOnlineMode || provider.isServiceRunning) &&
         !provider.isGenerating &&
         !_isBatchGenerating &&
         _positivePromptController.text.trim().isNotEmpty;
@@ -1817,6 +1908,27 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           }
         }
         
+        // In A1111 online mode, we must send the backend model "name" (checkpoint.modelName),
+        // while still allowing the dropdown to display checkpoint.title (often display_name).
+        final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+        final isA1111Online =
+            provider.currentBackendName == 'Automatic1111' &&
+            settingsProvider.a1111Mode == A1111Mode.online;
+
+        String modelForRequest = _selectedModel;
+        if (isA1111Online) {
+          A1111Checkpoint? selectedCheckpoint;
+          for (final c in provider.a1111Checkpoints) {
+            if (c.title == _selectedModel) {
+              selectedCheckpoint = c;
+              break;
+            }
+          }
+          if (selectedCheckpoint != null && selectedCheckpoint.modelName.isNotEmpty) {
+            modelForRequest = selectedCheckpoint.modelName;
+          }
+        }
+
         final request = GenerationRequest(
           positivePrompt: _positivePromptController.text.trim(),
           negativePrompt: _negativePromptController.text.trim(),
@@ -1827,7 +1939,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           steps: int.tryParse(_stepsController.text) ?? 20,
           cfgScale: double.tryParse(_cfgController.text) ?? 7.5,
           seed: currentSeed,
-          model: _selectedModel,
+          model: modelForRequest,
         );
 
         // Generate one image at a time and wait for completion
@@ -1876,7 +1988,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           _currentBatchIndex = 0;
         });
       }
-      _showErrorDialog('Failed to generate image(s): ${e.toString()}');
+      _showErrorDialog('Failed to generate image(s): ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -1890,7 +2002,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           'Error',
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
-        content: Text(
+        content: SelectableText(
           message,
           style: TextStyle(
             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
@@ -2734,7 +2846,7 @@ ${const JsonEncoder.withIndent('  ').convert(contextData)}''';
     int? projectId = int.tryParse(widget.projectId);
     String? userId;
     final authUserId = authProvider.userId;
-    if (authUserId.isNotEmpty && authUserId != app_utils.AppConstants.visitorUserId) {
+    if (authUserId.isNotEmpty) {
       userId = authUserId;
     }
     
@@ -2783,14 +2895,14 @@ ${const JsonEncoder.withIndent('  ').convert(contextData)}''';
         print('  - Response data: ${e.response?.data}');
       }
       
-      final errorMessage = 'Sorry, I encountered an error: ${e.toString()}';
+      final errorMessage = 'Sorry, I encountered an error: ${ErrorHandler.getErrorMessage(e)}';
       final updatedMessage = aiMessage.copyWith(text: errorMessage);
       _chatController.updateMessage(updatedMessage);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error sending message: ${e.toString()}'),
+            content: Text('Error sending message: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -2808,6 +2920,7 @@ ${const JsonEncoder.withIndent('  ').convert(contextData)}''';
 
   @override
   void dispose() {
+    _generationPollTimer?.cancel();
     _positivePromptController.dispose();
     _negativePromptController.dispose();
     _seedController.dispose();

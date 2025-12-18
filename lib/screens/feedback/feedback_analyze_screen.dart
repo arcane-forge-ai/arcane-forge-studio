@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../controllers/menu_app_controller.dart';
+import '../../utils/error_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import '../../services/mutation_design_service.dart';
@@ -80,6 +81,7 @@ class _FeedbackAnalyzeScreenState extends State<FeedbackAnalyzeScreen> {
     );
     _mutationService = MutationApiService(
       settingsProvider: settingsProvider,
+      authProvider: authProvider,
     );
   }
 
@@ -1084,7 +1086,7 @@ $mutationPrompt""";
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error preparing mutation design: ${e.toString()}'),
+            content: Text('Error preparing mutation design: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -1222,7 +1224,7 @@ $mutationPrompt""";
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error creating mutation: ${e.toString()}'),
+            content: Text('Error creating mutation: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1283,7 +1285,7 @@ $mutationPrompt""";
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error updating mutation: ${e.toString()}'),
+            content: Text('Error updating mutation: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1340,7 +1342,7 @@ $mutationPrompt""";
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error deleting mutation: ${e.toString()}'),
+            content: Text('Error deleting mutation: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
           ),
         );

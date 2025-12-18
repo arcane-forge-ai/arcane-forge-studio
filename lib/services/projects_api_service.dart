@@ -5,47 +5,39 @@ import 'package:universal_io/io.dart';
 import '../screens/game_design_assistant/models/project_model.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
-import '../utils/app_constants.dart';
 import '../models/project_overview_models.dart';
+import 'api_client.dart';
 
 class ProjectsApiService {
-  // Get default configuration from environment variables or constants
+  // Get default configuration from environment variables or use mock ID
   static String get defaultUserId =>
-      dotenv.env['DEFAULT_USER_ID'] ?? AppConstants.visitorUserId;
+      dotenv.env['DEFAULT_USER_ID'] ?? '00000000-0000-0000-0000-000000000000';
 
   final SettingsProvider? _settingsProvider;
-  final AuthProvider? _authProvider;
-  final Dio _dio;
+  late final ApiClient _apiClient;
 
   ProjectsApiService(
       {SettingsProvider? settingsProvider, AuthProvider? authProvider})
-      : _settingsProvider = settingsProvider,
-        _authProvider = authProvider,
-        _dio = Dio();
+      : _settingsProvider = settingsProvider {
+    _apiClient = ApiClient(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
+  }
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? true;
   
   /// Get API base URL from settings provider, with fallback to environment or default
-  String get baseUrl => 
-      _settingsProvider?.apiBaseUrl ?? 
-      dotenv.env['API_BASE_URL'] ?? 
-      ApiConfig.defaultBaseUrl;
+  String get baseUrl => _apiClient.baseUrl;
 
   Future<List<Project>> getProjects({String? userId}) async {
     if (_useMockMode) {
       return _mockGetProjects();
     }
 
-    final userIdToUse = userId ?? _authProvider?.userId ?? defaultUserId;
-    final url = '$baseUrl/api/v1/projects';
-    final queryParams = {'user_id': userIdToUse};
-
     try {
-      final response = await _dio.get(
-        url,
-        queryParameters: queryParams,
-      );
+      final response = await _apiClient.get('/projects');
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = response.data;
@@ -55,10 +47,6 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Projects API Error: $e');
-      print('Request URL: $url');
-      print('Query Parameters: $queryParams');
-      print('Headers: ${_dio.options.headers}');
-      // Re-throw the exception to let the UI handle it properly
       rethrow;
     }
   }
@@ -72,18 +60,14 @@ class ProjectsApiService {
       return _mockCreateProject(name: name, description: description);
     }
 
-    final userIdToUse = userId ?? _authProvider?.userId ?? defaultUserId;
-    final url = '$baseUrl/api/v1/projects';
-    final queryParams = {'user_id': userIdToUse};
     final requestBody = {
       'name': name,
       'description': description,
     };
 
     try {
-      final response = await _dio.post(
-        url,
-        queryParameters: queryParams,
+      final response = await _apiClient.post(
+        '/projects',
         data: requestBody,
       );
 
@@ -94,11 +78,6 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Project Creation API Error: $e');
-      print('Request URL: $url');
-      print('Query Parameters: $queryParams');
-      print('Request Body: $requestBody');
-      print('Headers: ${_dio.options.headers}');
-      // Re-throw the exception to let the UI handle it properly
       rethrow;
     }
   }
@@ -108,10 +87,8 @@ class ProjectsApiService {
       return _mockGetProjectById(projectId);
     }
 
-    final url = '$baseUrl/api/v1/projects/$projectId';
-
     try {
-      final response = await _dio.get(url);
+      final response = await _apiClient.get('/projects/$projectId');
 
       if (response.statusCode == 200) {
         return Project.fromApiJson(response.data);
@@ -120,9 +97,6 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Project Get API Error: $e');
-      print('Request URL: $url');
-      print('Headers: ${_dio.options.headers}');
-      // Re-throw the exception to let the UI handle it properly
       rethrow;
     }
   }
@@ -132,10 +106,8 @@ class ProjectsApiService {
       return _mockGetProjectOverview(projectId);
     }
 
-    final url = '$baseUrl/api/v1/projects/$projectId/overview';
-
     try {
-      final response = await _dio.get(url);
+      final response = await _apiClient.get('/projects/$projectId/overview');
 
       if (response.statusCode == 200) {
         return ProjectOverviewResponse.fromJson(response.data);
@@ -144,8 +116,6 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Project Overview API Error: $e');
-      print('Request URL: $url');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -170,8 +140,6 @@ class ProjectsApiService {
       );
     }
 
-    final url = '$baseUrl/api/v1/projects/$projectId';
-
     final Map<String, dynamic> body = {};
     if (name != null) body['name'] = name;
     if (description != null) body['description'] = description;
@@ -180,7 +148,7 @@ class ProjectsApiService {
     if (codeMapUrl != null) body['code_map_url'] = codeMapUrl;
 
     try {
-      final response = await _dio.put(url, data: body);
+      final response = await _apiClient.put('/projects/$projectId', data: body);
       if (response.statusCode == 200) {
         return Project.fromApiJson(response.data);
       } else {
@@ -188,9 +156,6 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Project Update API Error: $e');
-      print('Request URL: $url');
-      print('Request Body: $body');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -204,7 +169,7 @@ class ProjectsApiService {
         description:
             'A magical world filled with quests, dragons, and epic battles. Build your character and explore vast kingdoms.',
         createdAt: DateTime.now().subtract(const Duration(days: 7)),
-        userId: AppConstants.visitorUserId,
+        userId: defaultUserId,
         hasKnowledgeBase: true,
       ),
       Project(
@@ -213,7 +178,7 @@ class ProjectsApiService {
         description:
             'Fast-paced action in the depths of space. Command your ship through asteroid fields and alien encounters.',
         createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        userId: AppConstants.visitorUserId,
+        userId: defaultUserId,
         hasKnowledgeBase: false,
       ),
       Project(
@@ -222,7 +187,7 @@ class ProjectsApiService {
         description:
             'Mind-bending puzzles combined with precise platforming. Each level challenges both your reflexes and intellect.',
         createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        userId: AppConstants.visitorUserId,
+        userId: defaultUserId,
         hasKnowledgeBase: true,
       ),
       Project(
@@ -231,7 +196,7 @@ class ProjectsApiService {
         description:
             'Build and manage your civilization from ancient times to the modern era. Research technologies and conquer lands.',
         createdAt: DateTime.now().subtract(const Duration(hours: 12)),
-        userId: AppConstants.visitorUserId,
+        userId: defaultUserId,
         hasKnowledgeBase: false,
       ),
     ];
@@ -245,7 +210,7 @@ class ProjectsApiService {
       name: name,
       description: description,
       createdAt: DateTime.now(),
-      userId: AppConstants.visitorUserId,
+      userId: defaultUserId,
       hasKnowledgeBase: false,
     );
   }
@@ -271,7 +236,6 @@ class ProjectsApiService {
       );
     }
 
-    final url = '$baseUrl/api/v1/projects/$projectId';
     final requestBody = <String, dynamic>{};
 
     if (name != null) requestBody['name'] = name;
@@ -285,8 +249,8 @@ class ProjectsApiService {
     if (codeMapUrl != null) requestBody['code_map_url'] = codeMapUrl;
 
     try {
-      final response = await _dio.put(
-        url,
+      final response = await _apiClient.put(
+        '/projects/$projectId',
         data: requestBody,
       );
 
@@ -297,9 +261,6 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Project Update API Error: $e');
-      print('Request URL: $url');
-      print('Request Body: $requestBody');
-      print('Headers: ${_dio.options.headers}');
       rethrow;
     }
   }
@@ -315,7 +276,7 @@ class ProjectsApiService {
         name: 'Sample Project',
         description: 'This is a sample project created in mock mode.',
         createdAt: DateTime.now(),
-        userId: AppConstants.visitorUserId,
+        userId: defaultUserId,
         hasKnowledgeBase: false,
       );
     }
@@ -337,7 +298,7 @@ class ProjectsApiService {
       description: description ?? 'Updated description in mock mode.',
       createdAt: DateTime.now().subtract(const Duration(days: 1)),
       updatedAt: DateTime.now(),
-      userId: AppConstants.visitorUserId,
+      userId: defaultUserId,
       hasKnowledgeBase: false,
       gameReleaseUrl: gameReleaseUrl,
       gameFeedbackUrl: gameFeedbackUrl,
@@ -363,28 +324,26 @@ class ProjectsApiService {
       };
     }
 
-    final url = '$baseUrl/api/v1/projects/$projectId/code_map/upload';
-
     try {
-      MultipartFile multipartFile;
+      Response response;
+      
       if (bytes != null && fileName != null) {
-        multipartFile = MultipartFile.fromBytes(bytes, filename: fileName);
+        response = await _apiClient.uploadFileFromBytes(
+          '/projects/$projectId/code_map/upload',
+          fileFieldName: 'file',
+          bytes: bytes,
+          fileName: fileName,
+        );
       } else if (file != null) {
-        multipartFile = await MultipartFile.fromFile(
-          file.path,
-          filename: file.path.split('/').last,
+        response = await _apiClient.uploadFile(
+          '/projects/$projectId/code_map/upload',
+          fileFieldName: 'file',
+          filePath: file.path,
+          fileName: file.path.split('/').last,
         );
       } else {
         throw ArgumentError('Either file bytes or file reference must be provided.');
       }
-
-      // Create form data with the file
-      final formData = FormData.fromMap({'file': multipartFile});
-
-      final response = await _dio.post(
-        url,
-        data: formData,
-      );
 
       if (response.statusCode == 200) {
         return response.data as Map<String, dynamic>;
@@ -393,8 +352,6 @@ class ProjectsApiService {
       }
     } catch (e) {
       print('Code Map Upload API Error: $e');
-      print('Request URL: $url');
-      print('File: ${file?.path ?? "bytes upload"}');
       rethrow;
     }
   }

@@ -16,8 +16,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    if (auth.isAuthenticated || auth.isVisitor) {
-      // When authenticated or in visitor mode, don't display login screen
+    if (auth.isAuthenticated) {
+      // When authenticated, don't display login screen
       return const SizedBox.shrink();
     }
 
@@ -102,17 +102,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   //     );
                   //   },
                   // ),
-                  
-                  // const SizedBox(height: 24),
-                  
-                  // Visitor Mode Button (keeping your existing functionality)
-                  TextButton(
-                    onPressed: auth.continueAsVisitor,
-                    style: TextButton.styleFrom(
-                      foregroundColor: primaryColor,
-                    ),
-                    child: const Text('Continue as Visitor'),
-                  ),
                 ],
               ),
             ),

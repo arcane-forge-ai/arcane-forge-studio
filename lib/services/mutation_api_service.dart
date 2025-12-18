@@ -1,33 +1,27 @@
-import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../models/feedback_analysis_models.dart';
 import '../providers/settings_provider.dart';
-import '../utils/app_constants.dart';
+import '../providers/auth_provider.dart';
+import 'api_client.dart';
 
 class MutationApiService {
   final SettingsProvider? _settingsProvider;
-  final Dio _dio;
+  late final ApiClient _apiClient;
 
-  MutationApiService({SettingsProvider? settingsProvider})
-      : _settingsProvider = settingsProvider,
-        _dio = Dio() {
-    // Add interceptor for request/response logging
-    _dio.interceptors.add(LogInterceptor(
-      requestBody: true,
-      responseBody: true,
-      requestHeader: false,
-      responseHeader: false,
-    ));
+  MutationApiService({
+    SettingsProvider? settingsProvider,
+    AuthProvider? authProvider,
+  }) : _settingsProvider = settingsProvider {
+    _apiClient = ApiClient(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
   }
   
   /// Get API base URL from settings provider with fallback to environment or default
-  String get baseUrl =>
-      _settingsProvider?.apiBaseUrl ??
-      dotenv.env['API_BASE_URL'] ??
-      ApiConfig.defaultBaseUrl;
+  String get baseUrl => _apiClient.baseUrl;
   
   /// Get full API URL with version
-  String get _apiUrl => '$baseUrl/api/v1';
+  String get _apiUrl => _apiClient.apiUrl;
 
   /// Create a new mutation brief
   Future<MutationBrief> createMutation({
@@ -41,8 +35,6 @@ class MutationApiService {
     String? novelty,
     Map<String, dynamic>? metadata,
   }) async {
-    final url = '$_apiUrl/projects/$projectId/mutations';
-    
     final data = {
       'run_id': runId,
       'title': title,
@@ -55,7 +47,10 @@ class MutationApiService {
     };
 
     try {
-      final response = await _dio.post(url, data: data);
+      final response = await _apiClient.post(
+        '/projects/$projectId/mutations',
+        data: data,
+      );
       
       if (response.statusCode == 200) {
         return MutationBrief.fromJson(response.data);
@@ -73,10 +68,10 @@ class MutationApiService {
     required int projectId,
     required int mutationId,
   }) async {
-    final url = '$_apiUrl/projects/$projectId/mutations/$mutationId';
-
     try {
-      final response = await _dio.get(url);
+      final response = await _apiClient.get(
+        '/projects/$projectId/mutations/$mutationId',
+      );
       
       if (response.statusCode == 200) {
         return MutationBrief.fromJson(response.data);
@@ -101,8 +96,6 @@ class MutationApiService {
     String? novelty,
     Map<String, dynamic>? metadata,
   }) async {
-    final url = '$_apiUrl/projects/$projectId/mutations/$mutationId';
-    
     final data = <String, dynamic>{};
     if (title != null) data['title'] = title;
     if (rationale != null) data['rationale'] = rationale;
@@ -113,7 +106,10 @@ class MutationApiService {
     if (metadata != null) data['metadata'] = metadata;
 
     try {
-      final response = await _dio.put(url, data: data);
+      final response = await _apiClient.put(
+        '/projects/$projectId/mutations/$mutationId',
+        data: data,
+      );
       
       if (response.statusCode == 200) {
         return MutationBrief.fromJson(response.data);
@@ -131,10 +127,10 @@ class MutationApiService {
     required int projectId,
     required int mutationId,
   }) async {
-    final url = '$_apiUrl/projects/$projectId/mutations/$mutationId';
-
     try {
-      final response = await _dio.delete(url);
+      final response = await _apiClient.delete(
+        '/projects/$projectId/mutations/$mutationId',
+      );
       
       if (response.statusCode != 200) {
         throw Exception('Failed to delete mutation: ${response.statusCode}');

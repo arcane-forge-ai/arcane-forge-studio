@@ -1,32 +1,30 @@
-import 'package:dio/dio.dart';
 import '../models/feedback_analysis_models.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
-import '../utils/app_constants.dart';
+import 'api_client.dart';
 
 class FeedbackAnalysisService {
   final SettingsProvider? _settingsProvider;
-  final Dio _dio;
+  late final ApiClient _apiClient;
 
   FeedbackAnalysisService({
     SettingsProvider? settingsProvider,
     AuthProvider? authProvider,
-  })  : _settingsProvider = settingsProvider,
-        _dio = Dio() {
-    _dio.options.headers['Content-Type'] = 'application/json';
-    _dio.options.connectTimeout = const Duration(seconds: 30);
-    _dio.options.receiveTimeout =
-        const Duration(seconds: 120); // Longer timeout for analysis
+  })  : _settingsProvider = settingsProvider {
+    _apiClient = ApiClient(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
   }
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? true;
   
   /// Get API base URL from settings provider with fallback to default
-  String get baseUrl => _settingsProvider?.apiBaseUrl ?? ApiConfig.defaultBaseUrl;
+  String get baseUrl => _apiClient.baseUrl;
   
   /// Get full API URL with version
-  String get _apiUrl => '$baseUrl/api/v1';
+  String get _apiUrl => _apiClient.apiUrl;
 
   /// Create a new feedback analysis
   Future<FeedbackAnalysisResult> createFeedbackAnalysis({
@@ -39,14 +37,16 @@ class FeedbackAnalysisService {
           projectId, gameIntroduction, feedbacks);
     }
 
-    final url = '$_apiUrl/projects/$projectId/feedback/analysis';
     final requestBody = {
       'game_introduction': gameIntroduction,
       'feedbacks': feedbacks,
     };
 
     try {
-      final response = await _dio.post(url, data: requestBody);
+      final response = await _apiClient.post(
+        '/projects/$projectId/feedback/analysis',
+        data: requestBody,
+      );
 
       if (response.statusCode == 200) {
         return FeedbackAnalysisResult.fromJson(response.data);
@@ -56,8 +56,6 @@ class FeedbackAnalysisService {
       }
     } catch (e) {
       print('Feedback Analysis API Error: $e');
-      print('Request URL: $url');
-      print('Request Body: $requestBody');
       rethrow;
     }
   }
@@ -73,7 +71,6 @@ class FeedbackAnalysisService {
       return _mockGetClusters(projectId, runId);
     }
 
-    final url = '$_apiUrl/projects/$projectId/feedback/clusters';
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -81,7 +78,10 @@ class FeedbackAnalysisService {
     if (runId != null) queryParams['run_id'] = runId;
 
     try {
-      final response = await _dio.get(url, queryParameters: queryParams);
+      final response = await _apiClient.get(
+        '/projects/$projectId/feedback/clusters',
+        queryParameters: queryParams,
+      );
 
       if (response.statusCode == 200) {
         return ClusterListResponse.fromJson(response.data);
@@ -105,7 +105,6 @@ class FeedbackAnalysisService {
       return _mockGetOpportunities(projectId, runId);
     }
 
-    final url = '$_apiUrl/projects/$projectId/feedback/opportunities';
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -113,7 +112,10 @@ class FeedbackAnalysisService {
     if (runId != null) queryParams['run_id'] = runId;
 
     try {
-      final response = await _dio.get(url, queryParameters: queryParams);
+      final response = await _apiClient.get(
+        '/projects/$projectId/feedback/opportunities',
+        queryParameters: queryParams,
+      );
 
       if (response.statusCode == 200) {
         return OpportunityListResponse.fromJson(response.data);
@@ -137,7 +139,6 @@ class FeedbackAnalysisService {
       return _mockGetMutationBriefs(projectId, runId);
     }
 
-    final url = '$_apiUrl/projects/$projectId/feedback/mutation-briefs';
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -145,7 +146,10 @@ class FeedbackAnalysisService {
     if (runId != null) queryParams['run_id'] = runId;
 
     try {
-      final response = await _dio.get(url, queryParameters: queryParams);
+      final response = await _apiClient.get(
+        '/projects/$projectId/feedback/mutation-briefs',
+        queryParameters: queryParams,
+      );
 
       if (response.statusCode == 200) {
         return MutationBriefListResponse.fromJson(response.data);
@@ -163,7 +167,8 @@ class FeedbackAnalysisService {
   Future<List<Map<String, dynamic>>> fetchFeedbacksFromUrl(
       String feedbackUrl) async {
     try {
-      final response = await _dio.get(feedbackUrl);
+      // Use raw Dio for external URLs not on our API
+      final response = await _apiClient.dio.get(feedbackUrl);
 
       if (response.statusCode == 200) {
         final data = response.data;
@@ -195,7 +200,6 @@ class FeedbackAnalysisService {
       return _mockListFeedbackAnalysisRuns(projectId, status, limit, offset);
     }
 
-    final url = '$_apiUrl/projects/$projectId/feedback/analysis';
     final queryParams = <String, dynamic>{
       'limit': limit,
       'offset': offset,
@@ -203,7 +207,10 @@ class FeedbackAnalysisService {
     if (status != null) queryParams['status'] = status;
 
     try {
-      final response = await _dio.get(url, queryParameters: queryParams);
+      final response = await _apiClient.get(
+        '/projects/$projectId/feedback/analysis',
+        queryParameters: queryParams,
+      );
 
       if (response.statusCode == 200) {
         return FeedbackRunListResponse.fromJson(response.data);
@@ -212,8 +219,6 @@ class FeedbackAnalysisService {
       }
     } catch (e) {
       print('List Feedback Analysis Runs API Error: $e');
-      print('Request URL: $url');
-      print('Query Params: $queryParams');
       rethrow;
     }
   }
@@ -227,10 +232,10 @@ class FeedbackAnalysisService {
       return _mockGetFeedbackAnalysis(projectId, runId);
     }
 
-    final url = '$_apiUrl/projects/$projectId/feedback/analysis/$runId';
-
     try {
-      final response = await _dio.get(url);
+      final response = await _apiClient.get(
+        '/projects/$projectId/feedback/analysis/$runId',
+      );
 
       if (response.statusCode == 200) {
         return FeedbackRunDetailResponse.fromJson(response.data);
@@ -239,7 +244,6 @@ class FeedbackAnalysisService {
       }
     } catch (e) {
       print('Get Feedback Analysis API Error: $e');
-      print('Request URL: $url');
       rethrow;
     }
   }

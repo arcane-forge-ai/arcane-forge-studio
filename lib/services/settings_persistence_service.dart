@@ -11,6 +11,7 @@ class SettingsPersistenceService {
   static const String _keyUseApiService = 'useApiService';
   static const String _keyDefaultGenerationServer = 'defaultGenerationServer';
   static const String _keyOutputDirectory = 'outputDirectory';
+  static const String _keyA1111Mode = 'a1111Mode';
 
   // Image Generation Backend specific settings
   static const String _keyStartCommandPrefix = 'startCommand_';
@@ -26,6 +27,7 @@ class SettingsPersistenceService {
     required bool useApiService,
     required ImageGenerationBackend defaultGenerationServer,
     required String outputDirectory,
+    required A1111Mode a1111Mode,
     required Map<ImageGenerationBackend, String> customCommands,
     required Map<ImageGenerationBackend, String> customWorkingDirectories,
     required Map<ImageGenerationBackend, String> customEndpoints,
@@ -45,6 +47,7 @@ class SettingsPersistenceService {
       await prefs.setBool(_keyUseApiService, useApiService);
       await prefs.setString(_keyDefaultGenerationServer, defaultGenerationServer.name);
       await prefs.setString(_keyOutputDirectory, outputDirectory);
+      await prefs.setString(_keyA1111Mode, a1111Mode.name);
 
       // Image Generation Backend specific settings
       for (var backend in ImageGenerationBackend.values) {
@@ -82,6 +85,13 @@ class SettingsPersistenceService {
         orElse: () => ImageGenerationConstants.defaultBackend,
       );
 
+      // A1111 mode
+      final a1111ModeName = prefs.getString(_keyA1111Mode) ?? ImageGenerationConstants.defaultA1111Mode.name;
+      final a1111Mode = A1111Mode.values.firstWhere(
+        (mode) => mode.name == a1111ModeName,
+        orElse: () => ImageGenerationConstants.defaultA1111Mode,
+      );
+
       // Image Generation Backend specific settings
       final customCommands = <ImageGenerationBackend, String>{};
       final customWorkingDirectories = <ImageGenerationBackend, String>{};
@@ -102,6 +112,7 @@ class SettingsPersistenceService {
         useApiService: useApiService,
         defaultGenerationServer: defaultGenerationServer,
         outputDirectory: outputDirectory,
+        a1111Mode: a1111Mode,
         customCommands: customCommands,
         customWorkingDirectories: customWorkingDirectories,
         customEndpoints: customEndpoints,
@@ -117,6 +128,7 @@ class SettingsPersistenceService {
         useApiService: ApiConfig.useApiService,
         defaultGenerationServer: ImageGenerationConstants.defaultBackend,
         outputDirectory: AppConstants.defaultOutputDirectory,
+        a1111Mode: ImageGenerationConstants.defaultA1111Mode,
         customCommands: Map.from(ImageGenerationConstants.defaultCommands),
         customWorkingDirectories: Map.from(ImageGenerationConstants.defaultWorkingDirectories),
         customEndpoints: Map.from(ImageGenerationConstants.defaultEndpoints),
@@ -144,6 +156,7 @@ class SettingsData {
   final bool useApiService;
   final ImageGenerationBackend defaultGenerationServer;
   final String outputDirectory;
+  final A1111Mode a1111Mode;
   final Map<ImageGenerationBackend, String> customCommands;
   final Map<ImageGenerationBackend, String> customWorkingDirectories;
   final Map<ImageGenerationBackend, String> customEndpoints;
@@ -156,6 +169,7 @@ class SettingsData {
     required this.useApiService,
     required this.defaultGenerationServer,
     required this.outputDirectory,
+    required this.a1111Mode,
     required this.customCommands,
     required this.customWorkingDirectories,
     required this.customEndpoints,

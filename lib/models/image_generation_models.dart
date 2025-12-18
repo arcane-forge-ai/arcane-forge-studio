@@ -316,6 +316,147 @@ class GenerationRequest {
 }
 
 
+/// A1111 Model from backend API /api/v1/image-generation/models
+class A1111Model {
+  final String name;
+  final String provider;
+  final String? displayName;
+  final String? description;
+  final Map<String, dynamic>? metadata;
+  final bool isActive;
+
+  A1111Model({
+    required this.name,
+    required this.provider,
+    this.displayName,
+    this.description,
+    this.metadata,
+    required this.isActive,
+  });
+
+  factory A1111Model.fromJson(Map<String, dynamic> json) {
+    return A1111Model(
+      name: json['name'] ?? '',
+      provider: json['provider'] ?? '',
+      displayName: json['display_name'],
+      description: json['description'],
+      metadata: json['metadata'] as Map<String, dynamic>?,
+      isActive: json['is_active'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'provider': provider,
+      'display_name': displayName,
+      'description': description,
+      'metadata': metadata,
+      'is_active': isActive,
+    };
+  }
+}
+
+/// Online image generation request for backend API
+class OnlineImageGenerationRequest {
+  final String prompt;
+  final String model;
+  final String? negativePrompt;
+  final String? size;
+  final String? quality;
+  final String? outputFormat;
+  final String? outputCompression;
+  final int? n;
+  final int? width;
+  final int? height;
+  final int? steps;
+  final double? cfgScale;
+  final String? sampler;
+  final String? scheduler;
+  final int? seed;
+  final List<Map<String, dynamic>>? loras;
+
+  OnlineImageGenerationRequest({
+    required this.prompt,
+    required this.model,
+    this.negativePrompt,
+    this.size,
+    this.quality,
+    this.outputFormat,
+    this.outputCompression,
+    this.n,
+    this.width,
+    this.height,
+    this.steps,
+    this.cfgScale,
+    this.sampler,
+    this.scheduler,
+    this.seed,
+    this.loras,
+  });
+
+  Map<String, dynamic> toJson() {
+    final json = <String, dynamic>{
+      'prompt': prompt,
+      'model': model,
+    };
+    
+    if (negativePrompt != null) json['negative_prompt'] = negativePrompt;
+    if (size != null) json['size'] = size;
+    if (quality != null) json['quality'] = quality;
+    if (outputFormat != null) json['output_format'] = outputFormat;
+    if (outputCompression != null) json['output_compression'] = outputCompression;
+    if (n != null) json['n'] = n;
+    if (width != null) json['width'] = width;
+    if (height != null) json['height'] = height;
+    if (steps != null) json['steps'] = steps;
+    if (cfgScale != null) json['cfg_scale'] = cfgScale;
+    if (sampler != null) json['sampler'] = sampler;
+    if (scheduler != null) json['scheduler'] = scheduler;
+    if (seed != null) json['seed'] = seed;
+    if (loras != null && loras!.isNotEmpty) json['loras'] = loras;
+    
+    return json;
+  }
+}
+
+/// Online image generation response from backend API
+class OnlineImageGenerationResponse {
+  final String id;
+  final String status;
+  final String? imageUrl;
+  final String? error;
+  final Map<String, dynamic>? metadata;
+
+  OnlineImageGenerationResponse({
+    required this.id,
+    required this.status,
+    this.imageUrl,
+    this.error,
+    this.metadata,
+  });
+
+  factory OnlineImageGenerationResponse.fromJson(Map<String, dynamic> json) {
+    return OnlineImageGenerationResponse(
+      id: json['id'] ?? '',
+      status: json['status'] ?? '',
+      imageUrl: json['image_url'],
+      error: json['error'],
+      metadata: json['metadata'] as Map<String, dynamic>?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'status': status,
+      'image_url': imageUrl,
+      'error': error,
+      'metadata': metadata,
+    };
+  }
+}
+
 /// Simplified image generation model for the new workflow
 class GeneratedImage {
   final String id;

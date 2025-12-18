@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/api_models.dart';
 import '../services/chat_api_service.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../providers/auth_provider.dart';
 
 class ChatHistorySidebar extends StatefulWidget {
   final String projectId;
@@ -37,6 +38,7 @@ class _ChatHistorySidebarState extends State<ChatHistorySidebar> {
     super.initState();
     _chatApiService = widget.chatApiService ?? ChatApiService(
       settingsProvider: Provider.of<SettingsProvider>(context, listen: false),
+      authProvider: Provider.of<AuthProvider>(context, listen: false),
     );
     
     // Register refresh callback with parent

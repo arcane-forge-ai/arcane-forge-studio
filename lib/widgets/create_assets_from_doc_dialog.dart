@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:universal_io/io.dart';
 import '../providers/settings_provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/extracted_asset_models.dart';
 import '../screens/game_design_assistant/models/api_models.dart';
 import '../screens/game_design_assistant/services/chat_api_service.dart';
@@ -64,7 +65,11 @@ class _CreateAssetsFromDocDialogState extends State<CreateAssetsFromDocDialog> {
   void initState() {
     super.initState();
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
-    _chatApiService = ChatApiService(settingsProvider: settingsProvider);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    _chatApiService = ChatApiService(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
     _loadKnowledgeBaseFiles();
   }
 

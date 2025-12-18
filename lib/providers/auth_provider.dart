@@ -2,20 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../utils/app_constants.dart';
 
 class AuthProvider extends ChangeNotifier {
   final SupabaseClient _client = Supabase.instance.client;
   late final StreamSubscription<AuthState> _authSub;
-  bool _visitor = false;
   bool _isLoggingOut = false; // Track logout state
 
   AuthProvider() {
     _authSub = _client.auth.onAuthStateChange.listen((event) {
-      // When auth state changes, reset visitor mode and notify
+      // When auth state changes, reset logout state and notify
       if (event.event == AuthChangeEvent.signedIn ||
           event.event == AuthChangeEvent.signedOut) {
-        _visitor = false;
         _isLoggingOut = false; // Reset logout state
       }
       notifyListeners();
@@ -24,13 +21,9 @@ class AuthProvider extends ChangeNotifier {
 
   User? get user => _client.auth.currentUser;
   bool get isAuthenticated => user != null && !_isLoggingOut;
-  bool get isVisitor => _visitor && !_isLoggingOut;
 
   String get userId {
-    if (isVisitor) {
-      return AppConstants.visitorUserId;
-    }
-    return user?.id ?? AppConstants.visitorUserId;
+    return user?.id ?? '';
   }
 
   Future<void> signInWithEmail(String email, String password) async {
@@ -41,17 +34,10 @@ class AuthProvider extends ChangeNotifier {
     await _client.auth.signInWithOAuth(OAuthProvider.google);
   }
 
-  void continueAsVisitor() {
-    _visitor = true;
-    _isLoggingOut = false;
-    notifyListeners();
-  }
-
   Future<void> signOut() async {
     try {
       // Set logout state immediately to trigger navigation
       _isLoggingOut = true;
-      _visitor = false;
       notifyListeners(); // This should immediately navigate to login screen
       
       // Then perform the actual sign out
