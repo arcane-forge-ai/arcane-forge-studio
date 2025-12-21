@@ -434,7 +434,7 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
         // Duration
         _buildFormSection(
           'Duration (seconds)',
-          'Target duration for the generated audio (0.1 - 30.0)',
+          'Target duration for the generated audio (0.5 - 30.0)',
           TextField(
             controller: _durationController,
             style: const TextStyle(color: Colors.white),

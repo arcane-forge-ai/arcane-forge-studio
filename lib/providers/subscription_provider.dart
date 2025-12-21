@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/subscription_models.dart';
 import '../services/subscription_service.dart';
 import '../providers/settings_provider.dart';
@@ -7,6 +9,7 @@ import '../providers/auth_provider.dart';
 /// Provider for managing subscription and quota state
 class SubscriptionProvider extends ChangeNotifier {
   final SubscriptionService _service;
+  late final StreamSubscription<AuthState> _authSub;
 
   // State
   UserSubscription? _currentSubscription;
@@ -38,7 +41,16 @@ class SubscriptionProvider extends ChangeNotifier {
   int get tierLevel => _currentSubscription?.tierLevel ?? 0;
   String get planName => _currentSubscription?.planDisplayName ?? 'Free';
 
-  SubscriptionProvider(this._service);
+  SubscriptionProvider(this._service) {
+    // Listen to auth state changes
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
+      // When user signs out, reset all subscription data
+      if (event.event == AuthChangeEvent.signedOut) {
+        debugPrint('🔄 User signed out, resetting subscription data...');
+        reset();
+      }
+    });
+  }
 
   /// Factory constructor for creating with dependencies
   factory SubscriptionProvider.create({
@@ -333,7 +345,14 @@ class SubscriptionProvider extends ChangeNotifier {
     _isLoading = false;
     _isInitialized = false;
     _error = null;
+    _lastQuotaRefresh = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 }
 

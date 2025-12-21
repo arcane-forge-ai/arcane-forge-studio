@@ -104,9 +104,21 @@ class SettingsProvider extends ChangeNotifier {
     _apiBaseUrl = _normalizeApiUrl(dotenv.env['API_BASE_URL'] ?? ApiConfig.defaultBaseUrl);
     _useApiService = dotenv.env['USE_API_SERVICE']?.toLowerCase() == 'true' || ApiConfig.useApiService;
 
+    // A1111 Mode from dotenv
+    final a1111ModeString = dotenv.env['A1111_MODE']?.toLowerCase();
+    if (a1111ModeString == 'online') {
+      _a1111Mode = A1111Mode.online;
+    } else if (a1111ModeString == 'local') {
+      _a1111Mode = A1111Mode.local;
+    } else {
+      // If not specified or invalid, use the default from constants
+      _a1111Mode = ImageGenerationConstants.defaultA1111Mode;
+    }
+
     debugPrint('🌍 Loaded from environment:');
     debugPrint('   API Base URL: $_apiBaseUrl');
     debugPrint('   Use API Service: $_useApiService');
+    debugPrint('   A1111 Mode: $_a1111Mode');
 
     // Keep other settings as defaults for development
     _useMockMode = false; // Default to live API mode for development

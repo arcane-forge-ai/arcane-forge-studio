@@ -824,8 +824,20 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
     refreshAssets();
   }
 
-  /// Refresh the list of available models from the working directory
+  /// Refresh the list of available models
+  /// In online mode, this is handled by refreshA1111Models()
+  /// In local mode, scans the working directory
   Future<void> refreshAvailableModels() async {
+    // In online A1111 mode, models are fetched via API in refreshA1111Models()
+    // Skip local filesystem scan
+    if (currentBackendName == 'Automatic1111' && 
+        _settingsProvider.a1111Mode == A1111Mode.online) {
+      // Models will be available via a1111Checkpoints after refreshA1111Models()
+      _availableModels = [];
+      notifyListeners();
+      return;
+    }
+    
     final backend = _settingsProvider.defaultGenerationServer;
     final workingDir = _settingsProvider.getWorkingDirectory(backend);
     final modelDir = Directory(
@@ -850,8 +862,20 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
     notifyListeners();
   }
 
-  /// Refresh the list of available loras from the working directory
+  /// Refresh the list of available LoRAs
+  /// In online mode, this is handled by refreshA1111Models()
+  /// In local mode, scans the working directory
   Future<void> refreshAvailableLoras() async {
+    // In online A1111 mode, LoRAs are fetched via API in refreshA1111Models()
+    // Skip local filesystem scan
+    if (currentBackendName == 'Automatic1111' && 
+        _settingsProvider.a1111Mode == A1111Mode.online) {
+      // LoRAs will be available via a1111Loras after refreshA1111Models()
+      _availableLoras = [];
+      notifyListeners();
+      return;
+    }
+    
     final backend = _settingsProvider.defaultGenerationServer;
     final workingDir = _settingsProvider.getWorkingDirectory(backend);
     final modelDir = Directory(
@@ -898,9 +922,16 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
       if (_settingsProvider.a1111Mode == A1111Mode.online) {
         _isA1111ServerReachable = true; // Backend API is assumed to be available
         
-        // Only get checkpoints for online mode (LoRAs not yet supported, current checkpoint N/A)
-        _a1111Checkpoints = await _a1111Service.getAvailableCheckpoints();
-        _a1111Loras = []; // LoRAs not supported in online mode yet
+        // Get both checkpoints and LoRAs from backend API with proper filters
+        final futures = [
+          _a1111Service.getAvailableCheckpoints(),
+          _a1111Service.getAvailableLoras(),
+        ];
+        
+        final results = await Future.wait(futures);
+        
+        _a1111Checkpoints = results[0] as List<A1111Checkpoint>;
+        _a1111Loras = results[1] as List<A1111Lora>;
         _currentA1111Checkpoint = null; // No current checkpoint concept in online mode
       } else {
         // Local mode: check server status first
