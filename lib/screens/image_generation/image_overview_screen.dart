@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:io';
+import '../../../utils/image_provider_helper.dart';
 import '../../providers/image_generation_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../models/image_generation_models.dart';
@@ -476,9 +476,9 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
       if (asset.thumbnail!.startsWith('http://') || asset.thumbnail!.startsWith('https://')) {
         // It's a URL, use it directly
         return _buildThumbnailFromUrl(asset.thumbnail!, asset);
-      } else if (File(asset.thumbnail!).existsSync()) {
-        // It's a local file path, use it
-        return _buildThumbnailFromFile(asset.thumbnail!, asset);
+      } else if (asset.thumbnail!.isNotEmpty) {
+        // Use image provider helper for platform-aware loading
+        return _buildThumbnailFromPath(asset.thumbnail!, asset);
       }
     }
     
@@ -504,8 +504,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
 
   Widget _buildAssetThumbnail(ImageAsset asset, ImageGeneration? generation) {
     if (generation != null &&
-        generation.imagePath.isNotEmpty &&
-        File(generation.imagePath).existsSync()) {
+        (generation.imageUrl?.isNotEmpty == true || generation.imagePath.isNotEmpty)) {
       return Container(
         decoration: const BoxDecoration(
           borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
@@ -537,20 +536,23 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   
   Widget _buildGenerationImage(ImageGeneration generation, ImageAsset asset) {
     // Prefer online URL, fallback to local file
-    final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
-    final bool hasLocalFile = generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
+    final String? imagePath = generation.imageUrl?.isNotEmpty == true 
+        ? generation.imageUrl 
+        : generation.imagePath;
     
-    if (hasOnlineUrl) {
-      return Image.network(
-        generation.imageUrl!,
+    if (imagePath != null && imagePath.isNotEmpty) {
+      return Image(
+        image: ImageProviderHelper.getImageProvider(imagePath),
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) {
-          // Fallback to local file if network fails
-          if (hasLocalFile) {
-            return Image.file(
-              File(generation.imagePath),
+          // Try fallback to local path if URL fails
+          if (generation.imageUrl != null && 
+              generation.imagePath.isNotEmpty &&
+              imagePath == generation.imageUrl) {
+            return Image(
+              image: ImageProviderHelper.getImageProvider(generation.imagePath),
               fit: BoxFit.cover,
               width: double.infinity,
               height: double.infinity,
@@ -559,16 +561,6 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               },
             );
           }
-          return _buildEmptyThumbnail(asset);
-        },
-      );
-    } else if (hasLocalFile) {
-      return Image.file(
-        File(generation.imagePath),
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        errorBuilder: (context, error, stackTrace) {
           return _buildEmptyThumbnail(asset);
         },
       );
@@ -601,15 +593,15 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  Widget _buildThumbnailFromFile(String filePath, ImageAsset asset) {
+  Widget _buildThumbnailFromPath(String path, ImageAsset asset) {
     return Container(
       decoration: const BoxDecoration(
         borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       child: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-        child: Image.file(
-          File(filePath),
+        child: Image(
+          image: ImageProviderHelper.getImageProvider(path),
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,

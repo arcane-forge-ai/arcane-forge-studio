@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'dart:io';
+import 'package:universal_io/io.dart';
 import 'subscription_exceptions.dart';
 
 /// Utility class for extracting user-friendly error messages from exceptions

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:io';
 import '../../../models/image_generation_models.dart';
 import '../../../providers/image_generation_provider.dart';
 import '../../../services/file_download_service.dart';
+import '../../../utils/image_provider_helper.dart';
 import 'package:provider/provider.dart';
 
 class ImageDetailDialog extends StatefulWidget {
@@ -307,17 +307,24 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     }
     
     // Use online URL if available, otherwise use local file
-    final Widget imageWidget = _currentGeneration.imageUrl != null && _currentGeneration.imageUrl!.isNotEmpty
-        ? Image.network(
-            _currentGeneration.imageUrl!,
+    // Use URL if available, otherwise fall back to local path
+    final String? imagePath = _currentGeneration.imageUrl?.isNotEmpty == true 
+        ? _currentGeneration.imageUrl 
+        : _currentGeneration.imagePath;
+    
+    final Widget imageWidget = imagePath != null && imagePath.isNotEmpty
+        ? Image(
+            image: ImageProviderHelper.getImageProvider(imagePath),
             width: width.toDouble(),
             height: height.toDouble(),
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
-              // Fallback to local file if network image fails
-              if (_currentGeneration.imagePath.isNotEmpty) {
-                return Image.file(
-                  File(_currentGeneration.imagePath),
+              // Try fallback to local path if URL fails
+              if (_currentGeneration.imageUrl != null && 
+                  _currentGeneration.imagePath.isNotEmpty &&
+                  imagePath == _currentGeneration.imageUrl) {
+                return Image(
+                  image: ImageProviderHelper.getImageProvider(_currentGeneration.imagePath),
                   width: width.toDouble(),
                   height: height.toDouble(),
                   fit: BoxFit.contain,
@@ -329,17 +336,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
               return _buildErrorImage(width, height);
             },
           )
-        : _currentGeneration.imagePath.isNotEmpty
-            ? Image.file(
-                File(_currentGeneration.imagePath),
-                width: width.toDouble(),
-                height: height.toDouble(),
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return _buildErrorImage(width, height);
-                },
-              )
-            : _buildErrorImage(width, height);
+        : _buildErrorImage(width, height);
     
     return Center(
       child: SingleChildScrollView(

@@ -5,9 +5,9 @@ import '../../../providers/image_generation_provider.dart';
 import '../../../models/image_generation_models.dart';
 import '../../../responsive.dart';
 import '../../../controllers/menu_app_controller.dart';
+import '../../../utils/image_provider_helper.dart';
 import 'image_detail_dialog.dart';
 import 'dart:async';
-import 'dart:io';
 
 class AssetDetailScreen extends StatefulWidget {
   final ImageAsset asset;
@@ -534,45 +534,38 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
   Widget _buildGenerationThumbnail(ImageGeneration generation) {
     if (generation.status == GenerationStatus.completed) {
       // Prefer online URL, fallback to local file
-      final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
-      final bool hasLocalFile = generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
+      final String? imagePath = generation.imageUrl?.isNotEmpty == true 
+          ? generation.imageUrl 
+          : generation.imagePath;
       
-      if (hasOnlineUrl || hasLocalFile) {
+      if (imagePath != null && imagePath.isNotEmpty) {
         return Stack(
           children: [
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: hasOnlineUrl
-                  ? Image.network(
-                      generation.imageUrl!,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                      errorBuilder: (context, error, stackTrace) {
-                        // Fallback to local file if network fails
-                        if (hasLocalFile) {
-                          return Image.file(
-                            File(generation.imagePath),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            errorBuilder: (context, error, stackTrace) {
-                              return _buildErrorThumbnail();
-                            },
-                          );
-                        }
-                        return _buildErrorThumbnail();
-                      },
-                    )
-                  : Image.file(
-                      File(generation.imagePath),
+              child: Image(
+                image: ImageProviderHelper.getImageProvider(imagePath),
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (context, error, stackTrace) {
+                  // Try fallback to local path if URL fails
+                  if (generation.imageUrl != null && 
+                      generation.imagePath.isNotEmpty &&
+                      imagePath == generation.imageUrl) {
+                    return Image(
+                      image: ImageProviderHelper.getImageProvider(generation.imagePath),
                       fit: BoxFit.cover,
                       width: double.infinity,
                       height: double.infinity,
                       errorBuilder: (context, error, stackTrace) {
                         return _buildErrorThumbnail();
                       },
-                    ),
+                    );
+                  }
+                  return _buildErrorThumbnail();
+                },
+              ),
             ),
             if (generation.isFavorite)
               const Positioned(

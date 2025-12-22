@@ -9,7 +9,7 @@ import '../../widgets/create_assets_from_doc_dialog.dart';
 import '../../widgets/quota_status_widget.dart';
 import '../../services/file_download_service.dart';
 import 'widgets/sfx_asset_detail_screen.dart';
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class SfxOverviewScreen extends StatefulWidget {
   final String projectId;
@@ -470,8 +470,7 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
   Widget _buildAssetThumbnail(SfxAsset asset, SfxGeneration? generation) {
     if (generation != null &&
         generation.audioPath != null &&
-        generation.audioPath!.isNotEmpty &&
-        File(generation.audioPath!).existsSync()) {
+        generation.audioPath!.isNotEmpty) {
       return Container(
         decoration: const BoxDecoration(
           borderRadius: BorderRadius.vertical(top: Radius.circular(12)),

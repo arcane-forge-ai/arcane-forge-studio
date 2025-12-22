@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -593,7 +593,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     border: OutlineInputBorder(),
                                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                   ),
-                                  items: ImageGenerationBackend.values.map((backend) {
+                                  items: ImageGenerationBackend.values
+                                    .where((backend) => !kIsWeb || backend != ImageGenerationBackend.comfyui)
+                                    .map((backend) {
                                     return DropdownMenuItem(
                                       value: backend,
                                       child: Text(backend.displayName),
@@ -708,7 +710,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               border: OutlineInputBorder(),
                               contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             ),
-                            items: A1111Mode.values.map((mode) {
+                            items: A1111Mode.values
+                              .where((mode) => !kIsWeb || mode != A1111Mode.local)
+                              .map((mode) {
                               return DropdownMenuItem(
                                 value: mode,
                                 child: Text(mode.displayName),

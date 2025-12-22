@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:universal_io/io.dart';
 import '../models/image_generation_models.dart';
 import '../models/extracted_asset_models.dart';
 import '../services/comfyui_service.dart';
@@ -11,7 +13,6 @@ import '../providers/auth_provider.dart';
 import '../utils/app_constants.dart';
 import '../utils/subscription_exceptions.dart';
 import '../widgets/create_assets_from_doc_dialog.dart';
-import 'dart:io';
 
 class ImageGenerationProvider extends ChangeNotifier implements AssetCreationProvider {
   final SettingsProvider _settingsProvider;
@@ -324,6 +325,12 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   
   /// Kill dangling processes that might be occupying AI service ports
   Future<bool> killDanglingService() async {
+    // Process management is not available on web
+    if (kIsWeb) {
+      debugPrint('⚠️ killDanglingService: Process management not available on web platform');
+      return false;
+    }
+    
     try {
       // Get the expected port based on current backend
       int port = _settingsProvider.defaultGenerationServer == ImageGenerationBackend.automatic1111 
@@ -699,19 +706,22 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
         // Refresh asset to get the new generation from server (status pending/generating)
         await _refreshSingleAsset(assetId);
       } else {
-        // Build output path components (local mode only)
-        final outputDir = _settingsProvider.outputDirectory.isNotEmpty
-            ? _settingsProvider.outputDirectory
-            : 'output';
-        final safeProjectName =
-            projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-        final safeAssetName =
-            asset.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-        final projectFolder = '${safeProjectName}_${projectId}';
-        final assetDir =
-            Directory('$outputDir/$projectFolder/assets/$safeAssetName');
-        if (!assetDir.existsSync()) {
-          assetDir.createSync(recursive: true);
+        // LOCAL MODE: Use the existing flow
+        // Build output path components (local mode only - not available on web)
+        if (!kIsWeb) {
+          final outputDir = _settingsProvider.outputDirectory.isNotEmpty
+              ? _settingsProvider.outputDirectory
+              : 'output';
+          final safeProjectName =
+              projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final safeAssetName =
+              asset.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final projectFolder = '${safeProjectName}_${projectId}';
+          final assetDir =
+              Directory('$outputDir/$projectFolder/assets/$safeAssetName');
+          if (!assetDir.existsSync()) {
+            assetDir.createSync(recursive: true);
+          }
         }
 
         // LOCAL MODE: Use the existing flow
@@ -732,9 +742,21 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
         // Generate the image using the A1111 service
         final imageData = await _a1111Service.generateImage(requestWithAssetId);
 
-        // Use the server-generated ID for the filename
-        final imageFile = File('${assetDir.path}/${generation.id}.png');
-        await imageFile.writeAsBytes(imageData);
+        // Use the server-generated ID for the filename (only on native platforms)
+        if (!kIsWeb) {
+          final outputDir = _settingsProvider.outputDirectory.isNotEmpty
+              ? _settingsProvider.outputDirectory
+              : 'output';
+          final safeProjectName =
+              projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final safeAssetName =
+              asset.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final projectFolder = '${safeProjectName}_${projectId}';
+          final assetDir =
+              Directory('$outputDir/$projectFolder/assets/$safeAssetName');
+          final imageFile = File('${assetDir.path}/${generation.id}.png');
+          await imageFile.writeAsBytes(imageData);
+        }
 
         // Upload the image to Supabase
         final uploadResult = await _assetService.uploadGenerationImage(
@@ -743,10 +765,22 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
           '${generation.id}.png',
         );
 
-        // Update the generation with completed status, local path and online URL
+        // Update the generation with completed status, local path (native only) and online URL
+        final String? localImagePath = !kIsWeb ? (() {
+          final outputDir = _settingsProvider.outputDirectory.isNotEmpty
+              ? _settingsProvider.outputDirectory
+              : 'output';
+          final safeProjectName =
+              projectName.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final safeAssetName =
+              asset.name.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final projectFolder = '${safeProjectName}_${projectId}';
+          return '$outputDir/$projectFolder/assets/$safeAssetName/${generation.id}.png';
+        })() : null;
+        
         final updatedGeneration = generation.copyWith(
           status: GenerationStatus.completed,
-          imagePath: imageFile.path,
+          imagePath: localImagePath,
           imageUrl: uploadResult['image_url'],
         );
         
@@ -828,6 +862,13 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   /// In online mode, this is handled by refreshA1111Models()
   /// In local mode, scans the working directory
   Future<void> refreshAvailableModels() async {
+    // Local filesystem scan is not available on web
+    if (kIsWeb) {
+      _availableModels = [];
+      notifyListeners();
+      return;
+    }
+    
     // In online A1111 mode, models are fetched via API in refreshA1111Models()
     // Skip local filesystem scan
     if (currentBackendName == 'Automatic1111' && 
@@ -866,6 +907,13 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   /// In online mode, this is handled by refreshA1111Models()
   /// In local mode, scans the working directory
   Future<void> refreshAvailableLoras() async {
+    // Local filesystem scan is not available on web
+    if (kIsWeb) {
+      _availableLoras = [];
+      notifyListeners();
+      return;
+    }
+    
     // In online A1111 mode, LoRAs are fetched via API in refreshA1111Models()
     // Skip local filesystem scan
     if (currentBackendName == 'Automatic1111' && 

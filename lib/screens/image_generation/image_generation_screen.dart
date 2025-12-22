@@ -8,7 +8,7 @@ import '../../controllers/menu_app_controller.dart';
 import '../../services/comfyui_service.dart';
 import '../../utils/error_handler.dart';
 import 'dart:async';
-import 'dart:io';
+import '../../utils/image_provider_helper.dart';
 import 'dart:convert';
 
 import 'widgets/image_detail_dialog.dart';
@@ -1738,18 +1738,21 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
 
   Widget _buildGenerationThumbnailImage(ImageGeneration generation) {
     // Prefer online URL, fallback to local file
-    final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
-    final bool hasLocalFile = generation.imagePath.isNotEmpty;
+    final String? imagePath = generation.imageUrl?.isNotEmpty == true 
+        ? generation.imageUrl 
+        : generation.imagePath;
     
-    if (hasOnlineUrl) {
-      return Image.network(
-        generation.imageUrl!,
+    if (imagePath != null && imagePath.isNotEmpty) {
+      return Image(
+        image: ImageProviderHelper.getImageProvider(imagePath),
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
-          // Fallback to local file if network fails
-          if (hasLocalFile) {
-            return Image.file(
-              File(generation.imagePath),
+          // Try fallback to local path if URL fails
+          if (generation.imageUrl != null && 
+              generation.imagePath.isNotEmpty &&
+              imagePath == generation.imageUrl) {
+            return Image(
+              image: ImageProviderHelper.getImageProvider(generation.imagePath),
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
                 return Container(
@@ -1763,21 +1766,6 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
               },
             );
           }
-          return Container(
-            color: const Color(0xFF3A3A3A),
-            child: const Icon(
-              Icons.broken_image,
-              color: Colors.white54,
-              size: 24,
-            ),
-          );
-        },
-      );
-    } else if (hasLocalFile) {
-      return Image.file(
-        File(generation.imagePath),
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
           return Container(
             color: const Color(0xFF3A3A3A),
             child: const Icon(

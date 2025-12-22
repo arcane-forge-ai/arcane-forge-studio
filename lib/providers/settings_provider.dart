@@ -1,8 +1,8 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show ChangeNotifier, debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
+import 'package:universal_io/io.dart';
 
 import '../models/download_models.dart';
 import '../services/a1111_installer_service.dart';
@@ -301,6 +301,13 @@ class SettingsProvider extends ChangeNotifier {
   
   // Image Generation methods
   void setDefaultGenerationServer(ImageGenerationBackend backend) {
+    // On web, prevent setting ComfyUI backend
+    if (kIsWeb && backend == ImageGenerationBackend.comfyui) {
+      debugPrint('⚠️ ComfyUI backend is not supported on web platform');
+      // Default to Automatic1111 instead
+      backend = ImageGenerationBackend.automatic1111;
+    }
+    
     if (_defaultGenerationServer != backend) {
       _defaultGenerationServer = backend;
       notifyListeners();
@@ -308,11 +315,33 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   void setA1111Mode(A1111Mode mode) {
+    // On web, force online mode
+    if (kIsWeb && mode == A1111Mode.local) {
+      debugPrint('⚠️ Local A1111 mode is not supported on web platform, forcing online mode');
+      mode = A1111Mode.online;
+    }
+    
     if (_a1111Mode != mode) {
       _a1111Mode = mode;
       notifyListeners();
       _saveSettings();
     }
+  }
+  
+  /// Get available backends for the current platform
+  List<ImageGenerationBackend> get availableBackends {
+    if (kIsWeb) {
+      return [ImageGenerationBackend.automatic1111];
+    }
+    return ImageGenerationBackend.values;
+  }
+  
+  /// Get available A1111 modes for the current platform
+  List<A1111Mode> get availableA1111Modes {
+    if (kIsWeb) {
+      return [A1111Mode.online];
+    }
+    return A1111Mode.values;
   }
 
   // A1111 install controls
@@ -328,6 +357,14 @@ class SettingsProvider extends ChangeNotifier {
     a1111Error = null;
     notifyListeners();
 
+    // Not supported on web
+    if (kIsWeb) {
+      a1111Status = InstallerStatus.error;
+      a1111Error = 'Local A1111 installation is not supported on web platform';
+      notifyListeners();
+      return;
+    }
+    
     final url = urlOverride ?? ImageGenerationConstants.a1111ZipUrl;
     final packagesDir = Directory('packages');
     _a1111CancelToken = CancelToken();
