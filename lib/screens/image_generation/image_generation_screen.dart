@@ -213,23 +213,13 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
       // Silently ignore errors during initial health check
     }
 
-    // Refresh model list on load
-    imageGenerationProvider.refreshAvailableModels().then((_) {
-      if (mounted && imageGenerationProvider.availableModels.isNotEmpty) {
-        setState(() {
-          _selectedModel = imageGenerationProvider.availableModels.first;
-        });
-      }
-    });
-    imageGenerationProvider.refreshAvailableLoras().then((_) {
-      if (mounted && imageGenerationProvider.availableLoras.isEmpty) {
-        setState(() {});
-      }
-    });
+    // For online mode, refresh A1111 models first (includes checkpoints and LoRAs via API with proper filters)
+    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final isOnlineMode = imageGenerationProvider.currentBackendName == 'Automatic1111' && 
+                         settingsProvider.a1111Mode == A1111Mode.online;
     
-    // Refresh A1111 models and current checkpoint if service is running
-    if (imageGenerationProvider.isServiceRunning && 
-        imageGenerationProvider.currentBackendName == 'Automatic1111') {
+    if (isOnlineMode) {
+      // Online mode: fetch models from API with proper filters
       imageGenerationProvider.refreshA1111Models().then((_) {
         if (mounted && imageGenerationProvider.a1111Checkpoints.isNotEmpty) {
           setState(() {
@@ -240,6 +230,35 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           });
         }
       });
+    } else {
+      // Local mode: scan filesystem or check local API
+      imageGenerationProvider.refreshAvailableModels().then((_) {
+        if (mounted && imageGenerationProvider.availableModels.isNotEmpty) {
+          setState(() {
+            _selectedModel = imageGenerationProvider.availableModels.first;
+          });
+        }
+      });
+      imageGenerationProvider.refreshAvailableLoras().then((_) {
+        if (mounted && imageGenerationProvider.availableLoras.isEmpty) {
+          setState(() {});
+        }
+      });
+      
+      // Refresh A1111 models and current checkpoint if service is running (local mode)
+      if (imageGenerationProvider.isServiceRunning && 
+          imageGenerationProvider.currentBackendName == 'Automatic1111') {
+        imageGenerationProvider.refreshA1111Models().then((_) {
+          if (mounted && imageGenerationProvider.a1111Checkpoints.isNotEmpty) {
+            setState(() {
+              // Set first checkpoint as selected if none is selected
+              if (_selectedModel == _selectedModelFallbackValue) {
+                _selectedModel = imageGenerationProvider.a1111Checkpoints.first.title;
+              }
+            });
+          }
+        });
+      }
     }
   }
 

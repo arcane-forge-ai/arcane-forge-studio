@@ -32,8 +32,14 @@ class ImageGenerationConstants {
   /// Default backend
   static const ImageGenerationBackend defaultBackend = ImageGenerationBackend.automatic1111;
   
-  /// Default A1111 mode (local for backward compatibility)
-  static const A1111Mode defaultA1111Mode = A1111Mode.local;
+  /// Default A1111 mode (load from environment or fallback to online)
+  static A1111Mode get defaultA1111Mode {
+    final modeString = dotenv.env['A1111_MODE']?.toLowerCase();
+    if (modeString == 'local') {
+      return A1111Mode.local;
+    }
+    return A1111Mode.online; // Default fallback
+  }
   
   /// Default commands for each backend
   static const Map<ImageGenerationBackend, String> defaultCommands = {

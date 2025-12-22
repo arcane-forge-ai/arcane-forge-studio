@@ -24,12 +24,19 @@ class A1111OnlineService {
   A1111OnlineService({required ApiClient apiClient}) : _apiClient = apiClient;
 
   /// Get available A1111 models from backend API
-  /// Endpoint: GET /api/v1/image-generation/models?provider=a1111
-  Future<List<A1111Model>> getAvailableModels() async {
+  /// Endpoint: GET /api/v1/image-generation/models?provider=a1111&model_type={type}
+  /// 
+  /// [modelType] can be 'checkpoint', 'lora', 'embedding', 'vae', or 'controlnet'
+  Future<List<A1111Model>> getAvailableModels({String? modelType}) async {
     try {
+      final queryParams = <String, dynamic>{'provider': 'a1111'};
+      if (modelType != null && modelType.isNotEmpty) {
+        queryParams['model_type'] = modelType;
+      }
+      
       final response = await _apiClient.get(
         '/image-generation/models',
-        queryParameters: {'provider': 'a1111'},
+        queryParameters: queryParams,
       );
 
       if (response.statusCode == 200 && response.data != null) {
@@ -42,6 +49,12 @@ class A1111OnlineService {
       print('Error fetching A1111 models: $e');
       rethrow;
     }
+  }
+  
+  /// Get available A1111 LoRAs from backend API
+  /// Endpoint: GET /api/v1/image-generation/models?provider=a1111&model_type=lora
+  Future<List<A1111Model>> getAvailableLoras() async {
+    return getAvailableModels(modelType: 'lora');
   }
 
   /// Submit an image generation job to the backend (async).

@@ -1017,21 +1017,35 @@ class A1111ImageGenerationService {
 
   /// Get available A1111 checkpoints
   Future<List<A1111Checkpoint>> getAvailableCheckpoints() async {
-    // Online mode: get models from backend API
+    // Online mode: get models from backend API with model_type filter
     if (_isOnlineMode) {
       if (_onlineService == null) {
         throw Exception('Online service not initialized');
       }
-      // Convert A1111Model to A1111Checkpoint format
-      final models = await _onlineService.getAvailableModels();
-      return models.map((model) => A1111Checkpoint(
-        title: model.displayName ?? model.name,
-        modelName: model.name,
-        filename: model.name,
-        hash: null,
-        sha256: null,
-        config: null,
-      )).toList();
+      // Get checkpoints with model_type=checkpoint filter
+      final models = await _onlineService.getAvailableModels(modelType: 'checkpoint');
+      
+      // Check for duplicate display names
+      final displayNameCounts = <String, int>{};
+      for (final model in models) {
+        final displayName = model.displayName ?? model.name;
+        displayNameCounts[displayName] = (displayNameCounts[displayName] ?? 0) + 1;
+      }
+      
+      return models.map((model) {
+        final displayName = model.displayName ?? model.name;
+        // Use filename if duplicate display name found
+        final shouldUseFilename = displayNameCounts[displayName]! > 1;
+        
+        return A1111Checkpoint(
+          title: shouldUseFilename ? model.name : displayName,
+          modelName: model.name,
+          filename: model.name,
+          hash: null,
+          sha256: null,
+          config: null,
+        );
+      }).toList();
     }
     
     // Local mode: get from local API
@@ -1052,7 +1066,33 @@ class A1111ImageGenerationService {
       }
       
       final List<dynamic> data = response.data;
-      return data.map((json) => A1111Checkpoint.fromJson(json)).toList();
+      final checkpoints = data.map((json) => A1111Checkpoint.fromJson(json)).toList();
+      
+      // Check for duplicate titles
+      final titleCounts = <String, int>{};
+      for (final checkpoint in checkpoints) {
+        titleCounts[checkpoint.title] = (titleCounts[checkpoint.title] ?? 0) + 1;
+      }
+      
+      // If duplicates found, recreate checkpoints with filename as title
+      if (titleCounts.values.any((count) => count > 1)) {
+        return checkpoints.map((checkpoint) {
+          final shouldUseFilename = titleCounts[checkpoint.title]! > 1;
+          if (shouldUseFilename) {
+            return A1111Checkpoint(
+              title: checkpoint.filename,
+              modelName: checkpoint.modelName,
+              filename: checkpoint.filename,
+              hash: checkpoint.hash,
+              sha256: checkpoint.sha256,
+              config: checkpoint.config,
+            );
+          }
+          return checkpoint;
+        }).toList();
+      }
+      
+      return checkpoints;
     } catch (e) {
       if (e is DioException) {
         throw Exception('Failed to get checkpoints: ${e.message}');
@@ -1063,16 +1103,46 @@ class A1111ImageGenerationService {
 
   /// Get available A1111 LoRAs
   Future<List<A1111Lora>> getAvailableLoras() async {
-    // Online mode: LoRA API will be implemented soon, use same endpoint for now
-    // For now, keep the same implementation but it will use backend API in future
+    // Online mode: get LoRAs from backend API with model_type filter
+    if (_isOnlineMode) {
+      if (_onlineService == null) {
+        throw Exception('Online service not initialized');
+      }
+      try {
+        // Get loras with model_type=lora filter
+        final models = await _onlineService.getAvailableLoras();
+        
+        // Check for duplicate display names
+        final displayNameCounts = <String, int>{};
+        for (final model in models) {
+          final displayName = model.displayName ?? model.name;
+          displayNameCounts[displayName] = (displayNameCounts[displayName] ?? 0) + 1;
+        }
+        
+        return models.map((model) {
+          final displayName = model.displayName ?? model.name;
+          // Use filename if duplicate display name found
+          final shouldUseFilename = displayNameCounts[displayName]! > 1;
+          
+          return A1111Lora(
+            name: shouldUseFilename ? model.name : displayName,
+            alias: shouldUseFilename ? model.name : displayName,
+            path: model.name,
+            metadata: model.metadata,
+          );
+        }).toList();
+      } catch (e) {
+        print('Error fetching online LoRAs: $e');
+        // Return empty list if online API call fails
+        return [];
+      }
+    }
+    
+    // Local mode: get from local API
     final backend = _settingsProvider.defaultGenerationServer;
     final apiEndpoint = _settingsProvider.getEndpoint(backend);
     
     if (apiEndpoint.isEmpty) {
-      // In online mode without local endpoint, return empty list for now
-      if (_isOnlineMode) {
-        return [];
-      }
       throw Exception('API endpoint not configured for ${backend.displayName}');
     }
     
@@ -1086,13 +1156,35 @@ class A1111ImageGenerationService {
       }
       
       final List<dynamic> data = response.data;
-      return data.map((json) => A1111Lora.fromJson(json)).toList();
+      final loras = data.map((json) => A1111Lora.fromJson(json)).toList();
+      
+      // Check for duplicate names (display names)
+      final nameCounts = <String, int>{};
+      for (final lora in loras) {
+        final displayName = lora.alias ?? lora.name;
+        nameCounts[displayName] = (nameCounts[displayName] ?? 0) + 1;
+      }
+      
+      // If duplicates found, recreate LoRAs with path as name
+      if (nameCounts.values.any((count) => count > 1)) {
+        return loras.map((lora) {
+          final displayName = lora.alias ?? lora.name;
+          final shouldUsePath = nameCounts[displayName]! > 1;
+          if (shouldUsePath) {
+            return A1111Lora(
+              name: lora.path,
+              alias: lora.path,
+              path: lora.path,
+              metadata: lora.metadata,
+            );
+          }
+          return lora;
+        }).toList();
+      }
+      
+      return loras;
     } catch (e) {
       if (e is DioException) {
-        // In online mode, return empty list if LoRA endpoint not available yet
-        if (_isOnlineMode) {
-          return [];
-        }
         throw Exception('Failed to get LoRAs: ${e.message}');
       }
       rethrow;
