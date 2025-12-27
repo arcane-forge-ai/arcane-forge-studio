@@ -1,6 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:io';
+import 'dart:io' show File;
 import '../../../models/image_generation_models.dart';
 import '../../../providers/image_generation_provider.dart';
 import '../../../services/file_download_service.dart';
@@ -315,7 +316,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
               // Fallback to local file if network image fails
-              if (_currentGeneration.imagePath.isNotEmpty) {
+              if (!kIsWeb && _currentGeneration.imagePath.isNotEmpty) {
                 return Image.file(
                   File(_currentGeneration.imagePath),
                   width: width.toDouble(),
@@ -329,7 +330,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
               return _buildErrorImage(width, height);
             },
           )
-        : _currentGeneration.imagePath.isNotEmpty
+        : !kIsWeb && _currentGeneration.imagePath.isNotEmpty
             ? Image.file(
                 File(_currentGeneration.imagePath),
                 width: width.toDouble(),

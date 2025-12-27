@@ -1,6 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:io';
+import 'dart:io' show File;
 import '../../providers/image_generation_provider.dart';
 import '../../providers/subscription_provider.dart';
 import '../../models/image_generation_models.dart';
@@ -476,7 +477,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
       if (asset.thumbnail!.startsWith('http://') || asset.thumbnail!.startsWith('https://')) {
         // It's a URL, use it directly
         return _buildThumbnailFromUrl(asset.thumbnail!, asset);
-      } else if (File(asset.thumbnail!).existsSync()) {
+      } else if (!kIsWeb && asset.thumbnail!.isNotEmpty && File(asset.thumbnail!).existsSync()) {
         // It's a local file path, use it
         return _buildThumbnailFromFile(asset.thumbnail!, asset);
       }
@@ -505,6 +506,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   Widget _buildAssetThumbnail(ImageAsset asset, ImageGeneration? generation) {
     if (generation != null &&
         generation.imagePath.isNotEmpty &&
+        !kIsWeb &&
         File(generation.imagePath).existsSync()) {
       return Container(
         decoration: const BoxDecoration(
@@ -538,7 +540,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   Widget _buildGenerationImage(ImageGeneration generation, ImageAsset asset) {
     // Prefer online URL, fallback to local file
     final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
-    final bool hasLocalFile = generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
+    final bool hasLocalFile = !kIsWeb && generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
     
     if (hasOnlineUrl) {
       return Image.network(

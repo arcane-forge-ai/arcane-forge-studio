@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +9,7 @@ import '../../controllers/menu_app_controller.dart';
 import '../../services/comfyui_service.dart';
 import '../../utils/error_handler.dart';
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' show File;
 import 'dart:convert';
 
 import 'widgets/image_detail_dialog.dart';
@@ -1002,6 +1003,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   }
 
   Widget _buildQualitySection() {
+    final isMobile = Responsive.isMobile(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1013,65 +1015,115 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _buildDropdownWithLabel(
-                "Sampler",
-                _selectedSampler,
-                [
-                  'Euler a',
-                  'Euler',
-                  'heun',
-                  'dpm_2',
-                  'dpm_2_a',
-                  'lms',
-                  'ddim',
-                  'plms',
-                ],
-                (value) {
-                  if (value != null) {
-                    setState(() {
-                      _selectedSampler = value;
-                    });
-                  }
-                },
+        if (isMobile) ...[
+          _buildDropdownWithLabel(
+            "Sampler",
+            _selectedSampler,
+            [
+              'Euler a',
+              'Euler',
+              'heun',
+              'dpm_2',
+              'dpm_2_a',
+              'lms',
+              'ddim',
+              'plms',
+            ],
+            (value) {
+              if (value != null) {
+                setState(() {
+                  _selectedSampler = value;
+                });
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildDropdownWithLabel(
+            "Scheduler",
+            _selectedScheduler,
+            [
+              'Automatic',
+              'euler_a',
+              'heun',
+              'dpm_2',
+              'dpm_2_a',
+              'lms',
+              'ddim',
+              'plms',
+            ],
+            (value) {
+              if (value != null) {
+                setState(() {
+                  _selectedScheduler = value;
+                });
+              }
+            },
+          ),
+        ] else
+          Row(
+            children: [
+              Expanded(
+                child: _buildDropdownWithLabel(
+                  "Sampler",
+                  _selectedSampler,
+                  [
+                    'Euler a',
+                    'Euler',
+                    'heun',
+                    'dpm_2',
+                    'dpm_2_a',
+                    'lms',
+                    'ddim',
+                    'plms',
+                  ],
+                  (value) {
+                    if (value != null) {
+                      setState(() {
+                        _selectedSampler = value;
+                      });
+                    }
+                  },
+                ),
               ),
-            ),
-            SizedBox(width: 8),
-            Expanded(
-              child: _buildDropdownWithLabel(
-                "Scheduler",
-                _selectedScheduler,
-                [
-                  'Automatic',
-                  'euler_a',
-                  'heun',
-                  'dpm_2',
-                  'dpm_2_a',
-                  'lms',
-                  'ddim',
-                  'plms',
-                ],
-                (value) {
-                  if (value != null) {
-                    setState(() {
-                      _selectedScheduler = value;
-                    });
-                  }
-                },
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildDropdownWithLabel(
+                  "Scheduler",
+                  _selectedScheduler,
+                  [
+                    'Automatic',
+                    'euler_a',
+                    'heun',
+                    'dpm_2',
+                    'dpm_2_a',
+                    'lms',
+                    'ddim',
+                    'plms',
+                  ],
+                  (value) {
+                    if (value != null) {
+                      setState(() {
+                        _selectedScheduler = value;
+                      });
+                    }
+                  },
+                ),
               ),
-            ),
-          ],
-        ),
-        SizedBox(height: 20),
-        Row(
-          children: [
-            Expanded(child: _buildNumberField('Steps', _stepsController)),
-            SizedBox(width: 8),
-            Expanded(child: _buildNumberField('CFG Scale', _cfgController)),
-          ],
-        )
+            ],
+          ),
+        const SizedBox(height: 20),
+        if (isMobile) ...[
+          _buildNumberField('Steps', _stepsController),
+          const SizedBox(height: 12),
+          _buildNumberField('CFG Scale', _cfgController),
+        ] else
+          Row(
+            children: [
+              Expanded(child: _buildNumberField('Steps', _stepsController)),
+              const SizedBox(width: 8),
+              Expanded(child: _buildNumberField('CFG Scale', _cfgController)),
+            ],
+          )
       ],
     );
   }
@@ -1739,7 +1791,7 @@ class _ImageGenerationScreenState extends State<ImageGenerationScreen> {
   Widget _buildGenerationThumbnailImage(ImageGeneration generation) {
     // Prefer online URL, fallback to local file
     final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
-    final bool hasLocalFile = generation.imagePath.isNotEmpty;
+    final bool hasLocalFile = !kIsWeb && generation.imagePath.isNotEmpty;
     
     if (hasOnlineUrl) {
       return Image.network(

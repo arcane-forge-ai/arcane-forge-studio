@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'dart:io' show Process, ProcessSignal, Directory, HttpClient, Platform;
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import '../utils/app_constants.dart';
 
 /// Status of the AI image generation service
@@ -89,6 +90,11 @@ class AIImageGenerationServiceImpl implements AIImageGenerationService {
     required String apiEndpoint,
     String? healthCheckEndpoint,
   }) async {
+    if (kIsWeb) {
+      _addLog('Service management is not supported on web. Using remote service at $apiEndpoint');
+      _updateStatus(AIServiceStatus.running);
+      return true;
+    }
     if (_status == AIServiceStatus.running || _status == AIServiceStatus.starting) {
       _addLog('Service already running or starting');
       return _status == AIServiceStatus.running;
@@ -184,6 +190,7 @@ class AIImageGenerationServiceImpl implements AIImageGenerationService {
   
   @override
   Future<void> stop() async {
+    if (kIsWeb) return;
     if (_status == AIServiceStatus.stopped || _status == AIServiceStatus.stopping) {
       return;
     }
@@ -264,6 +271,9 @@ class AIImageGenerationServiceImpl implements AIImageGenerationService {
   
     @override
   Future<bool> isHealthy() async {
+    if (kIsWeb) {
+      return _status == AIServiceStatus.running;
+    }
     // Only skip if health check endpoint is not configured
     if (_healthCheckEndpoint.isEmpty) {
       _addLog('Health check skipped - health check endpoint not configured');

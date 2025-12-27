@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,7 +8,7 @@ import '../../../responsive.dart';
 import '../../../controllers/menu_app_controller.dart';
 import 'image_detail_dialog.dart';
 import 'dart:async';
-import 'dart:io';
+import 'dart:io' show File;
 
 class AssetDetailScreen extends StatefulWidget {
   final ImageAsset asset;
@@ -535,7 +536,7 @@ class _AssetDetailScreenState extends State<AssetDetailScreen> {
     if (generation.status == GenerationStatus.completed) {
       // Prefer online URL, fallback to local file
       final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
-      final bool hasLocalFile = generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
+      final bool hasLocalFile = !kIsWeb && generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
       
       if (hasOnlineUrl || hasLocalFile) {
         return Stack(
