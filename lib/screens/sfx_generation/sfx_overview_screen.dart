@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/sfx_generation_provider.dart';
@@ -9,7 +10,7 @@ import '../../widgets/create_assets_from_doc_dialog.dart';
 import '../../widgets/quota_status_widget.dart';
 import '../../services/file_download_service.dart';
 import 'widgets/sfx_asset_detail_screen.dart';
-import 'dart:io';
+import 'dart:io' show File;
 
 class SfxOverviewScreen extends StatefulWidget {
   final String projectId;
@@ -471,6 +472,7 @@ class _SfxOverviewScreenState extends State<SfxOverviewScreen> {
     if (generation != null &&
         generation.audioPath != null &&
         generation.audioPath!.isNotEmpty &&
+        !kIsWeb &&
         File(generation.audioPath!).existsSync()) {
       return Container(
         decoration: const BoxDecoration(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../models/image_generation_models.dart';
 import '../models/extracted_asset_models.dart';
@@ -11,7 +12,7 @@ import '../providers/auth_provider.dart';
 import '../utils/app_constants.dart';
 import '../utils/subscription_exceptions.dart';
 import '../widgets/create_assets_from_doc_dialog.dart';
-import 'dart:io';
+import 'dart:io' show Directory, File, Platform, Process;
 
 class ImageGenerationProvider extends ChangeNotifier implements AssetCreationProvider {
   final SettingsProvider _settingsProvider;
@@ -324,6 +325,7 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   
   /// Kill dangling processes that might be occupying AI service ports
   Future<bool> killDanglingService() async {
+    if (kIsWeb) return true;
     try {
       // Get the expected port based on current backend
       int port = _settingsProvider.defaultGenerationServer == ImageGenerationBackend.automatic1111 
@@ -673,8 +675,8 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
       }
       
       // Skip service running check for online mode
-      final isOnlineMode = currentBackendName == 'Automatic1111' && 
-                           _settingsProvider.a1111Mode == A1111Mode.online;
+      final isOnlineMode = kIsWeb || (currentBackendName == 'Automatic1111' && 
+                           _settingsProvider.a1111Mode == A1111Mode.online);
       
       if (!isOnlineMode && !isServiceRunning) {
         throw Exception('${currentBackendName} service is not running. Please start the service first.');
@@ -830,8 +832,8 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   Future<void> refreshAvailableModels() async {
     // In online A1111 mode, models are fetched via API in refreshA1111Models()
     // Skip local filesystem scan
-    if (currentBackendName == 'Automatic1111' && 
-        _settingsProvider.a1111Mode == A1111Mode.online) {
+    if (kIsWeb || (currentBackendName == 'Automatic1111' && 
+        _settingsProvider.a1111Mode == A1111Mode.online)) {
       // Models will be available via a1111Checkpoints after refreshA1111Models()
       _availableModels = [];
       notifyListeners();
@@ -868,8 +870,8 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
   Future<void> refreshAvailableLoras() async {
     // In online A1111 mode, LoRAs are fetched via API in refreshA1111Models()
     // Skip local filesystem scan
-    if (currentBackendName == 'Automatic1111' && 
-        _settingsProvider.a1111Mode == A1111Mode.online) {
+    if (kIsWeb || (currentBackendName == 'Automatic1111' && 
+        _settingsProvider.a1111Mode == A1111Mode.online)) {
       // LoRAs will be available via a1111Loras after refreshA1111Models()
       _availableLoras = [];
       notifyListeners();

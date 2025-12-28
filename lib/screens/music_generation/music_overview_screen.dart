@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/music_generation_provider.dart';
@@ -8,7 +9,7 @@ import '../../controllers/menu_app_controller.dart';
 import '../../services/file_download_service.dart';
 import '../../widgets/quota_status_widget.dart';
 import 'widgets/music_asset_detail_screen.dart';
-import 'dart:io';
+import 'dart:io' show File;
 
 class MusicOverviewScreen extends StatefulWidget {
   final String projectId;
@@ -442,6 +443,7 @@ class _MusicOverviewScreenState extends State<MusicOverviewScreen> {
       if (favoriteGeneration != null &&
           favoriteGeneration.audioPath != null &&
           favoriteGeneration.audioPath!.isNotEmpty &&
+          !kIsWeb &&
           File(favoriteGeneration.audioPath!).existsSync()) {
         return Container(
           decoration: const BoxDecoration(
