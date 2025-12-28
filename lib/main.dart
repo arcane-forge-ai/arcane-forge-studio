@@ -12,6 +12,7 @@ import 'package:arcane_forge/services/music_generation_services.dart';
 import 'package:arcane_forge/screens/login/login_screen.dart';
 import 'package:arcane_forge/services/comfyui_service_manager.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -21,18 +22,29 @@ void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Load environment variables
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (e) {
-    // If .env file doesn't exist, continue with defaults
-    debugPrint('Could not load .env file: $e');
+  // Get Supabase config from --dart-define (production builds)
+  const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+  const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  
+  String url = supabaseUrl;
+  String anonKey = supabaseAnonKey;
+  
+  // For desktop development without --dart-define, try loading .env file
+  if (!kIsWeb && supabaseUrl.isEmpty) {
+    try {
+      await dotenv.load(fileName: '.env');
+      url = dotenv.env['SUPABASE_URL'] ?? '';
+      anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+      debugPrint('Loaded .env file for development');
+    } catch (e) {
+      debugPrint('No .env file found: $e');
+    }
   }
 
   // Initialize Supabase
   await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL'] ?? '',
-    anonKey: dotenv.env['SUPABASE_ANON_KEY'] ?? '',
+    url: url,
+    anonKey: anonKey,
   );
 
   // Handle Flutter keyboard assertion errors on Windows

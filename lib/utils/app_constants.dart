@@ -34,9 +34,11 @@ class ImageGenerationConstants {
   
   /// Default A1111 mode (load from environment or fallback to online)
   static A1111Mode get defaultA1111Mode {
-    final modeString = dotenv.env['A1111_MODE']?.toLowerCase();
-    if (modeString == 'local') {
-      return A1111Mode.local;
+    if (dotenv.isInitialized) {
+      final modeString = dotenv.env['A1111_MODE']?.toLowerCase();
+      if (modeString == 'local') {
+        return A1111Mode.local;
+      }
     }
     return A1111Mode.online; // Default fallback
   }
@@ -158,16 +160,22 @@ class DateUtils {
 
 // API Configuration
 class ApiConfig {
-  static const String defaultBaseUrl = 'http://arcane-forge-service.dev.arcaneforge.ai';
+  static const String defaultBaseUrl = 'https://arcane-forge-service.dev.arcaneforge.ai';
   static const bool useApiService = true; // Set to false to use mock service
   
   // Environment-based configuration
   static String get baseUrl {
-    return dotenv.env['API_BASE_URL'] ?? defaultBaseUrl;
+    if (dotenv.isInitialized) {
+      return dotenv.env['API_BASE_URL'] ?? defaultBaseUrl;
+    }
+    return defaultBaseUrl;
   }
   
   static bool get enabled {
-    final useApiString = dotenv.env['USE_API_SERVICE']?.toLowerCase();
-    return useApiString == 'true' || useApiService;
+    if (dotenv.isInitialized) {
+      final useApiString = dotenv.env['USE_API_SERVICE']?.toLowerCase();
+      return useApiString == 'true' || useApiService;
+    }
+    return useApiService;
   }
 } 

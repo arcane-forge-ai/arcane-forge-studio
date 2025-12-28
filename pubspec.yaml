@@ -38,6 +38,7 @@ dependencies:
   archive: ^3.6.1
   path: ^1.9.0
   package_info_plus: ^8.0.2
+  firebase_core: ^3.10.0
 
 dev_dependencies:
   flutter_test:
@@ -56,4 +57,3 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/requests/
-    - .env

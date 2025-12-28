@@ -58,3 +58,6 @@ output/
 # Downloaded Packages
 packages/*
 !packages/.keep
+
+# Firebase
+.firebase/
