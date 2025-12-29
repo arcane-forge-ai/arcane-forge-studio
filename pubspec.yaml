@@ -45,6 +45,7 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
@@ -58,3 +59,11 @@ flutter:
     - assets/icons/
     - assets/requests/
     - .env
+
+# Configuration for flutter_launcher_icons
+flutter_launcher_icons:
+  web:
+    generate: true
+    image_path: "assets/images/logo.png"
+    background_color: "#1a1a2e"
+    theme_color: "#9d4edd"
