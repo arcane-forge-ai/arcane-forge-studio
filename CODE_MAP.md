@@ -142,7 +142,7 @@ lib/
 - Models: `lib/models/image_generation_models.dart`
 
 **Widgets**:
-- `widgets/asset_detail_screen.dart` - Asset details view
+- `widgets/image_asset_detail_screen.dart` - Asset details view
 - `widgets/image_detail_dialog.dart` - Image detail dialog
 
 **Navigation**: 
@@ -183,7 +183,7 @@ lib/
 
 **Widgets**:
 - `widgets/sfx_asset_detail_screen.dart` - SFX asset details
-- `widgets/audio_detail_dialog.dart` - Audio detail dialog
+- `widgets/sfx_detail_dialog.dart` - Audio detail dialog
 
 **Navigation**: 
 - `ScreenType.soundGenerator` - Generation screen
@@ -350,7 +350,7 @@ SfxAssetServiceFactory.create(
 Located in `lib/screens/[feature]/widgets/`
 
 **Image Generation**:
-- `asset_detail_screen.dart` - Full asset details
+- `image_asset_detail_screen.dart` - Full asset details
 - `image_detail_dialog.dart` - Quick view dialog
 
 **Music Generation**:
@@ -359,7 +359,7 @@ Located in `lib/screens/[feature]/widgets/`
 
 **SFX Generation**:
 - `sfx_asset_detail_screen.dart` - SFX asset details
-- `audio_detail_dialog.dart` - Audio preview dialog
+- `sfx_detail_dialog.dart` - Audio preview dialog
 
 **Game Design Assistant**:
 - `chat_history_sidebar.dart` - Chat conversation history

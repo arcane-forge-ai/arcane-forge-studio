@@ -28,17 +28,52 @@ class ImageDetailDialog extends StatefulWidget {
 }
 
 class _ImageDetailDialogState extends State<ImageDetailDialog> {
-  late ImageGeneration _currentGeneration;
+  ImageGeneration? _currentGeneration;
   bool _isTogglingFavorite = false;
+  bool _isLoadingGeneration = true;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
-    _currentGeneration = widget.generation;
+    // Always fetch fresh data from API when dialog opens
+    _refreshGenerationData();
+  }
+
+  Future<void> _refreshGenerationData() async {
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoadingGeneration = true;
+      _loadError = null;
+    });
+
+    try {
+      final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+      final updatedGeneration = await provider.getGeneration(widget.generation.id);
+      if (updatedGeneration != null && mounted) {
+        setState(() {
+          _currentGeneration = updatedGeneration;
+          _isLoadingGeneration = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _loadError = 'Generation not found';
+          _isLoadingGeneration = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadError = 'Failed to load generation: $e';
+          _isLoadingGeneration = false;
+        });
+      }
+    }
   }
 
   Future<void> _handleFavoriteToggle() async {
-    if (_isTogglingFavorite) return;
+    if (_isTogglingFavorite || _currentGeneration == null) return;
     
     setState(() {
       _isTogglingFavorite = true;
@@ -48,14 +83,14 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
       
       // First, make the API call
-      if (_currentGeneration.isFavorite) {
-        await provider.removeGenerationFavorite(_currentGeneration.id);
+      if (_currentGeneration!.isFavorite) {
+        await provider.removeGenerationFavorite(_currentGeneration!.id);
       } else {
-        await provider.markGenerationAsFavorite(_currentGeneration.id);
+        await provider.markGenerationAsFavorite(_currentGeneration!.id);
       }
       
       // After API call succeeds, fetch updated generation
-      final updatedGeneration = await provider.getGeneration(_currentGeneration.id);
+      final updatedGeneration = await provider.getGeneration(_currentGeneration!.id);
       if (updatedGeneration != null && mounted) {
         setState(() {
           _currentGeneration = updatedGeneration;
@@ -105,16 +140,150 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
             color: isDark ? const Color(0xFF404040) : Colors.grey.shade300,
           ),
         ),
-        child: isLargeScreen ? _buildLargeScreenLayout(context) : _buildMobileLayout(context),
+        child: _isLoadingGeneration
+            ? _buildLoadingState(context)
+            : _loadError != null
+                ? _buildErrorState(context)
+                : (isLargeScreen ? _buildLargeScreenLayout(context) : _buildMobileLayout(context)),
       ),
     );
   }
 
+  Widget _buildLoadingState(BuildContext context) {
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF2A2A2A)
+                : Colors.grey.shade100,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Row(
+            children: [
+              const Text(
+                'Generation Details',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close, color: Colors.white54),
+                tooltip: 'Close',
+              ),
+            ],
+          ),
+        ),
+        // Loading content
+        Expanded(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: const [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Loading generation details...',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context) {
+    return Column(
+      children: [
+        // Header
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? const Color(0xFF2A2A2A)
+                : Colors.grey.shade100,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Row(
+            children: [
+              const Text(
+                'Generation Details',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close, color: Colors.white54),
+                tooltip: 'Close',
+              ),
+            ],
+          ),
+        ),
+        // Error content
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 64,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _loadError!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _refreshGenerationData,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildLargeScreenLayout(BuildContext context) {
+    // This method is only called when _currentGeneration is not null
+    final generation = _currentGeneration!;
+    
     return Column(
       children: [
         // Header with action buttons
-        _buildDialogHeader(context),
+        _buildDialogHeader(context, generation),
         // Main content
         Expanded(
           child: Row(
@@ -124,7 +293,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                 flex: 2,
                 child: Container(
                   padding: const EdgeInsets.all(20),
-                  child: _buildImageView(),
+                  child: _buildImageView(generation),
                 ),
               ),
               // Right side - Details
@@ -141,7 +310,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                       bottomRight: Radius.circular(16),
                     ),
                   ),
-                  child: _buildDetailsPanel(),
+                  child: _buildDetailsPanel(generation),
                 ),
               ),
             ],
@@ -152,16 +321,19 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
   }
 
   Widget _buildMobileLayout(BuildContext context) {
+    // This method is only called when _currentGeneration is not null
+    final generation = _currentGeneration!;
+    
     return Column(
       children: [
         // Header with action buttons
-        _buildDialogHeader(context),
+        _buildDialogHeader(context, generation),
         // Top - Image
         Expanded(
           flex: 2,
           child: Container(
             padding: const EdgeInsets.all(20),
-            child: _buildImageView(),
+            child: _buildImageView(generation),
           ),
         ),
         // Bottom - Details
@@ -178,14 +350,14 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                 bottomRight: Radius.circular(16),
               ),
             ),
-            child: _buildDetailsPanel(),
+            child: _buildDetailsPanel(generation),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildDialogHeader(BuildContext context) {
+  Widget _buildDialogHeader(BuildContext context, ImageGeneration generation) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
@@ -215,7 +387,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
             message: 'Copy Generation ID',
             child: InkWell(
               onTap: () {
-                Clipboard.setData(ClipboardData(text: _currentGeneration.id));
+                Clipboard.setData(ClipboardData(text: generation.id));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Generation ID copied to clipboard'),
@@ -238,9 +410,9 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                     const Icon(Icons.fingerprint, size: 14, color: Colors.white54),
                     const SizedBox(width: 4),
                     Text(
-                      _currentGeneration.id.length > 8 
-                          ? '${_currentGeneration.id.substring(0, 8)}...' 
-                          : _currentGeneration.id,
+                      generation.id.length > 8 
+                          ? '${generation.id.substring(0, 8)}...' 
+                          : generation.id,
                       style: const TextStyle(
                         color: Colors.white54,
                         fontSize: 11,
@@ -266,15 +438,15 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                     ),
                   )
                 : Icon(
-                    _currentGeneration.isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: _currentGeneration.isFavorite ? Colors.red : Colors.white54,
+                    generation.isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: generation.isFavorite ? Colors.red : Colors.white54,
                   ),
-            tooltip: _currentGeneration.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+            tooltip: generation.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
           ),
           // Download button
           IconButton(
-            onPressed: _currentGeneration.status == GenerationStatus.completed 
-                ? (widget.onDownload ?? () => _downloadImage(context))
+            onPressed: generation.status == GenerationStatus.completed 
+                ? (widget.onDownload ?? () => _downloadImage(context, generation))
                 : null,
             icon: const Icon(Icons.download, color: Colors.white54),
             tooltip: 'Download image',
@@ -296,29 +468,29 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     );
   }
 
-  Widget _buildImageView() {
+  Widget _buildImageView(ImageGeneration generation) {
     // Get image dimensions
     int width = 512;
     int height = 512;
-    if (_currentGeneration.parameters.containsKey('width')) {
-      width = _currentGeneration.parameters['width'] ?? 512;
+    if (generation.parameters.containsKey('width')) {
+      width = generation.parameters['width'] ?? 512;
     }
-    if (_currentGeneration.parameters.containsKey('height')) {
-      height = _currentGeneration.parameters['height'] ?? 512;
+    if (generation.parameters.containsKey('height')) {
+      height = generation.parameters['height'] ?? 512;
     }
     
     // Use online URL if available, otherwise use local file
-    final Widget imageWidget = _currentGeneration.imageUrl != null && _currentGeneration.imageUrl!.isNotEmpty
+    final Widget imageWidget = generation.imageUrl != null && generation.imageUrl!.isNotEmpty
         ? Image.network(
-            _currentGeneration.imageUrl!,
+            generation.imageUrl!,
             width: width.toDouble(),
             height: height.toDouble(),
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
               // Fallback to local file if network image fails
-              if (!kIsWeb && _currentGeneration.imagePath.isNotEmpty) {
+              if (!kIsWeb && generation.imagePath.isNotEmpty) {
                 return Image.file(
-                  File(_currentGeneration.imagePath),
+                  File(generation.imagePath),
                   width: width.toDouble(),
                   height: height.toDouble(),
                   fit: BoxFit.contain,
@@ -330,9 +502,9 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
               return _buildErrorImage(width, height);
             },
           )
-        : !kIsWeb && _currentGeneration.imagePath.isNotEmpty
+        : !kIsWeb && generation.imagePath.isNotEmpty
             ? Image.file(
-                File(_currentGeneration.imagePath),
+                File(generation.imagePath),
                 width: width.toDouble(),
                 height: height.toDouble(),
                 fit: BoxFit.contain,
@@ -366,7 +538,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     );
   }
 
-  Widget _buildDetailsPanel() {
+  Widget _buildDetailsPanel(ImageGeneration generation) {
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,11 +554,18 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
           ),
           const SizedBox(height: 20),
           
+          // Error Message (if failed)
+          if (generation.status == GenerationStatus.failed)
+            ...[
+              _buildErrorSection(generation),
+              const SizedBox(height: 20),
+            ],
+          
           // Basic Info
           _buildDetailSection('Basic Information', [
-            _buildDetailItem('Created', _formatDateTime(_currentGeneration.createdAt)),
-            _buildDetailItem('Status', _currentGeneration.status.name.toUpperCase()),
-            _buildDetailItem('Favorite', _currentGeneration.isFavorite ? 'Yes' : 'No'),
+            _buildDetailItem('Created', _formatDateTime(generation.createdAt)),
+            _buildDetailItem('Status', generation.status.name.toUpperCase()),
+            _buildDetailItem('Favorite', generation.isFavorite ? 'Yes' : 'No'),
             if (widget.asset != null) _buildDetailItem('Asset', widget.asset!.name),
           ]),
           
@@ -394,44 +573,103 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
           
           // Technical Details (Debug Info)
           _buildDetailSection('Technical Details', [
-            _buildCopyableDetailItem('Generation ID', _currentGeneration.id),
-            _buildCopyableDetailItem('Asset ID', _currentGeneration.assetId),
-            if (_currentGeneration.imagePath.isNotEmpty)
-              _buildCopyableDetailItem('Local Path', _currentGeneration.imagePath),
-            if (_currentGeneration.imageUrl != null && _currentGeneration.imageUrl!.isNotEmpty)
-              _buildCopyableDetailItem('Image URL', _currentGeneration.imageUrl!),
+            _buildCopyableDetailItem('Generation ID', generation.id),
+            _buildCopyableDetailItem('Asset ID', generation.assetId),
+            if (generation.imagePath.isNotEmpty)
+              _buildCopyableDetailItem('Local Path', generation.imagePath),
+            if (generation.imageUrl != null && generation.imageUrl!.isNotEmpty)
+              _buildCopyableDetailItem('Image URL', generation.imageUrl!),
           ]),
           
           const SizedBox(height: 20),
           
           // Generation Parameters
           _buildDetailSection('Generation Parameters', [
-            _buildDetailItem('Model', _currentGeneration.parameters['model'] ?? 'Unknown'),
-            _buildDetailItem('Dimensions', '${_currentGeneration.parameters['width']}x${_currentGeneration.parameters['height']}'),
-            _buildDetailItem('Steps', _currentGeneration.parameters['steps']?.toString() ?? 'Unknown'),
-            _buildDetailItem('CFG Scale', _currentGeneration.parameters['cfg_scale']?.toString() ?? 'Unknown'),
-            _buildDetailItem('Sampler', _currentGeneration.parameters['sampler'] ?? 'Unknown'),
-            _buildDetailItem('Seed', _currentGeneration.parameters['seed']?.toString() ?? 'Unknown'),
+            _buildDetailItem('Model', generation.parameters['model_name'] ?? generation.parameters['model'] ?? 'Unknown'),
+            // if (generation.parameters['provider'] != null)
+            //   _buildDetailItem('Provider', generation.parameters['provider']?.toString() ?? 'Unknown'),
+            _buildDetailItem('Dimensions', '${generation.parameters['width']}x${generation.parameters['height']}'),
+            _buildDetailItem('Steps', generation.parameters['steps']?.toString() ?? 'Unknown'),
+            _buildDetailItem('CFG Scale', generation.parameters['cfg_scale']?.toString() ?? 'Unknown'),
+            _buildDetailItem('Sampler', generation.parameters['sampler_name'] ?? generation.parameters['sampler'] ?? 'Unknown'),
+            _buildDetailItem('Seed', generation.parameters['seed']?.toString() ?? 'Unknown'),
+            if (generation.parameters['scheduler'] != null)
+              _buildDetailItem('Scheduler', generation.parameters['scheduler']?.toString() ?? 'Unknown'),
           ]),
           
           const SizedBox(height: 20),
           
           // Prompts
           _buildDetailSection('Prompts', [
-            _buildTextDetailItem('Positive Prompt', _currentGeneration.parameters['positive_prompt'] ?? 'No prompt'),
-            if (_currentGeneration.parameters['negative_prompt'] != null && _currentGeneration.parameters['negative_prompt'].toString().isNotEmpty)
-              _buildTextDetailItem('Negative Prompt', _currentGeneration.parameters['negative_prompt']),
+            _buildTextDetailItem('Positive Prompt', generation.parameters['positive_prompt'] ?? generation.parameters['prompt'] ?? 'No prompt'),
+            if ((generation.parameters['negative_prompt'] ?? '').toString().isNotEmpty)
+              _buildTextDetailItem('Negative Prompt', generation.parameters['negative_prompt']),
           ]),
           
           // LoRAs if any
-          if (_currentGeneration.parameters['loras'] != null && (_currentGeneration.parameters['loras'] as List).isNotEmpty)
+          if (generation.parameters['loras'] != null && (generation.parameters['loras'] as List).isNotEmpty)
             ...[
               const SizedBox(height: 20),
               _buildDetailSection('LoRAs', [
-                for (final lora in _currentGeneration.parameters['loras'] as List)
+                for (final lora in generation.parameters['loras'] as List)
                   _buildDetailItem(lora['name'], 'Strength: ${lora['strength']}'),
               ]),
             ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorSection(ImageGeneration generation) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: Colors.red.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'Generation Failed',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.red.withOpacity(0.2)),
+            ),
+            child: Text(
+              generation.errorMessage ?? 'Unknown error. Some mysterious cosmic event has occurred...',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -585,8 +823,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
   }
 
 
-  Future<void> _downloadImage(BuildContext context) async {
-    final imageUrl = _currentGeneration.imageUrl;
+  Future<void> _downloadImage(BuildContext context, ImageGeneration generation) async {
+    final imageUrl = generation.imageUrl;
     if (imageUrl == null || imageUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -597,7 +835,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       return;
     }
 
-    final defaultFileName = _generateDefaultFileName();
+    final defaultFileName = _generateDefaultFileName(generation);
     
     await FileDownloadService.downloadFile(
       url: imageUrl,
@@ -614,15 +852,16 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     );
   }
 
-  String _generateDefaultFileName() {
+  String _generateDefaultFileName(ImageGeneration generation) {
     // Generate a filename based on the prompt or asset name
     String baseName = 'generated_image';
     
     if (widget.asset != null && widget.asset!.name.isNotEmpty) {
       baseName = widget.asset!.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
-    } else if (_currentGeneration.parameters['positive_prompt'] != null) {
-      final prompt = _currentGeneration.parameters['positive_prompt'].toString();
-      if (prompt.isNotEmpty) {
+    } else {
+      // Try both 'positive_prompt' and 'prompt' field names
+      final prompt = (generation.parameters['positive_prompt'] ?? generation.parameters['prompt'])?.toString();
+      if (prompt != null && prompt.isNotEmpty) {
         // Take first few words of prompt and sanitize
         final words = prompt.split(' ').take(3).join('_');
         baseName = words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
@@ -634,8 +873,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     
     // Determine file extension from imageUrl or default to png
     String extension = 'png';
-    if (_currentGeneration.imageUrl != null && _currentGeneration.imageUrl!.isNotEmpty) {
-      final url = _currentGeneration.imageUrl!;
+    if (generation.imageUrl != null && generation.imageUrl!.isNotEmpty) {
+      final url = generation.imageUrl!;
       if (url.contains('.jpg') || url.contains('.jpeg')) {
         extension = 'jpg';
       } else if (url.contains('.webp')) {

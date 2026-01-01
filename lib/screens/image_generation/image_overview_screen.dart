@@ -3,14 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io' show File;
 import '../../providers/image_generation_provider.dart';
-import '../../providers/subscription_provider.dart';
 import '../../models/image_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../widgets/create_assets_from_doc_dialog.dart';
 import '../../widgets/quota_status_widget.dart';
 import '../../services/file_download_service.dart';
-import 'widgets/asset_detail_screen.dart';
+import 'widgets/image_asset_detail_screen.dart';
 
 class ImageOverviewScreen extends StatefulWidget {
   final String projectId;
@@ -844,10 +843,11 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     if (asset.name.isNotEmpty) {
       baseName =
           asset.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
-    } else if (favoriteGeneration.parameters['positive_prompt'] != null) {
-      final prompt =
-          favoriteGeneration.parameters['positive_prompt'].toString();
-      if (prompt.isNotEmpty) {
+    } else {
+      // Try both 'positive_prompt' and 'prompt' field names (API may return either)
+      final prompt = (favoriteGeneration.parameters['positive_prompt'] ?? 
+                     favoriteGeneration.parameters['prompt'])?.toString();
+      if (prompt != null && prompt.isNotEmpty) {
         final words = prompt.split(' ').take(3).join('_');
         baseName =
             words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
@@ -872,7 +872,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   void _showAssetDetail(ImageAsset asset, ImageGenerationProvider provider) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => AssetDetailScreen(asset: asset),
+        builder: (context) => ImageAssetDetailScreen(asset: asset),
       ),
     );
   }

@@ -80,6 +80,7 @@ class ImageGeneration {
   final DateTime createdAt;
   final GenerationStatus status;
   final bool isFavorite;
+  final String? errorMessage; // Error message when generation fails
 
   ImageGeneration({
     required this.id,
@@ -90,6 +91,7 @@ class ImageGeneration {
     required this.createdAt,
     required this.status,
     this.isFavorite = false,
+    this.errorMessage,
   });
 
   ImageGeneration copyWith({
@@ -101,6 +103,7 @@ class ImageGeneration {
     DateTime? createdAt,
     GenerationStatus? status,
     bool? isFavorite,
+    String? errorMessage,
   }) {
     return ImageGeneration(
       id: id ?? this.id,
@@ -111,6 +114,7 @@ class ImageGeneration {
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
       isFavorite: isFavorite ?? this.isFavorite,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }

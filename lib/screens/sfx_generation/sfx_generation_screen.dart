@@ -6,7 +6,7 @@ import '../../models/sfx_generation_models.dart';
 import '../../responsive.dart';
 import '../../controllers/menu_app_controller.dart';
 import '../../utils/error_handler.dart';
-import 'widgets/audio_detail_dialog.dart';
+import 'widgets/sfx_detail_dialog.dart';
 
 class SfxGenerationScreen extends StatefulWidget {
   final String projectId;
@@ -720,7 +720,7 @@ class _SfxGenerationScreenState extends State<SfxGenerationScreen> {
         if (context.mounted) {
           showDialog(
             context: context,
-            builder: (context) => AudioDetailDialog(
+            builder: (context) => SfxDetailDialog(
               generation: generation,
               asset: freshAsset,
               onFavoriteToggle: freshAsset != null

@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../providers/sfx_generation_provider.dart';
 import '../../../models/sfx_generation_models.dart';
 import '../../../responsive.dart';
-import 'audio_detail_dialog.dart';
+import 'sfx_detail_dialog.dart';
 
 class SfxAssetDetailScreen extends StatefulWidget {
   final SfxAsset asset;
@@ -568,7 +568,7 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
   void _showGenerationDetails(SfxGeneration generation) async {
     await showDialog(
       context: context,
-      builder: (context) => AudioDetailDialog(
+      builder: (context) => SfxDetailDialog(
         generation: generation,
         asset: _currentAsset,
         onFavoriteToggle: () => _toggleFavorite(generation),

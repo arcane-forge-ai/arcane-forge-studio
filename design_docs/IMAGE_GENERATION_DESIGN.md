@@ -273,7 +273,7 @@ class ImageAssetCard extends StatefulWidget {
 ### Asset Detail View
 
 ```dart
-class AssetDetailScreen extends StatefulWidget {
+class ImageAssetDetailScreen extends StatefulWidget {
   // Shows all generations for an asset
   // Grid of generated images
   // Generation parameters for each

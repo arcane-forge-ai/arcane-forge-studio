@@ -587,15 +587,29 @@ class ApiImageAssetService implements ImageAssetService {
 
   /// Parse API response to ImageGeneration model
   ImageGeneration _parseImageGeneration(Map<String, dynamic> json) {
+    // Parse parameters and merge top-level fields that should be in parameters
+    final parameters = Map<String, dynamic>.from(json['parameters'] as Map? ?? {});
+    
+    // Add model_name from top level if not in parameters
+    if (json['model_name'] != null && !parameters.containsKey('model_name')) {
+      parameters['model_name'] = json['model_name'];
+    }
+    
+    // Add provider from top level if not in parameters
+    if (json['provider'] != null && !parameters.containsKey('provider')) {
+      parameters['provider'] = json['provider'];
+    }
+    
     return ImageGeneration(
       id: json['id'] as String,
       assetId: json['asset_id'] as String,
       imagePath: json['image_path'] as String? ?? '',
       imageUrl: json['image_url'] as String?,
-      parameters: Map<String, dynamic>.from(json['parameters'] as Map? ?? {}),
+      parameters: parameters,
       createdAt: DateTime.parse(json['created_at'] as String),
       status: _parseGenerationStatus(json['status'] as String),
       isFavorite: json['is_favorite'] as bool? ?? false,
+      errorMessage: json['error_message'] as String?,
     );
   }
 
@@ -696,6 +710,7 @@ class MockImageAssetService implements ImageAssetService {
       createdAt: DateTime.now(),
       status: status,
       isFavorite: false,
+      errorMessage: null,
     );
     
     final assetIndex = _mockAssets.indexWhere((a) => a.id == assetId);
@@ -836,6 +851,7 @@ class MockImageAssetService implements ImageAssetService {
         createdAt: DateTime.now().subtract(Duration(hours: _random.nextInt(48))),
         status: GenerationStatus.completed,
         isFavorite: index == 0, // First generation is favorite
+        errorMessage: null,
       );
     });
   }
