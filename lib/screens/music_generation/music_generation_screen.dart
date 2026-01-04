@@ -392,7 +392,7 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
         // Duration
         _buildFormSection(
           'Duration (seconds)',
-          'Target duration for the generated music (1 - 600 seconds / 10 minutes)',
+          'Target duration for the generated music (1 - 360 seconds / 6 minutes)',
           TextField(
             controller: _durationController,
             style: const TextStyle(color: Colors.white),
@@ -857,8 +857,8 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
 
     // Validate duration
     final durationSeconds = int.tryParse(_durationController.text) ?? 30;
-    if (durationSeconds < 1 || durationSeconds > 600) {
-      _showErrorDialog('Duration must be between 1 and 600 seconds');
+    if (durationSeconds < 1 || durationSeconds > 360) {
+      _showErrorDialog('Duration must be between 1 and 360 seconds');
       return;
     }
 
