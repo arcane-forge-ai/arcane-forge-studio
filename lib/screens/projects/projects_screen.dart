@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utils/app_constants.dart' as app_utils;
 import '../../services/projects_api_service.dart';
 import '../game_design_assistant/models/project_model.dart';
@@ -43,6 +44,18 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     });
 
     try {
+      // Ensure we have a valid auth session before making API calls
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (authProvider.isAuthenticated) {
+        try {
+          // Verify and refresh session if needed
+          await Supabase.instance.client.auth.refreshSession();
+        } catch (e) {
+          print('Session refresh check: $e');
+          // Continue anyway - the API interceptor will handle it
+        }
+      }
+      
       _projects = await _getProjectsApiService().getProjects();
     } catch (e) {
       print('Error loading projects: $e');

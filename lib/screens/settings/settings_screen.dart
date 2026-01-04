@@ -38,6 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Timer? _progressPollTimer;
   String _appVersion = 'Loading...';
   String _buildNumber = '';
+  static const String _buildTime = String.fromEnvironment('BUILD_TIME', defaultValue: '');
 
   /// Check if we're in development mode
   bool get _isDevelopmentMode {
@@ -545,9 +546,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     title: const Text('App Version'),
                     subtitle: Text(
-                      _buildNumber.isNotEmpty 
-                        ? 'Version $_appVersion (Build $_buildNumber)'
-                        : 'Version $_appVersion',
+                      _buildTime.isNotEmpty
+                          ? 'Version $_appVersion ($_buildTime)'
+                          : (_buildNumber.isNotEmpty 
+                              ? 'Version $_appVersion (Build $_buildNumber)'
+                              : 'Version $_appVersion'),
                     ),
                     enabled: false,
                   ),

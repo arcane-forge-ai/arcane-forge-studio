@@ -65,11 +65,41 @@ class ApiClient {
         return handler.next(options);
       },
       onError: (error, handler) async {
-        // Handle 401 Unauthorized errors
-        if (error.response?.statusCode == 401) {
-          print('Unauthorized request - token may be expired');
-          // Could trigger re-authentication here
+        // Handle 401 Unauthorized errors by refreshing token and retrying
+        if (error.response?.statusCode == 401 && 
+            _authProvider?.isAuthenticated == true) {
+          print('🔄 Received 401, attempting to refresh token...');
+          
+          try {
+            // Attempt to refresh the session
+            final response = await Supabase.instance.client.auth.refreshSession();
+            final newSession = response.session;
+            
+            if (newSession?.accessToken != null) {
+              print('✅ Token refreshed successfully, retrying request...');
+              
+              // Update the failed request with new token
+              error.requestOptions.headers['authorization'] = 
+                  'Bearer ${newSession!.accessToken}';
+              
+              // Retry the request with new token
+              try {
+                final retryResponse = await _dio.fetch(error.requestOptions);
+                return handler.resolve(retryResponse);
+              } catch (e) {
+                print('❌ Retry failed after token refresh: $e');
+                return handler.next(error);
+              }
+            } else {
+              print('❌ Token refresh returned null session');
+              return handler.next(error);
+            }
+          } catch (e) {
+            print('❌ Token refresh failed: $e');
+            return handler.next(error);
+          }
         }
+        
         return handler.next(error);
       },
     ));
