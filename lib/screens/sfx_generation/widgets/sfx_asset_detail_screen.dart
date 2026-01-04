@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/sfx_generation_provider.dart';
 import '../../../models/sfx_generation_models.dart';
@@ -83,6 +84,8 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildAssetInfo(),
+            const SizedBox(height: 16),
+            _buildAssetIdSection(),
             const SizedBox(height: 32),
             _buildGenerationsSection(),
           ],
@@ -217,6 +220,57 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAssetIdSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3A3A3A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF505050)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+          const SizedBox(width: 8),
+          const Text(
+            'Asset ID:',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _currentAsset.id,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontFamily: 'monospace',
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            onPressed: () => _copyToClipboard(_currentAsset.id, 'Asset ID'),
+            icon: const Icon(Icons.copy, size: 16, color: Colors.white54),
+            tooltip: 'Copy Asset ID',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label copied to clipboard'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
       ),
     );
   }

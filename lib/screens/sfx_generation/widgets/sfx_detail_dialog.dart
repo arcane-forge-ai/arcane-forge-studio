@@ -295,6 +295,49 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
             ),
           ),
           const Spacer(),
+          // Copy Generation ID button
+          Tooltip(
+            message: 'Copy Generation ID',
+            child: InkWell(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: widget.generation.id));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Generation ID copied to clipboard'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3A3A),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0xFF404040)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.fingerprint, size: 14, color: Colors.white54),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.generation.id.length > 8 
+                          ? '${widget.generation.id.substring(0, 8)}...' 
+                          : widget.generation.id,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           // Favorite button
           IconButton(
             onPressed: _isTogglingFavorite ? null : _handleFavoriteToggle,
@@ -510,6 +553,18 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
           
           const SizedBox(height: 20),
           
+          // Technical Details
+          _buildDetailSection('Technical Details', [
+            _buildCopyableDetailItem('Generation ID', widget.generation.id),
+            _buildCopyableDetailItem('Asset ID', widget.generation.assetId),
+            if (widget.generation.audioPath != null && widget.generation.audioPath!.isNotEmpty)
+              _buildCopyableDetailItem('Audio Path', widget.generation.audioPath!),
+            if (widget.generation.audioUrl != null && widget.generation.audioUrl!.isNotEmpty)
+              _buildCopyableDetailItem('Audio URL', widget.generation.audioUrl!),
+          ]),
+          
+          const SizedBox(height: 20),
+          
           // Generation Parameters
           _buildDetailSection('Generation Parameters', [
             _buildDetailItem('Model', widget.generation.parameters['model'] ?? 'Unknown'),
@@ -624,6 +679,70 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCopyableDetailItem(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label:',
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          InkWell(
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: value));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('$label copied to clipboard'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3A3A3A),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF404040)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      value,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.copy,
+                    size: 14,
+                    color: Colors.white54,
+                  ),
+                ],
               ),
             ),
           ),

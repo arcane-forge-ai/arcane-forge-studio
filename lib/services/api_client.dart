@@ -39,7 +39,7 @@ class ApiClient {
     _dio.options.baseUrl = apiUrl;
     _dio.options.headers['Content-Type'] = 'application/json';
     _dio.options.connectTimeout = const Duration(seconds: 30);
-    _dio.options.receiveTimeout = const Duration(seconds: 60);
+    _dio.options.receiveTimeout = const Duration(minutes: 5);
 
     // Add authentication interceptor
     _dio.interceptors.add(InterceptorsWrapper(

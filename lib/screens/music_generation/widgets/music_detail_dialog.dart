@@ -204,6 +204,8 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                     const SizedBox(height: 24),
                     _buildInfoSection(),
                     const SizedBox(height: 24),
+                    _buildTechnicalDetailsSection(),
+                    const SizedBox(height: 24),
                     _buildParametersSection(),
                     if (widget.generation.metadata.isNotEmpty) ...[
                       const SizedBox(height: 24),
@@ -243,6 +245,49 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
             ),
           ),
           const Spacer(),
+          // Copy Generation ID button
+          Tooltip(
+            message: 'Copy Generation ID',
+            child: InkWell(
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: widget.generation.id));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Generation ID copied to clipboard'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3A3A),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0xFF404040)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.fingerprint, size: 14, color: Colors.white54),
+                    const SizedBox(width: 4),
+                    Text(
+                      widget.generation.id.length > 8 
+                          ? '${widget.generation.id.substring(0, 8)}...' 
+                          : widget.generation.id,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           IconButton(
             onPressed: _isTogglingFavorite ? null : _handleFavoriteToggle,
             icon: _isTogglingFavorite
@@ -484,11 +529,44 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFF404040)),
       ),
+      child:                     Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Information',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildInfoRow('Asset', widget.asset?.name ?? 'Unknown'),
+                  _buildInfoRow('Created', _formatDetailedDateTime(widget.generation.createdAt)),
+                  if (widget.generation.duration != null)
+                    _buildInfoRow('Duration', _formatDuration(widget.generation.duration!)),
+                  if (widget.generation.fileSize != null)
+                    _buildInfoRow('File Size', '${(widget.generation.fileSize! / 1024).toStringAsFixed(2)} KB'),
+                  if (widget.generation.format != null)
+                    _buildInfoRow('Format', widget.generation.format!.toUpperCase()),
+                ],
+              ),
+    );
+  }
+
+  Widget _buildTechnicalDetailsSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF404040)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Information',
+            'Technical Details',
             style: TextStyle(
               color: Colors.white,
               fontSize: 16,
@@ -496,20 +574,12 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
             ),
           ),
           const SizedBox(height: 12),
-          _buildInfoRow('Asset', widget.asset?.name ?? 'Unknown'),
-          _buildInfoRow('Generation ID', widget.generation.id),
-          _buildInfoRow('Asset ID', widget.generation.assetId),
-          _buildInfoRow('Created', _formatDetailedDateTime(widget.generation.createdAt)),
-          if (widget.generation.duration != null)
-            _buildInfoRow('Duration', _formatDuration(widget.generation.duration!)),
-          if (widget.generation.fileSize != null)
-            _buildInfoRow('File Size', '${(widget.generation.fileSize! / 1024).toStringAsFixed(2)} KB'),
-          if (widget.generation.format != null)
-            _buildInfoRow('Format', widget.generation.format!.toUpperCase()),
+          _buildCopyablePathRow('Generation ID', widget.generation.id),
+          _buildCopyablePathRow('Asset ID', widget.generation.assetId),
           if (widget.generation.audioPath != null && widget.generation.audioPath!.isNotEmpty)
-            _buildPathRow('Audio Path', widget.generation.audioPath!),
+            _buildCopyablePathRow('Audio Path', widget.generation.audioPath!),
           if (widget.generation.audioUrl != null && widget.generation.audioUrl!.isNotEmpty)
-            _buildPathRow('Audio URL', widget.generation.audioUrl!),
+            _buildCopyablePathRow('Audio URL', widget.generation.audioUrl!),
         ],
       ),
     );
@@ -552,7 +622,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                 color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Text(
+              child: SelectableText(
                 widget.generation.parameters['prompt'].toString(),
                 style: const TextStyle(
                   color: Colors.white,
@@ -638,7 +708,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
     );
   }
 
-  Widget _buildPathRow(String label, String path) {
+  Widget _buildCopyablePathRow(String label, String path) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -648,39 +718,53 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
             label,
             style: const TextStyle(
               color: Colors.white54,
-              fontSize: 13,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 4),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2A2A2A),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SelectableText(
-                    path,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11,
-                      fontFamily: 'monospace',
+          InkWell(
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: path));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('$label copied to clipboard'),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF404040)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      path,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
                     ),
                   ),
-                ),
-                IconButton(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: path));
-                  },
-                  icon: const Icon(Icons.copy, color: Colors.white54, size: 16),
-                  tooltip: 'Copy path',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.copy,
+                    size: 14,
+                    color: Colors.white54,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
