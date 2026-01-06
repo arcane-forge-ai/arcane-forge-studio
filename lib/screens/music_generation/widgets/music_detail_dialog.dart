@@ -796,6 +796,8 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
     switch (status) {
       case GenerationStatus.completed:
         return Colors.green;
+      case GenerationStatus.queued:
+        return Colors.amber;
       case GenerationStatus.generating:
         return Colors.orange;
       case GenerationStatus.failed:
@@ -809,6 +811,8 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
     switch (status) {
       case GenerationStatus.completed:
         return Icons.check_circle;
+      case GenerationStatus.queued:
+        return Icons.schedule;
       case GenerationStatus.generating:
         return Icons.hourglass_empty;
       case GenerationStatus.failed:

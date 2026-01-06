@@ -310,6 +310,10 @@ class ApiSfxAssetService implements SfxAssetService {
       duration: (json['duration'] as num?)?.toDouble(),
       format: json['format'] as String?,
       metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? {}),
+      queuedAt: json['queued_at'] != null ? DateTime.parse(json['queued_at'] as String) : null,
+      startedAt: json['started_at'] != null ? DateTime.parse(json['started_at'] as String) : null,
+      completedAt: json['completed_at'] != null ? DateTime.parse(json['completed_at'] as String) : null,
+      errorMessage: json['error_message'] as String?,
     );
   }
 
@@ -391,6 +395,8 @@ class ApiSfxAssetService implements SfxAssetService {
     switch (status.toLowerCase()) {
       case 'pending':
         return GenerationStatus.pending;
+      case 'queued':
+        return GenerationStatus.queued;
       case 'generating':
         return GenerationStatus.generating;
       case 'completed':

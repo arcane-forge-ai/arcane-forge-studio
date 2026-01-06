@@ -194,11 +194,11 @@ class SfxGenerationProvider extends ChangeNotifier implements AssetCreationProvi
         throw Exception('Asset not found: $assetId');
       }
 
-      // Add generation to asset (server will generate the ID and handle ElevenLabs)
+      // Add generation to asset (server will queue the job and return immediately)
       await _assetService.addSfxGeneration(
         assetId,
         request,
-        status: GenerationStatus.generating,
+        status: GenerationStatus.queued,
       );
 
       // Refresh quota after successful generation

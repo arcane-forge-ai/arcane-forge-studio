@@ -1,5 +1,6 @@
 enum GenerationStatus {
   pending,
+  queued,
   generating,
   completed,
   failed,
@@ -87,6 +88,10 @@ class SfxGeneration {
   final double? duration;
   final String? format;
   final Map<String, dynamic> metadata;
+  final DateTime? queuedAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final String? errorMessage;
 
   SfxGeneration({
     required this.id,
@@ -101,6 +106,10 @@ class SfxGeneration {
     this.duration,
     this.format,
     this.metadata = const {},
+    this.queuedAt,
+    this.startedAt,
+    this.completedAt,
+    this.errorMessage,
   });
 
   SfxGeneration copyWith({
@@ -116,6 +125,10 @@ class SfxGeneration {
     double? duration,
     String? format,
     Map<String, dynamic>? metadata,
+    DateTime? queuedAt,
+    DateTime? startedAt,
+    DateTime? completedAt,
+    String? errorMessage,
   }) {
     return SfxGeneration(
       id: id ?? this.id,
@@ -130,6 +143,10 @@ class SfxGeneration {
       duration: duration ?? this.duration,
       format: format ?? this.format,
       metadata: metadata ?? this.metadata,
+      queuedAt: queuedAt ?? this.queuedAt,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }
