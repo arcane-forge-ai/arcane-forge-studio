@@ -82,6 +82,10 @@ class MusicGeneration {
   final double? duration;
   final String? format;
   final Map<String, dynamic> metadata;
+  final DateTime? queuedAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+  final String? errorMessage;
 
   MusicGeneration({
     required this.id,
@@ -96,6 +100,10 @@ class MusicGeneration {
     this.duration,
     this.format,
     this.metadata = const {},
+    this.queuedAt,
+    this.startedAt,
+    this.completedAt,
+    this.errorMessage,
   });
 
   MusicGeneration copyWith({
@@ -111,6 +119,10 @@ class MusicGeneration {
     double? duration,
     String? format,
     Map<String, dynamic>? metadata,
+    DateTime? queuedAt,
+    DateTime? startedAt,
+    DateTime? completedAt,
+    String? errorMessage,
   }) {
     return MusicGeneration(
       id: id ?? this.id,
@@ -125,6 +137,10 @@ class MusicGeneration {
       duration: duration ?? this.duration,
       format: format ?? this.format,
       metadata: metadata ?? this.metadata,
+      queuedAt: queuedAt ?? this.queuedAt,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }

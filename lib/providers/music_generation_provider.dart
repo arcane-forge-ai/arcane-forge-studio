@@ -199,11 +199,11 @@ class MusicGenerationProvider extends ChangeNotifier implements AssetCreationPro
         throw Exception('Asset not found: $assetId');
       }
 
-      // Add generation to asset (server will generate the ID and handle ElevenLabs)
+      // Add generation to asset (server will queue the job and return immediately)
       await _assetService.addMusicGeneration(
         assetId,
         request,
-        status: GenerationStatus.generating,
+        status: GenerationStatus.queued,
       );
 
       // Refresh quota after successful generation

@@ -488,11 +488,13 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
           child: Icon(
             generation.status == GenerationStatus.completed
                 ? Icons.audiotrack
-                : generation.status == GenerationStatus.generating
-                    ? Icons.hourglass_empty
-                    : generation.status == GenerationStatus.failed
-                        ? Icons.error
-                        : Icons.pending,
+                : generation.status == GenerationStatus.queued
+                    ? Icons.schedule
+                    : generation.status == GenerationStatus.generating
+                        ? Icons.hourglass_empty
+                        : generation.status == GenerationStatus.failed
+                            ? Icons.error
+                            : Icons.pending,
             color: Colors.white,
             size: 20,
           ),
@@ -539,6 +541,9 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
       case GenerationStatus.completed:
         icon = Icons.check_circle;
         break;
+      case GenerationStatus.queued:
+        icon = Icons.schedule;
+        break;
       case GenerationStatus.generating:
         icon = Icons.hourglass_empty;
         break;
@@ -557,6 +562,8 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
     switch (status) {
       case GenerationStatus.completed:
         return Colors.green;
+      case GenerationStatus.queued:
+        return Colors.amber;
       case GenerationStatus.generating:
         return Colors.orange;
       case GenerationStatus.failed:

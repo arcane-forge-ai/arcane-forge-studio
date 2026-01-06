@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -42,6 +43,9 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
   bool _isBatchGenerating = false;
   bool _isPromptGenerating = false;
 
+  // Polling state
+  Timer? _generationPollTimer;
+
   // Providers
   late MusicGenerationProvider musicGenerationProvider;
 
@@ -59,7 +63,9 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
         Provider.of<MusicGenerationProvider>(context, listen: false);
 
     // Load initial data
-    _loadAssets();
+    _loadAssets().then((_) {
+      _startGenerationPolling();
+    });
   }
 
   Future<void> _loadAssets() async {
@@ -75,10 +81,44 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
 
   @override
   void dispose() {
+    _generationPollTimer?.cancel();
     _promptController.dispose();
     _durationController.dispose();
     _batchCountController.dispose();
     super.dispose();
+  }
+
+  bool _hasInFlightGenerations() {
+    if (_selectedAsset != null) {
+      return _selectedAssetGenerations.any((g) =>
+          g.status == GenerationStatus.queued ||
+          g.status == GenerationStatus.generating);
+    }
+    return _availableAssets.any((asset) =>
+        asset.generations.any((g) =>
+            g.status == GenerationStatus.queued ||
+            g.status == GenerationStatus.generating));
+  }
+
+  void _startGenerationPolling() {
+    _generationPollTimer?.cancel();
+    _generationPollTimer =
+        Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!mounted) return;
+
+      // Only poll when there's something in-flight to update
+      if (!_hasInFlightGenerations()) return;
+
+      try {
+        if (_selectedAsset != null) {
+          await _refreshSelectedAssetGenerations();
+        } else {
+          await _loadAssets();
+        }
+      } catch (_) {
+        // Ignore polling errors; UI will update on next successful poll/user action.
+      }
+    });
   }
 
   /// Refresh generations for the currently selected asset
@@ -754,6 +794,8 @@ class _MusicGenerationScreenState extends State<MusicGenerationScreen> {
     switch (status) {
       case GenerationStatus.completed:
         return const Icon(Icons.check_circle, color: Colors.green, size: 24);
+      case GenerationStatus.queued:
+        return const Icon(Icons.hourglass_empty, color: Colors.amber, size: 24);
       case GenerationStatus.generating:
         return const SizedBox(
           width: 24,

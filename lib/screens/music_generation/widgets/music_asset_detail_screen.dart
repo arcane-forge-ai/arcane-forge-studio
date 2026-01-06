@@ -489,11 +489,13 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
           child: Icon(
             generation.status == GenerationStatus.completed
                 ? Icons.music_note
-                : generation.status == GenerationStatus.generating
-                    ? Icons.hourglass_empty
-                    : generation.status == GenerationStatus.failed
-                        ? Icons.error
-                        : Icons.pending,
+                : generation.status == GenerationStatus.queued
+                    ? Icons.schedule
+                    : generation.status == GenerationStatus.generating
+                        ? Icons.hourglass_empty
+                        : generation.status == GenerationStatus.failed
+                            ? Icons.error
+                            : Icons.pending,
             color: Colors.white,
             size: 20,
           ),
@@ -540,6 +542,9 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
       case GenerationStatus.completed:
         icon = Icons.check_circle;
         break;
+      case GenerationStatus.queued:
+        icon = Icons.schedule;
+        break;
       case GenerationStatus.generating:
         icon = Icons.hourglass_empty;
         break;
@@ -558,6 +563,8 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
     switch (status) {
       case GenerationStatus.completed:
         return Colors.green;
+      case GenerationStatus.queued:
+        return Colors.amber;
       case GenerationStatus.generating:
         return Colors.orange;
       case GenerationStatus.failed:
