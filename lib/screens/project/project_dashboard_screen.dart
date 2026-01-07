@@ -8,7 +8,7 @@ import 'components/project_home_screen.dart';
 import '../game_design_assistant/game_design_assistant_screen.dart';
 import '../knowledge_base/knowledge_base_screen.dart';
 import '../image_generation/image_overview_screen.dart';
-import '../image_generation/image_generation_screen.dart';
+import '../image_generation/workflow/select_target_screen.dart';
 import '../sfx_generation/sfx_generation_screen.dart';
 import '../sfx_generation/sfx_overview_screen.dart';
 import '../music_generation/music_generation_screen.dart';
@@ -83,8 +83,18 @@ class ProjectDashboardScreen extends StatelessWidget {
                       return ImageOverviewScreen(
                           projectId: projectId, projectName: projectName);
                     case ScreenType.imageGenerationGeneration:
-                      return ImageGenerationScreen(
-                          projectId: projectId, projectName: projectName);
+                      // Get pre-selected asset from controller
+                      final preSelectedAsset = controller.preSelectedAsset;
+                      // Clear it after the frame is built to avoid setState during build
+                      if (preSelectedAsset != null) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          controller.clearPreSelectedAsset();
+                        });
+                      }
+                      return SelectTargetScreen(
+                          projectId: projectId,
+                          projectName: projectName,
+                          preSelectedAsset: preSelectedAsset);
                     case ScreenType.soundGenerator:
                     case ScreenType.sfxGenerationGeneration:
                       return SfxGenerationScreen(

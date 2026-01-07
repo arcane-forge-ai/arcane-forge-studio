@@ -91,6 +91,13 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
     super.dispose();
   }
 
+  void _navigateToGeneration() {
+    // Navigate to generation screen with pre-selected asset
+    Navigator.of(context).pop();
+    Provider.of<MenuAppController>(context, listen: false)
+        .changeScreen(ScreenType.imageGenerationGeneration, preSelectedAsset: _asset);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -161,6 +168,19 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
   Widget _buildHeaderActions() {
     return Row(
       children: [
+        ElevatedButton.icon(
+          onPressed: _navigateToGeneration,
+          icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+          label: const Text(
+            'Generate Image',
+            style: TextStyle(color: Colors.white),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF0078D4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          ),
+        ),
+        const SizedBox(width: 12),
         IconButton(
           onPressed: _isLoading ? null : _refreshAsset,
           icon: _isLoading 
@@ -389,10 +409,10 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: () {
-              // Navigate to generation screen
+              // Navigate to generation screen with pre-selected asset
               Navigator.of(context).pop();
               Provider.of<MenuAppController>(context, listen: false)
-                  .changeScreen(ScreenType.imageGenerationGeneration);
+                  .changeScreen(ScreenType.imageGenerationGeneration, preSelectedAsset: _asset);
             },
             icon: const Icon(Icons.auto_awesome, color: Colors.white),
             label: const Text(

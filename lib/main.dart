@@ -5,6 +5,7 @@ import 'package:arcane_forge/providers/settings_provider.dart';
 import 'package:arcane_forge/providers/auth_provider.dart';
 import 'package:arcane_forge/providers/subscription_provider.dart';
 import 'package:arcane_forge/providers/image_generation_provider.dart';
+import 'package:arcane_forge/providers/workflow_provider.dart';
 import 'package:arcane_forge/providers/sfx_generation_provider.dart';
 import 'package:arcane_forge/services/sfx_generation_services.dart';
 import 'package:arcane_forge/providers/music_generation_provider.dart';
@@ -120,6 +121,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             authProvider: context.read<AuthProvider>(),
           ),
           update: (context, settingsProvider, authProvider, previous) => previous ?? ImageGenerationProvider(
+            settingsProvider,
+            authProvider: authProvider,
+          ),
+        ),
+        ChangeNotifierProxyProvider2<SettingsProvider, AuthProvider, WorkflowProvider>(
+          create: (context) => WorkflowProvider(
+            context.read<SettingsProvider>(),
+            authProvider: context.read<AuthProvider>(),
+          ),
+          update: (context, settingsProvider, authProvider, previous) => previous ?? WorkflowProvider(
             settingsProvider,
             authProvider: authProvider,
           ),
