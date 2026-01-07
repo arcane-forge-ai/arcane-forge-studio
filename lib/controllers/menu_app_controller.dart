@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/image_generation_models.dart';
 
 enum ScreenType {
   dashboard,
@@ -27,11 +28,19 @@ enum ScreenType {
 
 class MenuAppController extends ChangeNotifier {
   ScreenType _currentScreen = ScreenType.dashboard;
+  ImageAsset? _preSelectedAsset;
 
   ScreenType get currentScreen => _currentScreen;
+  ImageAsset? get preSelectedAsset => _preSelectedAsset;
 
-  void changeScreen(ScreenType screenType) {
+  void changeScreen(ScreenType screenType, {ImageAsset? preSelectedAsset}) {
     _currentScreen = screenType;
+    _preSelectedAsset = preSelectedAsset;
     notifyListeners();
+  }
+  
+  void clearPreSelectedAsset() {
+    _preSelectedAsset = null;
+    // No need to notify listeners - clearing doesn't need to trigger rebuild
   }
 }
