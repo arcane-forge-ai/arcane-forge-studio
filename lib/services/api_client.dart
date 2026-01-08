@@ -10,6 +10,9 @@ class ApiClient {
   final SettingsProvider? _settingsProvider;
   final AuthProvider? _authProvider;
   late final Dio _dio;
+  
+  // Token refresh synchronization
+  bool _isRefreshing = false;
 
   ApiClient({
     SettingsProvider? settingsProvider,
@@ -68,35 +71,118 @@ class ApiClient {
         // Handle 401 Unauthorized errors by refreshing token and retrying
         if (error.response?.statusCode == 401 && 
             _authProvider?.isAuthenticated == true) {
+          
+          // Check if this request has already been retried (prevent infinite loops)
+          final alreadyRetried = error.requestOptions.extra['_auth_retry_attempted'] == true;
+          if (alreadyRetried) {
+            print('🚫 Request already retried once, not retrying again');
+            return handler.next(error);
+          }
+          
+          // Check if refresh is already in progress or start a new one
+          // Use a double-check pattern to minimize race conditions
+          if (_isRefreshing) {
+            print('⏸️ Token refresh already in progress, waiting...');
+            
+            // Wait for the ongoing refresh to complete (max 15 seconds)
+            final maxWaitTime = DateTime.now().add(const Duration(seconds: 15));
+            while (_isRefreshing && DateTime.now().isBefore(maxWaitTime)) {
+              await Future.delayed(const Duration(milliseconds: 200));
+            }
+            
+            if (_isRefreshing) {
+              // Timeout - refresh took too long
+              print('⏱️ Token refresh timeout, proceeding with current state...');
+              _isRefreshing = false; // Force reset the flag
+              return handler.next(error);
+            }
+            
+            // After refresh completes, retry with potentially new token
+            print('▶️ Retrying request after token refresh...');
+            try {
+              final session = Supabase.instance.client.auth.currentSession;
+              if (session?.accessToken != null) {
+                error.requestOptions.headers['authorization'] = 
+                    'Bearer ${session!.accessToken}';
+                // Mark this request as having been retried
+                error.requestOptions.extra['_auth_retry_attempted'] = true;
+                final retryResponse = await _dio.fetch(error.requestOptions);
+                return handler.resolve(retryResponse);
+              }
+            } catch (e) {
+              print('❌ Retry after waiting failed: $e');
+            }
+            return handler.next(error);
+          }
+          
+          // Start token refresh process (we're the first one here)
+          // Note: There's still a small race condition window here in async code,
+          // but the retry flag prevents infinite loops if multiple requests proceed
+          _isRefreshing = true;
           print('🔄 Received 401, attempting to refresh token...');
           
           try {
-            // Attempt to refresh the session
-            final response = await Supabase.instance.client.auth.refreshSession();
-            final newSession = response.session;
-            
-            if (newSession?.accessToken != null) {
-              print('✅ Token refreshed successfully, retrying request...');
-              
-              // Update the failed request with new token
-              error.requestOptions.headers['authorization'] = 
-                  'Bearer ${newSession!.accessToken}';
-              
-              // Retry the request with new token
-              try {
-                final retryResponse = await _dio.fetch(error.requestOptions);
-                return handler.resolve(retryResponse);
-              } catch (e) {
-                print('❌ Retry failed after token refresh: $e');
-                return handler.next(error);
+            // Try to refresh the session (single attempt with delays)
+            for (int attempt = 0; attempt < 3; attempt++) {
+              if (attempt > 0) {
+                final delays = [2, 4];
+                final delay = Duration(seconds: delays[attempt - 1]);
+                print('⏳ Waiting ${delay.inSeconds}s before retry attempt ${attempt + 1}/3...');
+                await Future.delayed(delay);
               }
-            } else {
-              print('❌ Token refresh returned null session');
-              return handler.next(error);
+              
+              try {
+                print('📡 Calling Supabase refreshSession (attempt ${attempt + 1}/3)...');
+                final response = await Supabase.instance.client.auth.refreshSession();
+                final newSession = response.session;
+                
+                if (newSession?.accessToken != null) {
+                  print('✅ Token refreshed successfully');
+                  
+                  // Update the failed request with new token and mark as retried
+                  error.requestOptions.headers['authorization'] = 'Bearer ${newSession!.accessToken}';
+                  error.requestOptions.extra['_auth_retry_attempted'] = true;
+                  
+                  // Retry the request ONCE with new token
+                  try {
+                    final retryResponse = await _dio.fetch(error.requestOptions);
+                    return handler.resolve(retryResponse);
+                  } catch (retryError) {
+                    // If still 401 after refresh, token is invalid - log out immediately
+                    if (retryError is DioException && retryError.response?.statusCode == 401) {
+                      print('❌ Request still unauthorized after token refresh - logging out...');
+                      await _authProvider?.signOut();
+                      return handler.next(error);
+                    }
+                    // Non-401 error, just return it
+                    return handler.next(DioException(
+                      requestOptions: error.requestOptions,
+                      error: retryError,
+                    ));
+                  }
+                } else {
+                  print('❌ Token refresh returned null session (attempt ${attempt + 1}/3)');
+                  if (attempt == 2) {
+                    print('❌ Token refresh failed after 3 attempts - logging out...');
+                    await _authProvider?.signOut();
+                    return handler.next(error);
+                  }
+                }
+              } catch (e) {
+                print('❌ Token refresh error (attempt ${attempt + 1}/3): $e');
+                if (attempt == 2) {
+                  print('❌ Token refresh failed after 3 attempts - logging out...');
+                  await _authProvider?.signOut();
+                  return handler.next(error);
+                }
+              }
             }
-          } catch (e) {
-            print('❌ Token refresh failed: $e');
+            
             return handler.next(error);
+          } finally {
+            // ALWAYS release the lock, no matter what happens
+            _isRefreshing = false;
+            print('🔓 Token refresh lock released');
           }
         }
         

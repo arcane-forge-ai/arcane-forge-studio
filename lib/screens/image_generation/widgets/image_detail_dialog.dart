@@ -621,6 +621,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
   }
 
   Widget _buildErrorSection(ImageGeneration generation) {
+    final errorMessage = generation.errorMessage ?? 'Unknown error. Some mysterious cosmic event has occurred...';
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -634,21 +636,40 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.error_outline,
                 color: Colors.red,
                 size: 20,
               ),
-              SizedBox(width: 8),
-              Text(
+              const SizedBox(width: 8),
+              const Text(
                 'Generation Failed',
                 style: TextStyle(
                   color: Colors.red,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
+              ),
+              const Spacer(),
+              // Copy button
+              IconButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: errorMessage));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Error message copied to clipboard'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.copy, size: 18),
+                color: Colors.red,
+                tooltip: 'Copy error message',
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints(),
               ),
             ],
           ),
@@ -661,8 +682,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: Colors.red.withOpacity(0.2)),
             ),
-            child: Text(
-              generation.errorMessage ?? 'Unknown error. Some mysterious cosmic event has occurred...',
+            child: SelectableText(
+              errorMessage,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
