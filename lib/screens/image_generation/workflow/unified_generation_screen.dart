@@ -35,20 +35,29 @@ class UnifiedGenerationScreen extends StatefulWidget {
 class _UnifiedGenerationScreenState extends State<UnifiedGenerationScreen> {
   final TextEditingController _positivePromptController = TextEditingController();
   final TextEditingController _negativePromptController = TextEditingController();
-  final TextEditingController _widthController = TextEditingController(text: '512');
-  final TextEditingController _heightController = TextEditingController(text: '512');
   final TextEditingController _batchCountController = TextEditingController(text: '1');
   
+  String? _selectedAspectRatio;
   bool _isPromptGenerating = false;
+  bool _removeBackground = false;
   // bool _showAdvanced = false; // Commented out for future use
   List<ImageGeneration> _selectedAssetGenerations = [];
   bool _loadingGenerations = false;
   
   Timer? _generationPollTimer;
+  
+  // Background removal prompt suggestions
+  static const List<String> _backgroundPromptSuggestions = [
+    'simple background',
+    'clear background',
+    'white background',
+  ];
 
   @override
   void initState() {
     super.initState();
+    // Initialize aspect ratio from workflow's default
+    _selectedAspectRatio = widget.selectedWorkflow.defaultVersion?.defaultAspectRatio ?? '16:9';
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshSelectedAssetGenerations();
       _startGenerationPolling();
@@ -60,8 +69,6 @@ class _UnifiedGenerationScreenState extends State<UnifiedGenerationScreen> {
     _generationPollTimer?.cancel();
     _positivePromptController.dispose();
     _negativePromptController.dispose();
-    _widthController.dispose();
-    _heightController.dispose();
     _batchCountController.dispose();
     super.dispose();
   }
@@ -127,8 +134,9 @@ class _UnifiedGenerationScreenState extends State<UnifiedGenerationScreen> {
       final generatorInfo = {
         'workflow': widget.selectedWorkflow.name,
         'workflow_description': widget.selectedWorkflow.description,
-        'width': int.tryParse(_widthController.text) ?? 512,
-        'height': int.tryParse(_heightController.text) ?? 512,
+        'aspect_ratio': _selectedAspectRatio ?? widget.selectedWorkflow.defaultVersion?.defaultAspectRatio,
+        if (widget.userDescription != null && widget.userDescription!.isNotEmpty)
+          'user_request': widget.userDescription,
       };
 
       final prompt = await imageGenProvider.generateAutoPrompt(
@@ -176,14 +184,22 @@ class _UnifiedGenerationScreenState extends State<UnifiedGenerationScreen> {
       return;
     }
 
+    // Check if background prompts should be suggested when remove_background is enabled
+    if (_removeBackground) {
+      final shouldContinue = await _checkAndSuggestBackgroundPrompts();
+      if (!shouldContinue) {
+        return; // User cancelled
+      }
+    }
+
     final workflowProvider = Provider.of<WorkflowProvider>(context, listen: false);
     
     try {
       // Build config overrides from user input
       final configOverrides = <String, dynamic>{
-        'width': int.tryParse(_widthController.text) ?? 512,
-        'height': int.tryParse(_heightController.text) ?? 512,
+        'aspect_ratio': _selectedAspectRatio ?? widget.selectedWorkflow.defaultVersion?.defaultAspectRatio ?? '16:9',
         'batch_count': int.tryParse(_batchCountController.text) ?? 1,
+        'remove_background': _removeBackground,
         if (_negativePromptController.text.isNotEmpty)
           'negative_prompt': _negativePromptController.text,
       };
@@ -608,29 +624,16 @@ class _UnifiedGenerationScreenState extends State<UnifiedGenerationScreen> {
               ),
               const SizedBox(height: 24),
               
-              // Size Controls
-              Text(
-                'Image Size',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildNumberField('Width', _widthController),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildNumberField('Height', _heightController),
-                  ),
-                ],
-              ),
+              // Aspect Ratio Control
+              _buildAspectRatioDropdown(),
               const SizedBox(height: 20),
               
               // Batch Count
               _buildNumberField('Batch Count', _batchCountController),
+              const SizedBox(height: 20),
+              
+              // Remove Background Toggle
+              _buildRemoveBackgroundToggle(),
               
               // Advanced Section (commented out for future use)
               // const SizedBox(height: 24),
@@ -733,6 +736,187 @@ class _UnifiedGenerationScreenState extends State<UnifiedGenerationScreen> {
               borderSide: const BorderSide(color: Color(0xFF0078D4)),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Future<bool> _checkAndSuggestBackgroundPrompts() async {
+    final currentPrompt = _positivePromptController.text.toLowerCase();
+    
+    // Find missing suggestions
+    final missingSuggestions = _backgroundPromptSuggestions
+        .where((suggestion) => !currentPrompt.contains(suggestion.toLowerCase()))
+        .toList();
+    
+    // If all suggestions are present or none are missing, continue
+    if (missingSuggestions.isEmpty) {
+      return true;
+    }
+    
+    // Show dialog asking if user wants to add missing suggestions
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A2A2A),
+        title: const Row(
+          children: [
+            Icon(Icons.lightbulb_outline, color: Colors.amber, size: 24),
+            SizedBox(width: 8),
+            Text(
+              'Prompt Suggestion',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Background removal works best with these prompts:',
+              style: TextStyle(color: Colors.white, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            ...missingSuggestions.map((suggestion) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  const Icon(Icons.add_circle_outline, color: Colors.green, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    suggestion,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            )),
+            const SizedBox(height: 16),
+            const Text(
+              'Would you like to add them to your prompt?',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'No, Continue',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // Add missing suggestions to prompt
+              final updatedPrompt = _positivePromptController.text.trim();
+              final additions = missingSuggestions.join(', ');
+              _positivePromptController.text = '$updatedPrompt, $additions';
+              Navigator.of(context).pop(true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0078D4),
+            ),
+            child: const Text(
+              'Yes, Add Them',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    // If dialog was dismissed, treat as "no" but continue
+    return result ?? true;
+  }
+
+  Widget _buildRemoveBackgroundToggle() {
+    return Row(
+      children: [
+        Checkbox(
+          value: _removeBackground,
+          onChanged: (value) {
+            setState(() {
+              _removeBackground = value ?? false;
+            });
+          },
+          activeColor: const Color(0xFF0078D4),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Remove Background',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Generate both original and background-removed versions',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.6),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAspectRatioDropdown() {
+    final aspectRatios = widget.selectedWorkflow.defaultVersion?.supportedAspectRatios ?? ['16:9'];
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Aspect Ratio',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _selectedAspectRatio ?? aspectRatios.first,
+          dropdownColor: const Color(0xFF3A3A3A),
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: const Color(0xFF3A3A3A),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF404040)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF404040)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF0078D4)),
+            ),
+          ),
+          items: aspectRatios.map((ratio) {
+            return DropdownMenuItem(
+              value: ratio,
+              child: Text(ratio),
+            );
+          }).toList(),
+          onChanged: (value) {
+            setState(() {
+              _selectedAspectRatio = value;
+            });
+          },
         ),
       ],
     );

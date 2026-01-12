@@ -554,8 +554,18 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
 
   Widget _buildGenerationThumbnail(ImageGeneration generation) {
     if (generation.status == GenerationStatus.completed) {
-      // Prefer online URL, fallback to local file
-      final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
+      // Priority: variants['original']['url'] -> imageUrl -> local file
+      String? imageUrl;
+      
+      // Try to get original variant URL first
+      if (generation.variants != null && generation.variants!.containsKey('original')) {
+        imageUrl = generation.variants!['original']!['url'] as String?;
+      }
+      
+      // Fallback to backward-compatible imageUrl
+      imageUrl ??= generation.imageUrl;
+      
+      final bool hasOnlineUrl = imageUrl != null && imageUrl.isNotEmpty;
       final bool hasLocalFile = !kIsWeb && generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
       
       if (hasOnlineUrl || hasLocalFile) {
@@ -565,7 +575,7 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: hasOnlineUrl
                   ? Image.network(
-                      generation.imageUrl!,
+                      imageUrl!,
                       fit: BoxFit.cover,
                       width: double.infinity,
                       height: double.infinity,

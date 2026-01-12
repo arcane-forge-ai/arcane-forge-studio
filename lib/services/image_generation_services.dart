@@ -600,6 +600,15 @@ class ApiImageAssetService implements ImageAssetService {
       parameters['provider'] = json['provider'];
     }
     
+    // Parse variants if present
+    Map<String, Map<String, dynamic>>? variants;
+    if (json['variants'] != null) {
+      final variantsJson = json['variants'] as Map<String, dynamic>;
+      variants = variantsJson.map((key, value) => 
+        MapEntry(key, Map<String, dynamic>.from(value as Map))
+      );
+    }
+    
     return ImageGeneration(
       id: json['id'] as String,
       assetId: json['asset_id'] as String,
@@ -610,6 +619,7 @@ class ApiImageAssetService implements ImageAssetService {
       status: _parseGenerationStatus(json['status'] as String),
       isFavorite: json['is_favorite'] as bool? ?? false,
       errorMessage: json['error_message'] as String?,
+      variants: variants,
     );
   }
 

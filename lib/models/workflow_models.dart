@@ -12,6 +12,9 @@ class WorkflowVersion {
   final bool isDefault;
   final DateTime createdAt;
   final String? createdBy;
+  final List<String> supportedAspectRatios;
+  final String defaultAspectRatio;
+  final int? baseResolution;
 
   WorkflowVersion({
     required this.id,
@@ -25,6 +28,9 @@ class WorkflowVersion {
     required this.isDefault,
     required this.createdAt,
     this.createdBy,
+    this.supportedAspectRatios = const [],
+    this.defaultAspectRatio = '16:9',
+    this.baseResolution,
   });
 
   factory WorkflowVersion.fromJson(Map<String, dynamic> json) {
@@ -40,6 +46,9 @@ class WorkflowVersion {
       isDefault: json['is_default'] as bool,
       createdAt: DateTime.parse(json['created_at'] as String),
       createdBy: json['created_by'] as String?,
+      supportedAspectRatios: (json['supported_aspect_ratios'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+      defaultAspectRatio: json['default_aspect_ratio'] as String? ?? '16:9',
+      baseResolution: json['base_resolution'] as int?,
     );
   }
 
@@ -56,6 +65,9 @@ class WorkflowVersion {
       'is_default': isDefault,
       'created_at': createdAt.toIso8601String(),
       'created_by': createdBy,
+      'supported_aspect_ratios': supportedAspectRatios,
+      'default_aspect_ratio': defaultAspectRatio,
+      'base_resolution': baseResolution,
     };
   }
 }

@@ -81,6 +81,7 @@ class ImageGeneration {
   final GenerationStatus status;
   final bool isFavorite;
   final String? errorMessage; // Error message when generation fails
+  final Map<String, Map<String, dynamic>>? variants; // Image variants (original, background_removed, etc.)
 
   ImageGeneration({
     required this.id,
@@ -92,6 +93,7 @@ class ImageGeneration {
     required this.status,
     this.isFavorite = false,
     this.errorMessage,
+    this.variants,
   });
 
   ImageGeneration copyWith({
@@ -104,6 +106,7 @@ class ImageGeneration {
     GenerationStatus? status,
     bool? isFavorite,
     String? errorMessage,
+    Map<String, Map<String, dynamic>>? variants,
   }) {
     return ImageGeneration(
       id: id ?? this.id,
@@ -115,6 +118,7 @@ class ImageGeneration {
       status: status ?? this.status,
       isFavorite: isFavorite ?? this.isFavorite,
       errorMessage: errorMessage ?? this.errorMessage,
+      variants: variants ?? this.variants,
     );
   }
 }

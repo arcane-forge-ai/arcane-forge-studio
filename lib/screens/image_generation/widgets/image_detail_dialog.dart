@@ -6,6 +6,7 @@ import '../../../models/image_generation_models.dart';
 import '../../../providers/image_generation_provider.dart';
 import '../../../services/file_download_service.dart';
 import 'package:provider/provider.dart';
+import 'package:carousel_slider/carousel_slider.dart';
 
 class ImageDetailDialog extends StatefulWidget {
   final ImageGeneration generation;
@@ -32,6 +33,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
   bool _isTogglingFavorite = false;
   bool _isLoadingGeneration = true;
   String? _loadError;
+  final CarouselSliderController _carouselController = CarouselSliderController();
+  int _currentCarouselPage = 0;
 
   @override
   void initState() {
@@ -479,6 +482,20 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       height = generation.parameters['height'] ?? 512;
     }
     
+    // Check if variants exist with background_removed
+    final hasVariants = generation.variants != null && 
+                       generation.variants!.containsKey('background_removed');
+    
+    if (hasVariants) {
+      // Build carousel with variants
+      return _buildCarouselView(generation, width, height);
+    } else {
+      // Single image view (backward compatible)
+      return _buildSingleImageView(generation, width, height);
+    }
+  }
+  
+  Widget _buildSingleImageView(ImageGeneration generation, int width, int height) {
     // Use online URL if available, otherwise use local file
     final Widget imageWidget = generation.imageUrl != null && generation.imageUrl!.isNotEmpty
         ? Image.network(
@@ -522,6 +539,171 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
           child: imageWidget,
         ),
       ),
+    );
+  }
+  
+  Widget _buildCarouselView(ImageGeneration generation, int width, int height) {
+    // Build list of variant images
+    final List<Map<String, dynamic>> variantsList = [];
+    
+    // Add original variant
+    if (generation.variants!.containsKey('original')) {
+      variantsList.add({
+        'label': 'Original',
+        'data': generation.variants!['original']!,
+      });
+    } else {
+      // Fallback to imageUrl if original variant not present
+      variantsList.add({
+        'label': 'Original',
+        'data': {'url': generation.imageUrl ?? ''},
+      });
+    }
+    
+    // Add background_removed variant
+    if (generation.variants!.containsKey('background_removed')) {
+      variantsList.add({
+        'label': 'No Background',
+        'data': generation.variants!['background_removed']!,
+      });
+    }
+    
+    return Stack(
+      children: [
+        Center(
+          child: CarouselSlider(
+            carouselController: _carouselController,
+            options: CarouselOptions(
+              height: height.toDouble(),
+              viewportFraction: 1.0,
+              enableInfiniteScroll: false,
+              enlargeCenterPage: false,
+              onPageChanged: (index, reason) {
+                setState(() {
+                  _currentCarouselPage = index;
+                });
+              },
+            ),
+            items: variantsList.map((variant) {
+              final label = variant['label'] as String;
+              final data = variant['data'] as Map<String, dynamic>;
+              final url = data['url'] as String?;
+              
+              return Builder(
+                builder: (BuildContext context) {
+                  return Stack(
+                    children: [
+                      Center(
+                        child: url != null && url.isNotEmpty
+                            ? Image.network(
+                                url,
+                                width: width.toDouble(),
+                                height: height.toDouble(),
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return _buildErrorImage(width, height);
+                                },
+                              )
+                            : _buildErrorImage(width, height),
+                      ),
+                      // Variant label overlay
+                      Positioned(
+                        top: 16,
+                        left: 16,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            label,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            }).toList(),
+          ),
+        ),
+        // Navigation arrows
+        if (variantsList.length > 1) ...[
+          // Left arrow
+          Positioned(
+            left: 16,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: IconButton(
+                onPressed: _currentCarouselPage > 0
+                    ? () => _carouselController.previousPage()
+                    : null,
+                icon: Icon(
+                  Icons.arrow_back_ios,
+                  color: _currentCarouselPage > 0 
+                      ? Colors.white 
+                      : Colors.white.withOpacity(0.3),
+                ),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black.withOpacity(0.5),
+                ),
+              ),
+            ),
+          ),
+          // Right arrow
+          Positioned(
+            right: 16,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: IconButton(
+                onPressed: _currentCarouselPage < variantsList.length - 1
+                    ? () => _carouselController.nextPage()
+                    : null,
+                icon: Icon(
+                  Icons.arrow_forward_ios,
+                  color: _currentCarouselPage < variantsList.length - 1
+                      ? Colors.white
+                      : Colors.white.withOpacity(0.3),
+                ),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black.withOpacity(0.5),
+                ),
+              ),
+            ),
+          ),
+          // Page indicator
+          Positioned(
+            bottom: 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${_currentCarouselPage + 1} of ${variantsList.length}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
   
@@ -845,7 +1027,50 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
 
 
   Future<void> _downloadImage(BuildContext context, ImageGeneration generation) async {
-    final imageUrl = generation.imageUrl;
+    // Get the URL of the currently displayed variant
+    String? imageUrl;
+    String? variantType;
+    
+    // Check if we have variants and carousel is active
+    final hasVariants = generation.variants != null && 
+                       generation.variants!.containsKey('background_removed');
+    
+    if (hasVariants) {
+      // Build the same variants list to match carousel order
+      final List<Map<String, dynamic>> variantsList = [];
+      
+      if (generation.variants!.containsKey('original')) {
+        variantsList.add({
+          'label': 'Original',
+          'data': generation.variants!['original']!,
+        });
+      } else {
+        variantsList.add({
+          'label': 'Original',
+          'data': {'url': generation.imageUrl ?? ''},
+        });
+      }
+      
+      if (generation.variants!.containsKey('background_removed')) {
+        variantsList.add({
+          'label': 'No Background',
+          'data': generation.variants!['background_removed']!,
+        });
+      }
+      
+      // Get the URL from the current carousel page
+      if (_currentCarouselPage < variantsList.length) {
+        final currentVariant = variantsList[_currentCarouselPage];
+        variantType = currentVariant['label'] as String;
+        final data = currentVariant['data'] as Map<String, dynamic>;
+        imageUrl = data['url'] as String?;
+      }
+    } else {
+      // No variants, use the original imageUrl
+      imageUrl = generation.imageUrl;
+      variantType = 'Original';
+    }
+    
     if (imageUrl == null || imageUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -856,7 +1081,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       return;
     }
 
-    final defaultFileName = _generateDefaultFileName(generation);
+    final defaultFileName = _generateDefaultFileName(generation, variantType: variantType);
     
     await FileDownloadService.downloadFile(
       url: imageUrl,
@@ -873,7 +1098,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     );
   }
 
-  String _generateDefaultFileName(ImageGeneration generation) {
+  String _generateDefaultFileName(ImageGeneration generation, {String? variantType}) {
     // Generate a filename based on the prompt or asset name
     String baseName = 'generated_image';
     
@@ -887,6 +1112,12 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
         final words = prompt.split(' ').take(3).join('_');
         baseName = words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
       }
+    }
+    
+    // Add variant type suffix if not original
+    if (variantType != null && variantType != 'Original') {
+      final variantSuffix = variantType.replaceAll(' ', '_').toLowerCase();
+      baseName = '${baseName}_$variantSuffix';
     }
     
     // Add timestamp to make filename unique

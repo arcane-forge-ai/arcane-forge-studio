@@ -537,13 +537,23 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
   }
   
   Widget _buildGenerationImage(ImageGeneration generation, ImageAsset asset) {
-    // Prefer online URL, fallback to local file
-    final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
+    // Priority: variants['original']['url'] -> imageUrl -> local file
+    String? imageUrl;
+    
+    // Try to get original variant URL first
+    if (generation.variants != null && generation.variants!.containsKey('original')) {
+      imageUrl = generation.variants!['original']!['url'] as String?;
+    }
+    
+    // Fallback to backward-compatible imageUrl
+    imageUrl ??= generation.imageUrl;
+    
+    final bool hasOnlineUrl = imageUrl != null && imageUrl.isNotEmpty;
     final bool hasLocalFile = !kIsWeb && generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
     
     if (hasOnlineUrl) {
       return Image.network(
-        generation.imageUrl!,
+        imageUrl!,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,

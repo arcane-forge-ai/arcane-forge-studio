@@ -265,12 +265,23 @@ class RecentImagesPanelWidget extends StatelessWidget {
   }
 
   Widget _buildGenerationThumbnailImage(ImageGeneration generation) {
-    final bool hasOnlineUrl = generation.imageUrl != null && generation.imageUrl!.isNotEmpty;
+    // Priority: variants['original']['url'] -> imageUrl -> local file
+    String? imageUrl;
+    
+    // Try to get original variant URL first
+    if (generation.variants != null && generation.variants!.containsKey('original')) {
+      imageUrl = generation.variants!['original']!['url'] as String?;
+    }
+    
+    // Fallback to backward-compatible imageUrl
+    imageUrl ??= generation.imageUrl;
+    
+    final bool hasOnlineUrl = imageUrl != null && imageUrl.isNotEmpty;
     final bool hasLocalFile = !kIsWeb && generation.imagePath.isNotEmpty;
 
     if (hasOnlineUrl) {
       return Image.network(
-        generation.imageUrl!,
+        imageUrl!,
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) {
           if (hasLocalFile) {

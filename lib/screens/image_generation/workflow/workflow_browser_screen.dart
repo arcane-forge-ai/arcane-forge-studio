@@ -225,6 +225,14 @@ class _WorkflowBrowserScreenState extends State<WorkflowBrowserScreen> {
     );
   }
 
+  String _getAspectRatiosText(Workflow workflow) {
+    final aspectRatios = workflow.defaultVersion?.supportedAspectRatios ?? [];
+    if (aspectRatios.isEmpty) {
+      return 'any dimension';
+    }
+    return aspectRatios.join(', ');
+  }
+
   Widget _buildAssetInfoHeader() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -353,6 +361,30 @@ class _WorkflowBrowserScreenState extends State<WorkflowBrowserScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+            
+            // Aspect Ratios
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(
+                  Icons.aspect_ratio,
+                  color: Colors.blue,
+                  size: 14,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    _getAspectRatiosText(workflow),
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
             const Spacer(),
             
             // Tags
