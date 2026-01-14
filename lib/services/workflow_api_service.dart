@@ -137,6 +137,9 @@ class WorkflowApiService {
       );
     }
     
+    // Parse metadata
+    final metadata = Map<String, dynamic>.from(json['metadata'] as Map? ?? {});
+    
     return ImageGeneration(
       id: json['id'] as String,
       assetId: json['asset_id'] as String,
@@ -148,6 +151,7 @@ class WorkflowApiService {
       isFavorite: json['is_favorite'] as bool? ?? false,
       errorMessage: json['error_message'] as String?,
       variants: variants,
+      metadata: metadata,
     );
   }
 

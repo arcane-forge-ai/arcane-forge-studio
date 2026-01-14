@@ -15,6 +15,7 @@ class WorkflowVersion {
   final List<String> supportedAspectRatios;
   final String defaultAspectRatio;
   final int? baseResolution;
+  final int? costFactor;
 
   WorkflowVersion({
     required this.id,
@@ -31,6 +32,7 @@ class WorkflowVersion {
     this.supportedAspectRatios = const [],
     this.defaultAspectRatio = '16:9',
     this.baseResolution,
+    this.costFactor,
   });
 
   factory WorkflowVersion.fromJson(Map<String, dynamic> json) {
@@ -49,6 +51,7 @@ class WorkflowVersion {
       supportedAspectRatios: (json['supported_aspect_ratios'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
       defaultAspectRatio: json['default_aspect_ratio'] as String? ?? '16:9',
       baseResolution: json['base_resolution'] as int?,
+      costFactor: json['cost_factor'] as int?,
     );
   }
 
@@ -68,6 +71,7 @@ class WorkflowVersion {
       'supported_aspect_ratios': supportedAspectRatios,
       'default_aspect_ratio': defaultAspectRatio,
       'base_resolution': baseResolution,
+      'cost_factor': costFactor,
     };
   }
 }

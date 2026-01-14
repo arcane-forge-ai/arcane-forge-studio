@@ -82,6 +82,7 @@ class ImageGeneration {
   final bool isFavorite;
   final String? errorMessage; // Error message when generation fails
   final Map<String, Map<String, dynamic>>? variants; // Image variants (original, background_removed, etc.)
+  final Map<String, dynamic> metadata; // Additional generation metadata from API
 
   ImageGeneration({
     required this.id,
@@ -94,6 +95,7 @@ class ImageGeneration {
     this.isFavorite = false,
     this.errorMessage,
     this.variants,
+    this.metadata = const {},
   });
 
   ImageGeneration copyWith({
@@ -107,6 +109,7 @@ class ImageGeneration {
     bool? isFavorite,
     String? errorMessage,
     Map<String, Map<String, dynamic>>? variants,
+    Map<String, dynamic>? metadata,
   }) {
     return ImageGeneration(
       id: id ?? this.id,
@@ -119,6 +122,7 @@ class ImageGeneration {
       isFavorite: isFavorite ?? this.isFavorite,
       errorMessage: errorMessage ?? this.errorMessage,
       variants: variants ?? this.variants,
+      metadata: metadata ?? this.metadata,
     );
   }
 }

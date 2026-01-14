@@ -765,22 +765,6 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
           
           const SizedBox(height: 20),
           
-          // Generation Parameters
-          _buildDetailSection('Generation Parameters', [
-            _buildDetailItem('Model', generation.parameters['model_name'] ?? generation.parameters['model'] ?? 'Unknown'),
-            // if (generation.parameters['provider'] != null)
-            //   _buildDetailItem('Provider', generation.parameters['provider']?.toString() ?? 'Unknown'),
-            _buildDetailItem('Dimensions', '${generation.parameters['width']}x${generation.parameters['height']}'),
-            _buildDetailItem('Steps', generation.parameters['steps']?.toString() ?? 'Unknown'),
-            _buildDetailItem('CFG Scale', generation.parameters['cfg_scale']?.toString() ?? 'Unknown'),
-            _buildDetailItem('Sampler', generation.parameters['sampler_name'] ?? generation.parameters['sampler'] ?? 'Unknown'),
-            _buildDetailItem('Seed', generation.parameters['seed']?.toString() ?? 'Unknown'),
-            if (generation.parameters['scheduler'] != null)
-              _buildDetailItem('Scheduler', generation.parameters['scheduler']?.toString() ?? 'Unknown'),
-          ]),
-          
-          const SizedBox(height: 20),
-          
           // Prompts
           _buildDetailSection('Prompts', [
             _buildTextDetailItem('Positive Prompt', generation.parameters['positive_prompt'] ?? generation.parameters['prompt'] ?? 'No prompt'),
@@ -795,6 +779,19 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
               _buildDetailSection('LoRAs', [
                 for (final lora in generation.parameters['loras'] as List)
                   _buildDetailItem(lora['name'], 'Strength: ${lora['strength']}'),
+              ]),
+            ],
+          
+          // Generation Parameters (from metadata) - only show if metadata is not empty
+          if (generation.metadata.isNotEmpty)
+            ...[
+              const SizedBox(height: 20),
+              _buildDetailSection('Generation Parameters', [
+                for (final entry in generation.metadata.entries)
+                  _buildDetailItem(
+                    _formatMetadataKey(entry.key),
+                    entry.value?.toString() ?? 'N/A',
+                  ),
               ]),
             ],
         ],
@@ -1023,6 +1020,17 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatMetadataKey(String key) {
+    // Convert snake_case or camelCase to Title Case
+    // e.g., "cfg_scale" -> "Cfg Scale", "samplerName" -> "Sampler Name"
+    return key
+        .replaceAllMapped(RegExp(r'_([a-z])'), (match) => ' ${match.group(1)!.toUpperCase()}')
+        .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (match) => '${match.group(1)} ${match.group(2)}')
+        .split(' ')
+        .map((word) => word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1))
+        .join(' ');
   }
 
 

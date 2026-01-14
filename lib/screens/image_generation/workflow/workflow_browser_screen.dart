@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../models/image_generation_models.dart';
 import '../../../models/workflow_models.dart';
 import '../../../providers/workflow_provider.dart';
@@ -145,21 +147,25 @@ class _WorkflowBrowserScreenState extends State<WorkflowBrowserScreen> {
                     Expanded(
                       child: workflows.isEmpty
                           ? Center(
-                              child: Text(
-                                widget.isFromChat
-                                    ? 'No workflows recommended. Try a different description.'
-                                    : 'No workflows available.',
-                                style: const TextStyle(color: Colors.white70),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    widget.isFromChat
+                                        ? 'No workflows recommended. Try a different description.'
+                                        : 'No workflows available.',
+                                    style: const TextStyle(color: Colors.white70),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _buildDiscordHelpCard(),
+                                ],
                               ),
                             )
-                          : GridView.builder(
+                          : MasonryGridView.count(
                               padding: const EdgeInsets.symmetric(horizontal: 24),
-                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: isMobile ? 1 : (Responsive.isTablet(context) ? 2 : 4),
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 16,
-                                childAspectRatio: isMobile ? 1.5 : 0.85,
-                              ),
+                              crossAxisCount: isMobile ? 1 : (Responsive.isTablet(context) ? 2 : 4),
+                              crossAxisSpacing: 16,
+                              mainAxisSpacing: 16,
                               itemCount: workflows.length,
                               itemBuilder: (context, index) {
                                 final workflow = workflows[index];
@@ -168,6 +174,9 @@ class _WorkflowBrowserScreenState extends State<WorkflowBrowserScreen> {
                               },
                             ),
                     ),
+                    
+                    // Help Section
+                    _buildDiscordHelpCard(),
                     
                     // Action Buttons
                     Container(
@@ -284,6 +293,94 @@ class _WorkflowBrowserScreenState extends State<WorkflowBrowserScreen> {
     );
   }
 
+  Future<void> _launchDiscord() async {
+    final Uri discordUrl = Uri.parse('https://discord.gg/J4Nb8qRR7q');
+    try {
+      if (await canLaunchUrl(discordUrl)) {
+        await launchUrl(discordUrl, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open Discord link'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening Discord: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Widget _buildDiscordHelpCard() {
+    return InkWell(
+      onTap: _launchDiscord,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFF5865F2)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF5865F2).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                color: Color(0xFF5865F2),
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    "Can't find the right workflow?",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Reach out to us on Discord and we'll help you find or create one!",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.arrow_forward,
+              color: Color(0xFF5865F2),
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildWorkflowCard(Workflow workflow, bool isSelected) {
     return InkWell(
       onTap: () => _onWorkflowSelected(workflow),
@@ -301,39 +398,9 @@ class _WorkflowBrowserScreenState extends State<WorkflowBrowserScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Sample Image or Placeholder
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3A3A3A),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: workflow.sampleImages.isNotEmpty
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          workflow.sampleImages.first,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Center(
-                              child: Icon(
-                                Icons.image_outlined,
-                                color: Colors.white54,
-                                size: 48,
-                              ),
-                            );
-                          },
-                        ),
-                      )
-                    : const Center(
-                        child: Icon(
-                          Icons.image_outlined,
-                          color: Colors.white54,
-                          size: 48,
-                        ),
-                      ),
-              ),
+            // Sample Image Carousel or Placeholder
+            _WorkflowImageCarousel(
+              sampleImages: workflow.sampleImages,
             ),
             const SizedBox(height: 12),
             
@@ -385,9 +452,41 @@ class _WorkflowBrowserScreenState extends State<WorkflowBrowserScreen> {
                 ),
               ],
             ),
-            const Spacer(),
+            
+            // Cost Factor
+            if (workflow.defaultVersion?.costFactor != null && 
+                workflow.defaultVersion!.costFactor! != 1) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.bolt,
+                    color: Colors.amber,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                    ),
+                    child: Text(
+                      '×${workflow.defaultVersion!.costFactor} credits',
+                      style: const TextStyle(
+                        color: Colors.amber,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             
             // Tags
+            const SizedBox(height: 8),
             if (workflow.tags.isNotEmpty)
               Wrap(
                 spacing: 4,
@@ -411,6 +510,194 @@ class _WorkflowBrowserScreenState extends State<WorkflowBrowserScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Widget for displaying sample images carousel in workflow cards
+class _WorkflowImageCarousel extends StatefulWidget {
+  final List<String> sampleImages;
+
+  const _WorkflowImageCarousel({
+    Key? key,
+    required this.sampleImages,
+  }) : super(key: key);
+
+  @override
+  State<_WorkflowImageCarousel> createState() => _WorkflowImageCarouselState();
+}
+
+class _WorkflowImageCarouselState extends State<_WorkflowImageCarousel> {
+  late PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _previousPage() {
+    if (_currentPage > 0) {
+      _pageController.animateToPage(
+        _currentPage - 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _nextPage() {
+    if (_currentPage < widget.sampleImages.length - 1) {
+      _pageController.animateToPage(
+        _currentPage + 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.sampleImages.isEmpty) {
+      return AspectRatio(
+        aspectRatio: 16 / 9,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF3A3A3A),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Center(
+            child: Icon(
+              Icons.image_outlined,
+              color: Colors.white54,
+              size: 48,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Stack(
+        children: [
+          // Image PageView
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentPage = index;
+                });
+              },
+              itemCount: widget.sampleImages.length,
+              itemBuilder: (context, index) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3A3A3A),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Image.network(
+                    widget.sampleImages[index],
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Center(
+                        child: Icon(
+                          Icons.image_outlined,
+                          color: Colors.white54,
+                          size: 48,
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+          
+          // Navigation buttons - only show if more than one image
+          if (widget.sampleImages.length > 1) ...[
+            // Previous button
+            if (_currentPage > 0)
+              Positioned(
+                left: 8,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.chevron_left, color: Colors.white),
+                      iconSize: 24,
+                      padding: const EdgeInsets.all(8),
+                      constraints: const BoxConstraints(),
+                      onPressed: _previousPage,
+                    ),
+                  ),
+                ),
+              ),
+            
+            // Next button
+            if (_currentPage < widget.sampleImages.length - 1)
+              Positioned(
+                right: 8,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.chevron_right, color: Colors.white),
+                      iconSize: 24,
+                      padding: const EdgeInsets.all(8),
+                      constraints: const BoxConstraints(),
+                      onPressed: _nextPage,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+          
+          // Page indicators (dots) - only show if more than one image
+          if (widget.sampleImages.length > 1)
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.sampleImages.length,
+                  (index) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _currentPage == index
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.4),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

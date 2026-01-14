@@ -609,6 +609,9 @@ class ApiImageAssetService implements ImageAssetService {
       );
     }
     
+    // Parse metadata
+    final metadata = Map<String, dynamic>.from(json['metadata'] as Map? ?? {});
+    
     return ImageGeneration(
       id: json['id'] as String,
       assetId: json['asset_id'] as String,
@@ -620,6 +623,7 @@ class ApiImageAssetService implements ImageAssetService {
       isFavorite: json['is_favorite'] as bool? ?? false,
       errorMessage: json['error_message'] as String?,
       variants: variants,
+      metadata: metadata,
     );
   }
 
@@ -721,6 +725,7 @@ class MockImageAssetService implements ImageAssetService {
       status: status,
       isFavorite: false,
       errorMessage: null,
+      metadata: const {},
     );
     
     final assetIndex = _mockAssets.indexWhere((a) => a.id == assetId);
@@ -862,6 +867,7 @@ class MockImageAssetService implements ImageAssetService {
         status: GenerationStatus.completed,
         isFavorite: index == 0, // First generation is favorite
         errorMessage: null,
+        metadata: const {},
       );
     });
   }
