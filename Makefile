@@ -28,7 +28,7 @@ build-release-web:
 	--dart-define=A1111_MODE=online
 
 deploy-web:
-	firebase login --reauth
+# 	firebase login --reauth
 	firebase deploy
 
 build-deploy-web: build-release-web deploy-web

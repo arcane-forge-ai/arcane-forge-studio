@@ -2,5 +2,6 @@
   "dart.flutterRunAdditionalArgs": [
     "--dart-define=FLUTTER_ENV=development"
   ],
-  "postman.settings.dotenv-detection-notification-visibility": false
+  "postman.settings.dotenv-detection-notification-visibility": false,
+  "makefile.configureOnOpen": false
 }

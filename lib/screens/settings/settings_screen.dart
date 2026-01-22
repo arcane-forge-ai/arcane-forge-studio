@@ -371,91 +371,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 32),
             
             // API Settings Section
-            _buildSettingsSection(
-              context,
-              title: 'Backend API Configuration',
-              icon: Icons.api,
-              children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.link,
-                              color: colorScheme.primary,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'API Base URL',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.primary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _apiBaseUrlController,
-                          decoration: const InputDecoration(
-                            border: OutlineInputBorder(),
-                            hintText: 'Enter the API base URL...',
-                            contentPadding: EdgeInsets.all(12),
-                          ),
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                          onChanged: (value) {
-                            _apiBaseUrl = value;
-                            _markAsChanged();
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Example: http://localhost:8000',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? Colors.white54 : Colors.black45,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Only show Mock API Mode setting when in development mode
-                if (_isDevelopmentMode)
-                  Card(
-                    child: SwitchListTile(
-                      title: const Text('Mock API Mode'),
-                      subtitle: Text(
-                        _mockMode
-                            ? 'Using mock data for development (no backend needed)'
-                            : 'Connecting to backend API at configured URL',
-                      ),
-                      value: _mockMode,
-                      onChanged: (bool value) {
-                        setState(() {
-                          _mockMode = value;
-                        });
-                        // Auto-save for switches (only when not in development mode)
-                        if (!_isDevelopmentMode) {
-                          Provider.of<SettingsProvider>(context, listen: false).setMockModeAutoSave(value);
-                        }
-                      },
-                      secondary: Icon(
-                        _mockMode ? Icons.science : Icons.cloud_done,
-                        color: _mockMode ? Colors.orange : Colors.green,
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                // Only show "How It Works" explanation when Mock Mode setting is visible
-                if (_isDevelopmentMode)
+            if (_isDevelopmentMode) ...[
+              _buildSettingsSection(
+                context,
+                title: 'Backend API Configuration',
+                icon: Icons.api,
+                children: [
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -465,13 +386,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Row(
                             children: [
                               Icon(
-                                Icons.info_outline,
+                                Icons.link,
                                 color: colorScheme.primary,
                                 size: 20,
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                'How It Works',
+                                'API Base URL',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: colorScheme.primary,
@@ -480,25 +401,105 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _apiBaseUrlController,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              hintText: 'Enter the API base URL...',
+                              contentPadding: EdgeInsets.all(12),
+                            ),
+                            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                            onChanged: (value) {
+                              _apiBaseUrl = value;
+                              _markAsChanged();
+                            },
+                          ),
+                          const SizedBox(height: 8),
                           Text(
-                            '• API Base URL: Your backend server address (applied immediately after saving)\n'
-                            '• Mock Mode OFF: Connects to real backend API for projects, chat, and asset generation\n'
-                            '• Mock Mode ON: Uses simulated data for development and testing (no backend required)\n'
-                            '• Recommended: Use Mock Mode during development, turn OFF for production',
+                            'Example: http://localhost:8000',
                             style: TextStyle(
-                              fontSize: 14,
-                              color: isDark ? Colors.white70 : Colors.black54,
-                              height: 1.5,
+                              fontSize: 12,
+                              color: isDark ? Colors.white54 : Colors.black45,
+                              fontStyle: FontStyle.italic,
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-              ],
-            ),
-            
-            const SizedBox(height: 32),
+                  const SizedBox(height: 16),
+                  // Only show Mock API Mode setting when in development mode
+                  if (_isDevelopmentMode)
+                    Card(
+                      child: SwitchListTile(
+                        title: const Text('Mock API Mode'),
+                        subtitle: Text(
+                          _mockMode
+                              ? 'Using mock data for development (no backend needed)'
+                              : 'Connecting to backend API at configured URL',
+                        ),
+                        value: _mockMode,
+                        onChanged: (bool value) {
+                          setState(() {
+                            _mockMode = value;
+                          });
+                          // Auto-save for switches (only when not in development mode)
+                          if (!_isDevelopmentMode) {
+                            Provider.of<SettingsProvider>(context, listen: false).setMockModeAutoSave(value);
+                          }
+                        },
+                        secondary: Icon(
+                          _mockMode ? Icons.science : Icons.cloud_done,
+                          color: _mockMode ? Colors.orange : Colors.green,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  // Only show "How It Works" explanation when Mock Mode setting is visible
+                  if (_isDevelopmentMode)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: colorScheme.primary,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'How It Works',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '• API Base URL: Your backend server address (applied immediately after saving)\n'
+                              '• Mock Mode OFF: Connects to real backend API for projects, chat, and asset generation\n'
+                              '• Mock Mode ON: Uses simulated data for development and testing (no backend required)\n'
+                              '• Recommended: Use Mock Mode during development, turn OFF for production',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 32),
+            ],
             
             // Application Settings Section
             _buildSettingsSection(
