@@ -35,7 +35,7 @@ import '../../widgets/file_rename_dialog.dart';
 class GameDesignAssistantScreen extends StatefulWidget {
   final String projectId;
   final String projectName;
-  
+
   const GameDesignAssistantScreen({
     super.key,
     required this.projectId,
@@ -43,17 +43,18 @@ class GameDesignAssistantScreen extends StatefulWidget {
   });
 
   @override
-  State<GameDesignAssistantScreen> createState() => _GameDesignAssistantScreenState();
+  State<GameDesignAssistantScreen> createState() =>
+      _GameDesignAssistantScreenState();
 }
 
 class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
   // Chat controller for managing messages
   final _chatController = ChatMessagesController();
-  
+
   // Services
   late final ChatApiService _chatApiService;
   final _uuid = const Uuid();
-  
+
   // User definitions
   final _currentUser = ChatUser(
     id: 'user123',
@@ -71,21 +72,30 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
   String _streamingMessageId = '';
   bool _isGenerating = false;
   String? _lastAiResponse; // Store last AI response for document extraction
-  bool _lastResponseHasDocument = false; // Track if last response has extractable markdown  
+  bool _lastResponseHasDocument =
+      false; // Track if last response has extractable markdown
   ChatSession? _selectedChatSession; // Currently selected chat session
   String? _currentSessionId; // Track session ID for current conversation
   bool _showChatHistory = true; // Toggle for chat history sidebar
   bool _showToolbar = false; // Toggle for toolbar visibility
   Project? _projectDetails; // Cached project details from API
-  
+
   // Scroll controller
   final ScrollController _scrollController = ScrollController();
-  
+
   // Focus node for keyboard shortcuts
   final FocusNode _focusNode = FocusNode();
-  
+
   // Callback to refresh chat history from sidebar
   VoidCallback? _refreshChatHistory;
+
+  /// Check if current session is read-only (created by another user)
+  bool get _isSessionReadOnly {
+    if (_selectedChatSession == null) return false;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUserId = authProvider.userId;
+    return _selectedChatSession!.userId != currentUserId;
+  }
 
   // Example questions for game design
   late final List<ExampleQuestion> _exampleQuestions;
@@ -94,23 +104,24 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
   void initState() {
     super.initState();
     // Initialize chat API service with settings and auth providers
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final settingsProvider =
+        Provider.of<SettingsProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _chatApiService = ChatApiService(
       settingsProvider: settingsProvider,
       authProvider: authProvider,
     );
-    
+
     _initializeExampleQuestions();
     _addWelcomeMessage();
     _chatController.setScrollController(_scrollController);
-    
+
     // Fetch project details
     _fetchProjectDetails();
-    
+
     // Check for pending mutation design data
     _checkForMutationDesignData();
-    
+
     // Check for pending feedback discussion data
     _checkForFeedbackDiscussionData();
   }
@@ -230,14 +241,16 @@ Ask me anything about game design, or try one of the example questions below!
   /// Fetch project details from API
   Future<void> _fetchProjectDetails() async {
     try {
-      final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+      final settingsProvider =
+          Provider.of<SettingsProvider>(context, listen: false);
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final apiService = ProjectsApiService(
         settingsProvider: settingsProvider,
         authProvider: authProvider,
       );
-      
-      _projectDetails = await apiService.getProjectById(int.parse(widget.projectId));
+
+      _projectDetails =
+          await apiService.getProjectById(int.parse(widget.projectId));
       if (mounted) {
         setState(() {});
       }
@@ -282,14 +295,14 @@ Ask me anything about game design, or try one of the example questions below!
   Future<void> _sendMutationDesignMessage(String message, String title) async {
     // Clear the mutation design data since we're using it now
     MutationDesignService().clearMutationDesignData();
-    
+
     // Create and send the user message
     final userMessage = ChatMessage(
       text: message,
       user: _currentUser,
       createdAt: DateTime.now(),
     );
-    
+
     // Send the message with custom title
     await _sendMessageWithTitle(userMessage, title);
   }
@@ -304,43 +317,44 @@ Ask me anything about game design, or try one of the example questions below!
   ) async {
     // Clear the feedback discussion data since we're using it now
     FeedbackDiscussionService().clearFeedbackDiscussionData();
-    
+
     // Format the message using the service
     final discussionService = FeedbackDiscussionService();
     final formattedMessage = discussionService.formatFeedbacksForChat(
-      feedbacks, 
+      feedbacks,
       topic,
       gameIntroduction: gameIntroduction,
     );
-    
+
     // Create and send the user message
     final userMessage = ChatMessage(
       text: formattedMessage,
       user: _currentUser,
       createdAt: DateTime.now(),
     );
-    
+
     // Send the message with custom title and RAG agent
     final sessionTitle = 'Feedback Discussion: $topic';
     await _sendMessageWithTitle(userMessage, sessionTitle, agentType: 'rag');
   }
 
   /// Send a message with custom session title
-  Future<void> _sendMessageWithTitle(ChatMessage message, String customTitle, {String? agentType}) async {
+  Future<void> _sendMessageWithTitle(ChatMessage message, String customTitle,
+      {String? agentType}) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     // Ensure we have project details
     if (_projectDetails == null) {
       await _fetchProjectDetails();
     }
-    
+
     // FIRST: Add the user's message to the chat immediately
     _chatController.addMessage(message);
-    
+
     // Get project ID and user ID if available - let API handle defaults if missing
     int? projectId = int.tryParse(widget.projectId);
     String? userId;
-    
+
     // Only include user ID if we have a valid authenticated user
     final authUserId = authProvider.userId;
     if (authUserId.isNotEmpty) {
@@ -349,7 +363,7 @@ Ask me anything about game design, or try one of the example questions below!
 
     // Generate unique ID for the AI message
     final messageId = _uuid.v4();
-    
+
     // Create AI message for the UI
     final aiMessage = ChatMessage(
       text: '', // Start with empty text for streaming
@@ -385,37 +399,42 @@ Ask me anything about game design, or try one of the example questions below!
         projectId: projectId, // Only included if available
         userId: userId, // Only included if available
         knowledgeBaseName: _projectDetails?.knowledgeBaseName,
-        sessionId: _currentSessionId, // Use current session ID for this conversation (may be null for first message)
+        sessionId:
+            _currentSessionId, // Use current session ID for this conversation (may be null for first message)
         title: customTitle, // Custom session title for mutation design
         agentType: agentType, // Agent type (rag for feedback discussions)
         extraConfig: {
-          'message_history': appMessages.take(appMessages.length - 1).map((m) => {
-            'role': m.role,
-            'content': m.content,
-            'timestamp': m.timestamp.toIso8601String(),
-          }).toList(),
+          'message_history': appMessages
+              .take(appMessages.length - 1)
+              .map((m) => {
+                    'role': m.role,
+                    'content': m.content,
+                    'timestamp': m.timestamp.toIso8601String(),
+                  })
+              .toList(),
         },
       );
 
       // Use HTTP request instead of WebSocket streaming (backend doesn't support WebSocket)
       final response = await _chatApiService.sendChatMessage(request);
       String fullResponse = response.content;
-      
+
       // Store the session ID from the response for subsequent messages
       if (response.sessionId.isNotEmpty) {
         setState(() {
           _currentSessionId = response.sessionId;
         });
       }
-      
+
       // Update the message with the complete response
       final updatedMessage = aiMessage.copyWith(text: fullResponse);
       _chatController.updateMessage(updatedMessage);
 
       // Store the final response and check for extractable documents
       _lastAiResponse = fullResponse;
-      final hasDocument = DocumentExtractor.hasExtractableDocument(fullResponse);
-      
+      final hasDocument =
+          DocumentExtractor.hasExtractableDocument(fullResponse);
+
       // Update state to show/hide save button
       setState(() {
         _lastResponseHasDocument = hasDocument;
@@ -423,7 +442,6 @@ Ask me anything about game design, or try one of the example questions below!
 
       // Refresh the chat history sidebar to show any new sessions created by the API
       _refreshChatHistory?.call();
-
     } catch (e) {
       // Handle error - similar to the original _sendMessage method
       print('GameDesignAssistant: Error in sendMessageWithTitle: $e');
@@ -434,15 +452,17 @@ Ask me anything about game design, or try one of the example questions below!
         print('  - Response data: ${e.response?.data}');
         print('  - Request data: ${e.requestOptions.data}');
       }
-      
-      final errorMessage = 'Sorry, I encountered an error: ${ErrorHandler.getErrorMessage(e)}';
+
+      final errorMessage =
+          'Sorry, I encountered an error: ${ErrorHandler.getErrorMessage(e)}';
       final updatedMessage = aiMessage.copyWith(text: errorMessage);
       _chatController.updateMessage(updatedMessage);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error sending message: ${ErrorHandler.getErrorMessage(e)}'),
+            content: Text(
+                'Error sending message: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -462,19 +482,19 @@ Ask me anything about game design, or try one of the example questions below!
   /// Send a message to the chat API
   Future<void> _sendMessage(ChatMessage message) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
+
     // Ensure we have project details
     if (_projectDetails == null) {
       await _fetchProjectDetails();
     }
-    
+
     // FIRST: Add the user's message to the chat immediately
     _chatController.addMessage(message);
-    
+
     // Get project ID and user ID if available - let API handle defaults if missing
     int? projectId = int.tryParse(widget.projectId);
     String? userId;
-    
+
     // Only include user ID if we have a valid authenticated user
     final authUserId = authProvider.userId;
     if (authUserId.isNotEmpty) {
@@ -483,7 +503,7 @@ Ask me anything about game design, or try one of the example questions below!
 
     // Generate unique ID for the AI message
     final messageId = _uuid.v4();
-    
+
     // Create AI message for the UI
     final aiMessage = ChatMessage(
       text: '', // Start with empty text for streaming
@@ -519,36 +539,41 @@ Ask me anything about game design, or try one of the example questions below!
         projectId: projectId, // Only included if available
         userId: userId, // Only included if available
         knowledgeBaseName: _projectDetails?.knowledgeBaseName,
-        sessionId: _currentSessionId, // Use current session ID for this conversation (may be null for first message)
+        sessionId:
+            _currentSessionId, // Use current session ID for this conversation (may be null for first message)
         agentType: 'rag', // Use RAG agent for regular chat messages
         extraConfig: {
-          'message_history': appMessages.take(appMessages.length - 1).map((m) => {
-            'role': m.role,
-            'content': m.content,
-            'timestamp': m.timestamp.toIso8601String(),
-          }).toList(),
+          'message_history': appMessages
+              .take(appMessages.length - 1)
+              .map((m) => {
+                    'role': m.role,
+                    'content': m.content,
+                    'timestamp': m.timestamp.toIso8601String(),
+                  })
+              .toList(),
         },
       );
 
       // Use HTTP request instead of WebSocket streaming (backend doesn't support WebSocket)
       final response = await _chatApiService.sendChatMessage(request);
       String fullResponse = response.content;
-      
+
       // Store the session ID from the response for subsequent messages
       if (response.sessionId.isNotEmpty) {
         setState(() {
           _currentSessionId = response.sessionId;
         });
       }
-      
+
       // Update the message with the complete response
       final updatedMessage = aiMessage.copyWith(text: fullResponse);
       _chatController.updateMessage(updatedMessage);
 
       // Store the final response and check for extractable documents
       _lastAiResponse = fullResponse;
-      final hasDocument = DocumentExtractor.hasExtractableDocument(fullResponse);
-      
+      final hasDocument =
+          DocumentExtractor.hasExtractableDocument(fullResponse);
+
       // Update state to show/hide save button
       setState(() {
         _lastResponseHasDocument = hasDocument;
@@ -556,7 +581,6 @@ Ask me anything about game design, or try one of the example questions below!
 
       // Refresh the chat history sidebar to show any new sessions created by the API
       _refreshChatHistory?.call();
-
     } catch (e) {
       // Handle error
       print('GameDesignAssistant: Error in _sendMessage: $e');
@@ -567,23 +591,25 @@ Ask me anything about game design, or try one of the example questions below!
         print('  - Response data: ${e.response?.data}');
         print('  - Request data: ${e.requestOptions.data}');
       }
-      
+
       final errorMessage = aiMessage.copyWith(
-        text: "Sorry, I encountered an error: ${ErrorHandler.getErrorMessage(e)}",
+        text:
+            "Sorry, I encountered an error: ${ErrorHandler.getErrorMessage(e)}",
       );
       _chatController.updateMessage(errorMessage);
-      
+
       // Reset document state on error
       setState(() {
         _lastResponseHasDocument = false;
         _lastAiResponse = null;
       });
-      
+
       // Show error snackbar for regular send message too
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error sending message: ${ErrorHandler.getErrorMessage(e)}'),
+            content: Text(
+                'Error sending message: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
           ),
@@ -602,14 +628,15 @@ Ask me anything about game design, or try one of the example questions below!
 
   Future<void> _saveDocumentToKnowledgeBase() async {
     if (_lastAiResponse == null) return;
-    
+
     try {
       // Extract markdown content from AI response
-      final markdownContent = DocumentExtractor.extractMarkdownBlock(_lastAiResponse!);
+      final markdownContent =
+          DocumentExtractor.extractMarkdownBlock(_lastAiResponse!);
       if (markdownContent == null) {
         throw Exception('No extractable markdown content found');
       }
-      
+
       final cleanFileName = _getFileNameFromMarkdown(markdownContent);
       final fileName = '$cleanFileName.md';
       final markdownBytes = Uint8List.fromList(utf8.encode(markdownContent));
@@ -636,7 +663,7 @@ Ask me anything about game design, or try one of the example questions below!
         context: context,
         builder: (context) => FileRenameDialog(files: [fileForDialog]),
       );
-      
+
       // User cancelled the dialog
       if (fileNames == null) {
         // Clean up temporary file
@@ -648,10 +675,10 @@ Ask me anything about game design, or try one of the example questions below!
         }
         return;
       }
-      
+
       // Get the renamed file name
       final finalFileName = fileNames.first;
-      
+
       // Show loading state
       setState(() {
         _isGenerating = true;
@@ -664,15 +691,15 @@ Ask me anything about game design, or try one of the example questions below!
         filePath: kIsWeb ? null : tempFile?.path,
         bytes: kIsWeb ? markdownBytes : null,
       );
-      
+
       if (success) {
         // API handles adding to knowledge base
-        
+
         // Update state to hide save button
         setState(() {
           _lastResponseHasDocument = false;
         });
-        
+
         // Show success notification
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -690,7 +717,7 @@ Ask me anything about game design, or try one of the example questions below!
       } else {
         throw Exception('Failed to upload file to server');
       }
-      
+
       // Clean up temporary file
       try {
         await tempFile?.delete();
@@ -698,13 +725,13 @@ Ask me anything about game design, or try one of the example questions below!
       } catch (e) {
         // Ignore cleanup errors
       }
-      
     } catch (e) {
       // Show error notification
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error saving document: ${ErrorHandler.getErrorMessage(e)}'),
+            content: Text(
+                'Error saving document: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -729,7 +756,10 @@ Ask me anything about game design, or try one of the example questions below!
       );
 
       List<PlatformFile>? files = result?.files;
-      if (kIsWeb && (files == null || files.isEmpty || files.any((f) => f.bytes == null))) {
+      if (kIsWeb &&
+          (files == null ||
+              files.isEmpty ||
+              files.any((f) => f.bytes == null))) {
         files = await pickFilesWithWebFallback(
           allowedExtensions: const ['pdf', 'txt', 'md', 'doc', 'docx'],
           allowMultiple: true,
@@ -764,7 +794,8 @@ Ask me anything about game design, or try one of the example questions below!
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Uploaded ${files.length} file(s) to knowledge base'),
+              content:
+                  Text('Uploaded ${files.length} file(s) to knowledge base'),
               backgroundColor: Colors.green,
             ),
           );
@@ -774,7 +805,8 @@ Ask me anything about game design, or try one of the example questions below!
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error uploading files: ${ErrorHandler.getErrorMessage(e)}'),
+            content: Text(
+                'Error uploading files: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -785,7 +817,7 @@ Ask me anything about game design, or try one of the example questions below!
   void _handleCtrlEnterShortcut() {
     // Request focus to ensure the widget is active
     _focusNode.requestFocus();
-    
+
     // Note: The actual sending will be handled by the AiChatWidget's internal logic
     // when it detects the Ctrl+Enter combination. This callback ensures our focus
     // is maintained and the shortcut is recognized at the application level.
@@ -810,19 +842,31 @@ Ask me anything about game design, or try one of the example questions below!
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildInfoRow('Session Status', _selectedChatSession != null ? 'Active' : 'No Session'),
+                _buildInfoRow('Session Status',
+                    _selectedChatSession != null ? 'Active' : 'No Session'),
                 if (_selectedChatSession != null) ...[
                   const SizedBox(height: 12),
                   _buildInfoRow('Session ID', _selectedChatSession!.sessionId),
-                  _buildInfoRow('Database ID', _selectedChatSession!.id.toString()),
-                  _buildInfoRow('Title', _selectedChatSession!.title ?? 'Untitled'),
-                  _buildInfoRow('Project ID', _selectedChatSession!.projectId.toString()),
-                  _buildInfoRow('User ID', _selectedChatSession!.userId.toString()),
-                          _buildInfoRow('Created', app_utils.DateUtils.formatDateTime(_selectedChatSession!.createdAt)),
-        _buildInfoRow('Last Updated', app_utils.DateUtils.formatDateTime(_selectedChatSession!.updatedAt)),
+                  _buildInfoRow(
+                      'Database ID', _selectedChatSession!.id.toString()),
+                  _buildInfoRow(
+                      'Title', _selectedChatSession!.title ?? 'Untitled'),
+                  _buildInfoRow(
+                      'Project ID', _selectedChatSession!.projectId.toString()),
+                  _buildInfoRow(
+                      'User ID', _selectedChatSession!.userId.toString()),
+                  _buildInfoRow(
+                      'Created',
+                      app_utils.DateUtils.formatDateTime(
+                          _selectedChatSession!.createdAt)),
+                  _buildInfoRow(
+                      'Last Updated',
+                      app_utils.DateUtils.formatDateTime(
+                          _selectedChatSession!.updatedAt)),
                 ] else ...[
                   const SizedBox(height: 12),
-                  _buildInfoRow('Current Session ID', _currentSessionId ?? 'None'),
+                  _buildInfoRow(
+                      'Current Session ID', _currentSessionId ?? 'None'),
                   _buildInfoRow('Project', widget.projectName),
                   _buildInfoRow('Project ID', widget.projectId),
                 ],
@@ -832,13 +876,15 @@ Ask me anything about game design, or try one of the example questions below!
                 Text(
                   'Statistics',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
                 const SizedBox(height: 8),
-                _buildInfoRow('Messages in Chat', _chatController.messages.length.toString()),
+                _buildInfoRow('Messages in Chat',
+                    _chatController.messages.length.toString()),
                 _buildInfoRow('Is Generating', _isGenerating ? 'Yes' : 'No'),
-                _buildInfoRow('Last Response Has Doc', _lastResponseHasDocument ? 'Yes' : 'No'),
+                _buildInfoRow('Last Response Has Doc',
+                    _lastResponseHasDocument ? 'Yes' : 'No'),
               ],
             ),
           ),
@@ -895,7 +941,7 @@ Ask me anything about game design, or try one of the example questions below!
   String _formatDateTime(DateTime dateTime) {
     final now = DateTime.now();
     final difference = now.difference(dateTime);
-    
+
     if (difference.inDays > 0) {
       return '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} ago (${_formatFullDateTime(dateTime)})';
     } else if (difference.inHours > 0) {
@@ -937,7 +983,7 @@ Ask me anything about game design, or try one of the example questions below!
     // Look for first markdown heading
     final RegExp headingPattern = RegExp(r'^#{1,6}\s+(.+)$', multiLine: true);
     final match = headingPattern.firstMatch(markdownContent);
-    
+
     if (match != null) {
       String title = match.group(1)?.trim() ?? '';
       // Clean up title for filename (remove invalid characters)
@@ -950,14 +996,15 @@ Ask me anything about game design, or try one of the example questions below!
     }
 
     // Fallback: use first line or generic name
-    final lines = markdownContent.split('\n').where((line) => line.trim().isNotEmpty);
+    final lines =
+        markdownContent.split('\n').where((line) => line.trim().isNotEmpty);
     if (lines.isNotEmpty) {
       String firstLine = lines.first.trim();
       // Remove markdown symbols from first line
       firstLine = firstLine.replaceAll(RegExp(r'^#{1,6}\s*'), '');
       firstLine = firstLine.replaceAll(RegExp(r'^\*+\s*'), '');
       firstLine = firstLine.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-      
+
       if (firstLine.length > 50) {
         firstLine = firstLine.substring(0, 47) + '...';
       }
@@ -977,15 +1024,16 @@ Ask me anything about game design, or try one of the example questions below!
         _lastAiResponse = null;
         _lastResponseHasDocument = false;
       });
-      
+
       // Clear current chat messages and add welcome message
       _chatController.clearMessages();
       _addWelcomeMessage();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Ready for new conversation - session will be created when you send your first message'),
+            content: Text(
+                'Ready for new conversation - session will be created when you send your first message'),
             backgroundColor: Colors.blue,
             duration: Duration(seconds: 2),
           ),
@@ -995,7 +1043,8 @@ Ask me anything about game design, or try one of the example questions below!
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error starting new conversation: ${ErrorHandler.getErrorMessage(e)}'),
+            content: Text(
+                'Error starting new conversation: ${ErrorHandler.getErrorMessage(e)}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -1009,22 +1058,24 @@ Ask me anything about game design, or try one of the example questions below!
       _selectedChatSession = session;
       _currentSessionId = session.sessionId; // Set current session ID
     });
-    
+
     // Show loading indicator
     setState(() {
       _isGenerating = true;
     });
-    
+
     try {
       // Load chat history for the selected session
-      final chatHistory = await _chatApiService.getChatHistory(session.sessionId);
-      
+      final chatHistory =
+          await _chatApiService.getChatHistory(session.sessionId);
+
       // Parse LangChain messages to our format
-      final parsedMessages = LangChainMessageParser.parseMessageList(chatHistory.messages);
-      
+      final parsedMessages =
+          LangChainMessageParser.parseMessageList(chatHistory.messages);
+
       // Clear current chat messages
       _chatController.clearMessages();
-      
+
       // Convert to ChatMessage format for the UI
       for (final appMessage in parsedMessages) {
         final chatUser = appMessage.role == 'user' ? _currentUser : _aiUser;
@@ -1032,16 +1083,17 @@ Ask me anything about game design, or try one of the example questions below!
           text: appMessage.content,
           user: chatUser,
           createdAt: appMessage.timestamp,
-          isMarkdown: appMessage.role == 'assistant', // Only AI messages are markdown
+          isMarkdown:
+              appMessage.role == 'assistant', // Only AI messages are markdown
           customProperties: {
             'id': appMessage.id,
             'role': appMessage.role,
           },
         );
-        
+
         _chatController.addMessage(chatMessage);
       }
-      
+
       // Check if the last AI message has extractable content
       final lastAiMessage = parsedMessages.lastWhere(
         (msg) => msg.role == 'assistant',
@@ -1052,9 +1104,10 @@ Ask me anything about game design, or try one of the example questions below!
           timestamp: DateTime.now(),
         ),
       );
-      
+
       if (lastAiMessage.content.isNotEmpty) {
-        final hasExtractableDoc = DocumentExtractor.hasExtractableDocument(lastAiMessage.content);
+        final hasExtractableDoc =
+            DocumentExtractor.hasExtractableDocument(lastAiMessage.content);
         setState(() {
           _lastResponseHasDocument = hasExtractableDoc;
           _lastAiResponse = hasExtractableDoc ? lastAiMessage.content : null;
@@ -1066,24 +1119,25 @@ Ask me anything about game design, or try one of the example questions below!
           _lastAiResponse = null;
         });
       }
-      
+
       // Show success notification
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Loaded: ${session.title ?? 'Untitled Chat'} (${parsedMessages.length} messages)'),
+            content: Text(
+                'Loaded: ${session.title ?? 'Untitled Chat'} (${parsedMessages.length} messages)'),
             duration: const Duration(seconds: 2),
             backgroundColor: Colors.green,
           ),
         );
       }
-      
     } catch (e) {
       // Show error notification
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load chat history: ${ErrorHandler.getErrorMessage(e)}'),
+            content: Text(
+                'Failed to load chat history: ${ErrorHandler.getErrorMessage(e)}'),
             duration: const Duration(seconds: 3),
             backgroundColor: Colors.red,
           ),
@@ -1249,7 +1303,9 @@ Ask me anything about game design, or try one of the example questions below!
                         color: colorScheme.primary,
                       ),
                       onPressed: _toggleChatHistory,
-                      tooltip: _showChatHistory ? 'Hide Chat History' : 'Show Chat History',
+                      tooltip: _showChatHistory
+                          ? 'Hide Chat History'
+                          : 'Show Chat History',
                     ),
                     const SizedBox(width: 8),
                     Icon(
@@ -1290,7 +1346,9 @@ Ask me anything about game design, or try one of the example questions below!
                     ),
                     IconButton(
                       icon: Icon(
-                        _showToolbar ? Icons.build_circle : Icons.build_circle_outlined,
+                        _showToolbar
+                            ? Icons.build_circle
+                            : Icons.build_circle_outlined,
                         color: colorScheme.primary,
                       ),
                       onPressed: _toggleToolbar,
@@ -1299,7 +1357,7 @@ Ask me anything about game design, or try one of the example questions below!
                   ],
                 ),
               ),
-              
+
               // Main Content with Chat History Sidebar and Chat Interface
               Expanded(
                 child: Row(
@@ -1316,7 +1374,7 @@ Ask me anything about game design, or try one of the example questions below!
                           _refreshChatHistory = refreshCallback;
                         },
                       ),
-                    
+
                     // Chat Interface with Floating Action Bar
                     Expanded(
                       child: Center(
@@ -1335,91 +1393,180 @@ Ask me anything about game design, or try one of the example questions below!
                                 children: [
                                   // Main Chat Widget
                                   AiChatWidget(
-                      currentUser: _currentUser,
-                      aiUser: _aiUser,
-                      controller: _chatController,
-                      onSendMessage: _sendMessage,
-                      scrollController: _scrollController,
+                                    currentUser: _currentUser,
+                                    aiUser: _aiUser,
+                                    controller: _chatController,
+                                    onSendMessage: _sendMessage,
+                                    scrollController: _scrollController,
 
-                      // Message styling
-                      messageOptions: MessageOptions(
-                        bubbleStyle: BubbleStyle(
-                          userBubbleColor: isDark 
-                              ? Colors.deepOrange[800]!
-                              : Colors.deepOrange[700]!,
-                          aiBubbleColor: colorScheme.surfaceContainerHighest,
-                          userNameColor: Colors.white,
-                          aiNameColor: colorScheme.onSurface,
-                          userBubbleTopLeftRadius: 16,
-                          userBubbleTopRightRadius: 4,
-                          aiBubbleTopLeftRadius: 4,
-                          aiBubbleTopRightRadius: 16,
-                          bottomLeftRadius: 16,
-                          bottomRightRadius: 16,
-                        ),
-                        showUserName: true,
-                        showTime: true,
-                        timeFormat: (dateTime) =>
-                            '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
-                      ),
+                                    // Message styling
+                                    messageOptions: MessageOptions(
+                                      bubbleStyle: BubbleStyle(
+                                        userBubbleColor: isDark
+                                            ? Colors.deepOrange[800]!
+                                            : Colors.deepOrange[700]!,
+                                        aiBubbleColor:
+                                            colorScheme.surfaceContainerHighest,
+                                        userNameColor: Colors.white,
+                                        aiNameColor: colorScheme.onSurface,
+                                        userBubbleTopLeftRadius: 16,
+                                        userBubbleTopRightRadius: 4,
+                                        aiBubbleTopLeftRadius: 4,
+                                        aiBubbleTopRightRadius: 16,
+                                        bottomLeftRadius: 16,
+                                        bottomRightRadius: 16,
+                                      ),
+                                      showUserName: true,
+                                      showTime: true,
+                                      timeFormat: (dateTime) =>
+                                          '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}',
+                                    ),
 
-                      // Loading configuration
-                      loadingConfig: LoadingConfig(
-                        isLoading: _isGenerating,
-                        typingIndicatorColor: colorScheme.primary,
-                      ),
+                                    // Loading configuration
+                                    loadingConfig: LoadingConfig(
+                                      isLoading: _isGenerating,
+                                      typingIndicatorColor: colorScheme.primary,
+                                    ),
 
-                      // Example questions
-                      exampleQuestions: _exampleQuestions,
-                      persistentExampleQuestions: false,
+                                    // Example questions
+                                    exampleQuestions: _exampleQuestions,
+                                    persistentExampleQuestions: false,
 
-                      // Width constraint for desktop
-                      maxWidth: 900,
+                                    // Width constraint for desktop
+                                    maxWidth: 900,
 
-                                                // Input customization
-                          inputOptions: InputOptions(
-                            decoration: InputDecoration(
-                              hintText: 'Ask about game design... (Ctrl+Enter to send)',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
-                          ),
-                          filled: true,
-                          fillColor: isDark 
-                              ? Colors.grey[800] 
-                              : Colors.grey[100],
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                        ),
-                        textStyle: TextStyle(
-                          fontSize: 15,
-                          color: isDark ? Colors.white : Colors.black87,
-                        ),
-                        sendButtonIcon: Icons.send_rounded,
-                        sendButtonColor: colorScheme.primary,
-                      ),
+                                    // Input customization
+                                    inputOptions: InputOptions(
+                                      decoration: InputDecoration(
+                                        hintText:
+                                            'Ask about game design... (Ctrl+Enter to send)',
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(24),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        filled: true,
+                                        fillColor: isDark
+                                            ? Colors.grey[800]
+                                            : Colors.grey[100],
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 12,
+                                        ),
+                                      ),
+                                      textStyle: TextStyle(
+                                        fontSize: 15,
+                                        color: isDark
+                                            ? Colors.white
+                                            : Colors.black87,
+                                      ),
+                                      sendButtonIcon: Icons.send_rounded,
+                                      sendButtonColor: colorScheme.primary,
+                                    ),
 
-                      // Animation settings
-                      enableAnimation: true,
-                      enableMarkdownStreaming: true,
-                      streamingDuration: const Duration(milliseconds: 30),
+                                    // Animation settings
+                                    enableAnimation: true,
+                                    enableMarkdownStreaming: true,
+                                    streamingDuration:
+                                        const Duration(milliseconds: 30),
 
-                      // Pagination configuration
-                      paginationConfig: const PaginationConfig(
-                        enabled: true,
-                        loadingIndicatorOffset: 100,
-                      ),
-                    ),
-                    
+                                    // Pagination configuration
+                                    paginationConfig: const PaginationConfig(
+                                      enabled: true,
+                                      loadingIndicatorOffset: 100,
+                                    ),
+                                  ),
+
                                   // Floating Action Bar (shows when toolbar is enabled)
                                   if (_showToolbar)
                                     Positioned(
                                       left: 0,
                                       right: 0,
-                                      bottom: 80, // Position above the input bar
+                                      bottom:
+                                          80, // Position above the input bar
                                       child: _buildFloatingActionBar(),
+                                    ),
+
+                                  // Read-only overlay for non-creator sessions
+                                  if (_isSessionReadOnly)
+                                    Positioned(
+                                      left: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .surfaceContainerHighest,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color:
+                                                  Colors.black.withOpacity(0.1),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, -2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.lock_outline,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .outline,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    'Read-only conversation',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurface,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'Created by ${_selectedChatSession?.creatorUsername ?? 'another team member'}',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .outline,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            ElevatedButton.icon(
+                                              onPressed: _startNewChat,
+                                              icon: const Icon(
+                                                  Icons.add_comment,
+                                                  size: 18),
+                                              label:
+                                                  const Text('Start New Chat'),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor:
+                                                    Theme.of(context)
+                                                        .colorScheme
+                                                        .primary,
+                                                foregroundColor:
+                                                    Theme.of(context)
+                                                        .colorScheme
+                                                        .onPrimary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                 ],
                               ),
@@ -1440,7 +1587,7 @@ Ask me anything about game design, or try one of the example questions below!
 
   Widget _buildFloatingActionBar() {
     final bool canSave = _lastResponseHasDocument && !_isGenerating;
-    
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -1458,13 +1605,15 @@ Ask me anything about game design, or try one of the example questions below!
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(25),
               gradient: LinearGradient(
-                colors: canSave ? [
-                  Colors.green[400]!,
-                  Colors.green[600]!,
-                ] : [
-                  Colors.grey[400]!,
-                  Colors.grey[600]!,
-                ],
+                colors: canSave
+                    ? [
+                        Colors.green[400]!,
+                        Colors.green[600]!,
+                      ]
+                    : [
+                        Colors.grey[400]!,
+                        Colors.grey[600]!,
+                      ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -1473,7 +1622,8 @@ Ask me anything about game design, or try one of the example questions below!
               onTap: canSave ? _saveDocumentToKnowledgeBase : null,
               borderRadius: BorderRadius.circular(25),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

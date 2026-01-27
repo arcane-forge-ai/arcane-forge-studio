@@ -22,6 +22,7 @@ enum ScreenType {
   feedbacks,
   // Main dashboard screens
   projects,
+  invites,
   settings,
   user,
 }

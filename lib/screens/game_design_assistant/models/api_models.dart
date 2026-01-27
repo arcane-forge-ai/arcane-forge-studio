@@ -27,16 +27,17 @@ class ChatRequest {
     final json = <String, dynamic>{
       'message': message,
     };
-    
+
     // Only include fields if they have values - let API handle defaults
     if (projectId != null) json['project_id'] = projectId;
     if (userId != null) json['user_id'] = userId;
-    if (knowledgeBaseName != null) json['knowledge_base_name'] = knowledgeBaseName;
+    if (knowledgeBaseName != null)
+      json['knowledge_base_name'] = knowledgeBaseName;
     if (sessionId != null) json['session_id'] = sessionId;
     if (title != null) json['title'] = title;
     if (agentType != null) json['agent_type'] = agentType;
     if (extraConfig != null) json['extra_config'] = extraConfig;
-    
+
     return json;
   }
 }
@@ -59,7 +60,8 @@ class ChatResponse {
       output: json['output'],
       input: json['input'],
       sessionId: json['session_id'],
-      timestamp: json['timestamp'] != null ? DateTime.parse(json['timestamp']) : null,
+      timestamp:
+          json['timestamp'] != null ? DateTime.parse(json['timestamp']) : null,
     );
   }
 
@@ -139,6 +141,8 @@ class ChatSession {
   final String? title;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String?
+      creatorUsername; // Username for display in collaborative projects
 
   ChatSession({
     required this.id,
@@ -148,6 +152,7 @@ class ChatSession {
     this.title,
     required this.createdAt,
     required this.updatedAt,
+    this.creatorUsername,
   });
 
   factory ChatSession.fromJson(Map<String, dynamic> json) {
@@ -159,6 +164,7 @@ class ChatSession {
       title: json['title'],
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
+      creatorUsername: json['creator_username'],
     );
   }
 
@@ -171,6 +177,7 @@ class ChatSession {
       'title': title,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      'creator_username': creatorUsername,
     };
   }
 }
@@ -193,11 +200,12 @@ class KnowledgeBaseFile {
   factory KnowledgeBaseFile.fromJson(Map<String, dynamic> json) {
     return KnowledgeBaseFile(
       id: json['id'] ?? 0,
-      documentName: json['document_name'] ?? json['documentName'] ?? 'Unknown File',
+      documentName:
+          json['document_name'] ?? json['documentName'] ?? 'Unknown File',
       fileType: json['file_type'] ?? json['fileType'] ?? 'unknown',
-      createdAt: json['created_at'] != null 
-          ? DateTime.parse(json['created_at']) 
-          : (json['createdAt'] != null 
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : (json['createdAt'] != null
               ? DateTime.parse(json['createdAt'])
               : DateTime.now()),
       metadata: json['metadata'],
@@ -319,4 +327,4 @@ class ExtractedDocument {
       'sourceMessageId': sourceMessageId,
     };
   }
-} 
+}

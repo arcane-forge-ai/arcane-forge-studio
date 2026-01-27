@@ -6,6 +6,7 @@ import '../screens/game_design_assistant/models/project_model.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/project_overview_models.dart';
+import '../models/member_model.dart';
 import 'api_client.dart';
 
 class ProjectsApiService {
@@ -27,7 +28,7 @@ class ProjectsApiService {
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? true;
-  
+
   /// Get API base URL from settings provider, with fallback to environment or default
   String get baseUrl => _apiClient.baseUrl;
 
@@ -112,7 +113,8 @@ class ProjectsApiService {
       if (response.statusCode == 200) {
         return ProjectOverviewResponse.fromJson(response.data);
       } else {
-        throw Exception('Failed to load project overview: ${response.statusCode}');
+        throw Exception(
+            'Failed to load project overview: ${response.statusCode}');
       }
     } catch (e) {
       print('Project Overview API Error: $e');
@@ -326,7 +328,7 @@ class ProjectsApiService {
 
     try {
       Response response;
-      
+
       if (bytes != null && fileName != null) {
         response = await _apiClient.uploadFileFromBytes(
           '/projects/$projectId/code_map/upload',
@@ -342,13 +344,15 @@ class ProjectsApiService {
           fileName: file.path.split('/').last,
         );
       } else {
-        throw ArgumentError('Either file bytes or file reference must be provided.');
+        throw ArgumentError(
+            'Either file bytes or file reference must be provided.');
       }
 
       if (response.statusCode == 200) {
         return response.data as Map<String, dynamic>;
       } else {
-        throw Exception('Failed to upload code map file: ${response.statusCode}');
+        throw Exception(
+            'Failed to upload code map file: ${response.statusCode}');
       }
     } catch (e) {
       print('Code Map Upload API Error: $e');
@@ -381,5 +385,215 @@ class ProjectsApiService {
       analytics: AnalyticsOverview(analysisRunsCount: 3),
       knowledgeBase: KnowledgeBaseOverview(fileCount: 4),
     );
+  }
+
+  // =====================================================
+  // Team Collaboration APIs
+  // =====================================================
+
+  /// Get all members of a project
+  /// Requires: project membership
+  Future<List<ProjectMember>> getProjectMembers(String projectId) async {
+    if (_useMockMode) {
+      return _mockGetProjectMembers();
+    }
+
+    try {
+      final response = await _apiClient.get('/projects/$projectId/members');
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final List<dynamic> membersList = data['members'] ?? [];
+        return membersList.map((json) => ProjectMember.fromJson(json)).toList();
+      } else {
+        throw Exception(
+            'Failed to load project members: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Get Project Members API Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Add a member to a project by userId
+  /// Requires: project owner
+  Future<ProjectMember> addProjectMember(
+      String projectId, String userId) async {
+    if (_useMockMode) {
+      return ProjectMember(
+        userId: userId,
+        username: 'mock_user',
+        isOwner: false,
+        createdAt: DateTime.now(),
+      );
+    }
+
+    try {
+      final response = await _apiClient.post(
+        '/projects/$projectId/members',
+        data: {'user_id': userId},
+      );
+
+      if (response.statusCode == 200) {
+        return ProjectMember.fromJson(response.data);
+      } else {
+        throw Exception('Failed to add project member: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Add Project Member API Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Remove a member from a project
+  /// Requires: project owner (cannot remove owner)
+  Future<void> removeProjectMember(String projectId, String userId) async {
+    if (_useMockMode) {
+      return; // Mock success
+    }
+
+    try {
+      final response =
+          await _apiClient.delete('/projects/$projectId/members/$userId');
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(
+            'Failed to remove project member: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Remove Project Member API Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Create an email invite for a project
+  /// Requires: project owner
+  /// Returns: EmailInviteResponse (status can be 'accepted' if user exists)
+  Future<EmailInviteResponse> createEmailInvite(
+      String projectId, String email) async {
+    if (_useMockMode) {
+      return EmailInviteResponse(
+        inviteId: 1,
+        projectId: int.tryParse(projectId) ?? 0,
+        invitedEmail: email,
+        status: 'pending',
+        createdAt: DateTime.now(),
+      );
+    }
+
+    try {
+      final response = await _apiClient.post(
+        '/projects/$projectId/invites/email',
+        data: {'email': email},
+      );
+
+      if (response.statusCode == 200) {
+        return EmailInviteResponse.fromJson(response.data);
+      } else {
+        throw Exception(
+            'Failed to create email invite: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Create Email Invite API Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get pending email invites for the current user
+  /// Returns invites where invited_email matches the authenticated user's email
+  Future<List<PendingInvite>> getMyPendingInvites() async {
+    if (_useMockMode) {
+      return []; // No pending invites in mock mode
+    }
+
+    try {
+      final response = await _apiClient.get('/projects/invites/email/pending');
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final List<dynamic> invitesList = data['invites'] ?? [];
+        return invitesList.map((json) => PendingInvite.fromJson(json)).toList();
+      } else {
+        throw Exception(
+            'Failed to load pending invites: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Get Pending Invites API Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Accept a pending email invite
+  /// Returns: true if successful
+  Future<bool> acceptEmailInvite(int projectId) async {
+    if (_useMockMode) {
+      return true;
+    }
+
+    try {
+      final response = await _apiClient.post(
+        '/projects/invites/email/accept',
+        data: {'project_id': projectId},
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        return data['success'] == true;
+      } else {
+        throw Exception('Failed to accept invite: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Accept Email Invite API Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get pending invites for a specific project (owner only)
+  /// Returns invites created by the owner that are still pending
+  Future<List<PendingInvite>> getPendingInvites(String projectId) async {
+    if (_useMockMode) {
+      return []; // No pending invites in mock mode
+    }
+
+    // Note: This endpoint may need to be confirmed with backend
+    // Using the same endpoint but filtering by project
+    try {
+      final response = await _apiClient.get('/projects/$projectId/invites');
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final List<dynamic> invitesList = data['invites'] ?? [];
+        return invitesList
+            .map((json) => PendingInvite.fromJson(json))
+            .where((invite) => invite.isPending)
+            .toList();
+      } else {
+        throw Exception(
+            'Failed to load project invites: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Get Project Pending Invites API Error: $e');
+      rethrow;
+    }
+  }
+
+  // Mock data for team collaboration
+  List<ProjectMember> _mockGetProjectMembers() {
+    return [
+      ProjectMember(
+        userId: defaultUserId,
+        username: 'owner_user',
+        email: 'owner@example.com',
+        isOwner: true,
+        createdAt: DateTime.now().subtract(const Duration(days: 30)),
+      ),
+      ProjectMember(
+        userId: '11111111-1111-1111-1111-111111111111',
+        username: 'collaborator1',
+        email: 'collab1@example.com',
+        isOwner: false,
+        createdAt: DateTime.now().subtract(const Duration(days: 7)),
+      ),
+    ];
   }
 }
