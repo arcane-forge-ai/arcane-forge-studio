@@ -19,6 +19,8 @@ class SfxAsset {
   final Map<String, dynamic> metadata;
   final int? fileSize;
   final int totalGenerations;
+  final String? createdByUserId; // User who created this asset
+  final String? createdByUsername; // Username for display
 
   SfxAsset({
     required this.id,
@@ -33,6 +35,8 @@ class SfxAsset {
     this.metadata = const {},
     this.fileSize,
     this.totalGenerations = 0,
+    this.createdByUserId,
+    this.createdByUsername,
   });
 
   SfxAsset copyWith({
@@ -48,6 +52,8 @@ class SfxAsset {
     Map<String, dynamic>? metadata,
     int? fileSize,
     int? totalGenerations,
+    String? createdByUserId,
+    String? createdByUsername,
   }) {
     return SfxAsset(
       id: id ?? this.id,
@@ -62,6 +68,8 @@ class SfxAsset {
       metadata: metadata ?? this.metadata,
       fileSize: fileSize ?? this.fileSize,
       totalGenerations: totalGenerations ?? this.totalGenerations,
+      createdByUserId: createdByUserId ?? this.createdByUserId,
+      createdByUsername: createdByUsername ?? this.createdByUsername,
     );
   }
 
@@ -171,7 +179,7 @@ class SfxGenerationRequest {
       'prompt': prompt,
       'model': model,
     };
-    
+
     if (negativePrompt != null && negativePrompt!.isNotEmpty) {
       params['negative_prompt'] = negativePrompt;
     }
@@ -181,7 +189,7 @@ class SfxGenerationRequest {
     if (promptInfluence != null) {
       params['prompt_influence'] = promptInfluence;
     }
-    
+
     return params;
   }
 
@@ -190,7 +198,7 @@ class SfxGenerationRequest {
       'prompt': prompt,
       'model': model,
     };
-    
+
     if (negativePrompt != null && negativePrompt!.isNotEmpty) {
       json['negative_prompt'] = negativePrompt;
     }
@@ -200,7 +208,7 @@ class SfxGenerationRequest {
     if (promptInfluence != null) {
       json['prompt_influence'] = promptInfluence;
     }
-    
+
     return json;
   }
 }
@@ -220,4 +228,4 @@ class SfxGenerationParameters {
   // Extensible: any other parameters
   dynamic operator [](String key) => _params[key];
   Map<String, dynamic> toJson() => Map<String, dynamic>.from(_params);
-} 
+}

@@ -1,4 +1,3 @@
-
 enum GenerationStatus {
   pending,
   generating,
@@ -15,9 +14,12 @@ class ImageAsset {
   final List<ImageGeneration> generations;
   final String? thumbnail;
   final String? favoriteGenerationId;
-  final int? totalGenerations; // Total count from API when generations list is not included
+  final int?
+      totalGenerations; // Total count from API when generations list is not included
   final List<String> tags;
   final Map<String, dynamic> metadata;
+  final String? createdByUserId; // User who created this asset
+  final String? createdByUsername; // Username for display
 
   ImageAsset({
     required this.id,
@@ -31,6 +33,8 @@ class ImageAsset {
     this.totalGenerations,
     this.tags = const [],
     this.metadata = const {},
+    this.createdByUserId,
+    this.createdByUsername,
   });
 
   ImageAsset copyWith({
@@ -45,6 +49,8 @@ class ImageAsset {
     int? totalGenerations,
     List<String>? tags,
     Map<String, dynamic>? metadata,
+    String? createdByUserId,
+    String? createdByUsername,
   }) {
     return ImageAsset(
       id: id ?? this.id,
@@ -58,6 +64,8 @@ class ImageAsset {
       totalGenerations: totalGenerations ?? this.totalGenerations,
       tags: tags ?? this.tags,
       metadata: metadata ?? this.metadata,
+      createdByUserId: createdByUserId ?? this.createdByUserId,
+      createdByUsername: createdByUsername ?? this.createdByUsername,
     );
   }
 
@@ -81,8 +89,10 @@ class ImageGeneration {
   final GenerationStatus status;
   final bool isFavorite;
   final String? errorMessage; // Error message when generation fails
-  final Map<String, Map<String, dynamic>>? variants; // Image variants (original, background_removed, etc.)
-  final Map<String, dynamic> metadata; // Additional generation metadata from API
+  final Map<String, Map<String, dynamic>>?
+      variants; // Image variants (original, background_removed, etc.)
+  final Map<String, dynamic>
+      metadata; // Additional generation metadata from API
 
   ImageGeneration({
     required this.id,
@@ -327,7 +337,6 @@ class GenerationRequest {
   }
 }
 
-
 /// A1111 Model from backend API /api/v1/image-generation/models
 class A1111Model {
   final String name;
@@ -412,12 +421,13 @@ class OnlineImageGenerationRequest {
       'prompt': prompt,
       'model': model,
     };
-    
+
     if (negativePrompt != null) json['negative_prompt'] = negativePrompt;
     if (size != null) json['size'] = size;
     if (quality != null) json['quality'] = quality;
     if (outputFormat != null) json['output_format'] = outputFormat;
-    if (outputCompression != null) json['output_compression'] = outputCompression;
+    if (outputCompression != null)
+      json['output_compression'] = outputCompression;
     if (n != null) json['n'] = n;
     if (width != null) json['width'] = width;
     if (height != null) json['height'] = height;
@@ -427,7 +437,7 @@ class OnlineImageGenerationRequest {
     if (scheduler != null) json['scheduler'] = scheduler;
     if (seed != null) json['seed'] = seed;
     if (loras != null && loras!.isNotEmpty) json['loras'] = loras;
-    
+
     return json;
   }
 }
