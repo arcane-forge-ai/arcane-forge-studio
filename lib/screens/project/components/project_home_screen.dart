@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../../../services/projects_api_service.dart';
 import '../../game_design_assistant/models/project_model.dart';
 import '../../../providers/settings_provider.dart';
@@ -10,9 +9,9 @@ import '../../../constants.dart';
 import '../../../models/project_overview_models.dart';
 import '../../../models/evaluate_models.dart';
 import '../../../widgets/project_flow_chart.dart';
+import '../../../widgets/evaluate_result_card.dart';
 import '../../../utils/error_handler.dart';
 import '../../../controllers/menu_app_controller.dart';
-import '../../evaluate/evaluate_detail_screen.dart';
 import '../../evaluate/evaluate_screen.dart';
 
 class ProjectHomeScreen extends StatefulWidget {
@@ -45,7 +44,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
     );
     _loadProject();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<EvaluateProvider>().loadProjectEvaluations(int.parse(widget.projectId));
+      context
+          .read<EvaluateProvider>()
+          .loadProjectEvaluations(int.parse(widget.projectId));
     });
   }
 
@@ -122,7 +123,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
             } catch (e) {
               if (!mounted) return;
               setState(() => _isSaving = false);
-              _showSnackBar('Failed to update introduction: ${ErrorHandler.getErrorMessage(e)}');
+              _showSnackBar(
+                  'Failed to update introduction: ${ErrorHandler.getErrorMessage(e)}');
             }
           },
         ),
@@ -350,18 +352,10 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
 
           const SizedBox(height: defaultPadding),
 
-          const SizedBox(height: defaultPadding),
-
-          // Latest Evaluation Summary
-          _buildEvaluationSummaryCard(),
-
           // Game Introduction Card (moved to bottom)
           _buildGameIntroductionCard(),
 
           const SizedBox(height: defaultPadding),
-
-          // Game Introduction Card (moved to bottom)
-          _buildGameIntroductionCard(),
 
           // Project Flow Chart
           if (_overview != null) ...[
@@ -371,6 +365,11 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               onNodeTap: _navigateToScreen,
             ),
           ],
+
+          const SizedBox(height: defaultPadding),
+
+          // Latest Evaluation Summary
+          _buildEvaluationSummaryCard(),
         ],
       ),
     );
@@ -501,7 +500,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
   Widget _buildEvaluationSummaryCard() {
     return Consumer<EvaluateProvider>(
       builder: (context, evaluateProvider, child) {
-        if (evaluateProvider.isLoading && evaluateProvider.latestEvaluation == null) {
+        if (evaluateProvider.isLoading &&
+            evaluateProvider.latestEvaluation == null) {
           return Card(
             child: Padding(
               padding: const EdgeInsets.all(defaultPadding),
@@ -524,7 +524,7 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
         }
 
         final EvaluateResponse? latest = evaluateProvider.latestEvaluation;
-        
+
         if (latest == null || latest.result == null) {
           return Card(
             child: InkWell(
@@ -567,11 +567,13 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
                           const SizedBox(height: 4),
                           Text(
                             'No evaluation has been run yet',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).brightness == Brightness.dark
-                                      ? Colors.grey[400]
-                                      : Colors.grey[600],
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
+                                    ),
                           ),
                         ],
                       ),
@@ -589,7 +591,6 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
           );
         }
 
-        final result = latest.result!;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -618,147 +619,13 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            InkWell(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => EvaluateDetailScreen(evaluation: latest),
-                ),
-              ),
-              child: Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildGreenlightIndicator(result.greenlight.status),
-                          Text(
-                            'Completed: ${DateFormat('MMM dd, yyyy HH:mm').format(latest.completedAt ?? latest.createdAt)}',
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: [
-                          _buildMetricItem(context, 'Knowledge Gaps', result.gaps.length.toString(), Icons.error_outline),
-                          _buildMetricItem(context, 'Risks', result.risks.length.toString(), Icons.warning_amber),
-                          _buildMetricItem(context, 'Next Steps', result.greenlight.nextSteps.length.toString(), Icons.playlist_add_check),
-                        ],
-                      ),
-                      const Divider(height: 48),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Greenlight Decision',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  result.greenlight.reasoning,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.grey),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 24),
-                          TextButton.icon(
-                            onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => EvaluateDetailScreen(evaluation: latest),
-                              ),
-                            ),
-                            icon: const Icon(Icons.arrow_forward),
-                            label: const Text('View Full Report'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            EvaluateResultCard(evaluation: latest),
           ],
         );
       },
     );
   }
 
-  Widget _buildMetricItem(BuildContext context, String label, String value, IconData icon) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, color: primaryColor, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGreenlightIndicator(String status) {
-    Color color;
-    String label;
-    IconData icon;
-
-    switch (status.toLowerCase()) {
-      case 'green':
-        color = Colors.green;
-        label = 'READY FOR PRODUCTION';
-        icon = Icons.check_circle;
-        break;
-      case 'yellow':
-        color = Colors.orange;
-        label = 'NEEDS ATTENTION';
-        icon = Icons.warning;
-        break;
-      case 'red':
-        color = Colors.red;
-        label = 'CRITICAL ISSUES';
-        icon = Icons.cancel;
-        break;
-      default:
-        color = Colors.grey;
-        label = 'UNKNOWN';
-        icon = Icons.help_outline;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   void dispose() {
@@ -820,7 +687,9 @@ class _GameIntroductionEditorScreenState
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving: ${ErrorHandler.getErrorMessage(e)}')),
+          SnackBar(
+              content:
+                  Text('Error saving: ${ErrorHandler.getErrorMessage(e)}')),
         );
       }
     }

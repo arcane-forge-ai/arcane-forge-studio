@@ -25,62 +25,134 @@ class _EvaluateDetailScreenState extends State<EvaluateDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final result = widget.evaluation.result;
+    final evaluation = widget.evaluation;
 
     return Scaffold(
       backgroundColor: const Color(0xFF1E1E1E),
-      body: result == null
-          ? _buildErrorState(context)
-          : Column(
+      body: _buildBody(context, evaluation, result),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, EvaluateResponse evaluation, EvaluateResult? result) {
+    // Check if evaluation is still pending or processing
+    if (evaluation.isPending || evaluation.isProcessing) {
+      return _buildPendingState(context, evaluation);
+    }
+    
+    // Check if evaluation failed
+    if (evaluation.isFailed) {
+      return _buildErrorState(context);
+    }
+    
+    // If completed but no result (shouldn't happen, but handle gracefully)
+    if (result == null) {
+      return _buildErrorState(context);
+    }
+    
+    // Show completed evaluation with results
+    return Column(
+      children: [
+        _buildMetadataHeader(context),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildMetadataHeader(context),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildSummaryHeader(context, result),
-                        const SizedBox(height: 32),
-                        _buildSection(
-                          context,
-                          title: 'Knowledge Gaps',
-                          icon: Icons.error_outline,
-                          content: _buildGapsList(result.gaps),
+                _buildSummaryHeader(context, result),
+                const SizedBox(height: 32),
+                _buildSection(
+                  context,
+                  title: 'Knowledge Gaps',
+                  icon: Icons.error_outline,
+                  content: _buildGapsList(result.gaps),
+                ),
+                const SizedBox(height: 24),
+                _buildSection(
+                  context,
+                  title: 'Risk Assessment',
+                  icon: Icons.warning_amber,
+                  content: _buildRisksList(result.risks),
+                ),
+                const SizedBox(height: 24),
+                _buildSection(
+                  context,
+                  title: 'Market Differentiation',
+                  icon: Icons.auto_awesome,
+                  content: _buildMarketDifferentiation(result.marketAnalysis),
+                ),
+                const SizedBox(height: 24),
+                _buildSection(
+                  context,
+                  title: 'Comparable Games',
+                  icon: Icons.videogame_asset,
+                  content: _buildComparableGames(result.marketAnalysis),
+                ),
+                const SizedBox(height: 24),
+                _buildSection(
+                  context,
+                  title: 'Next Steps & Recommendations',
+                  icon: Icons.playlist_add_check,
+                  content: _buildNextSteps(result.greenlight),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPendingState(BuildContext context, EvaluateResponse evaluation) {
+    return Column(
+      children: [
+        _buildMetadataHeader(context),
+        Expanded(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(
+                  color: Colors.blue,
+                  strokeWidth: 4,
+                ),
+                const SizedBox(height: 24),
+                Icon(
+                  evaluation.isPending ? Icons.pending : Icons.sync,
+                  size: 64,
+                  color: Colors.blue,
+                ),
+                const SizedBox(height: 16),
+                SelectableText(
+                  'Evaluation ${evaluation.isPending ? "Pending" : "In Progress"}',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                SelectableText(
+                  'Status: ${evaluation.status.toUpperCase()}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white70,
+                      ),
+                ),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 48.0),
+                  child: SelectableText(
+                    'This evaluation is still running. Results will appear here once it completes. You can navigate away and check back later.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white60,
                         ),
-                        const SizedBox(height: 24),
-                        _buildSection(
-                          context,
-                          title: 'Risk Assessment',
-                          icon: Icons.warning_amber,
-                          content: _buildRisksList(result.risks),
-                        ),
-                        const SizedBox(height: 24),
-                        _buildSection(
-                          context,
-                          title: 'Market Differentiation',
-                          icon: Icons.auto_awesome,
-                          content: _buildMarketDifferentiation(result.marketAnalysis),
-                        ),
-                        const SizedBox(height: 24),
-                        _buildSection(
-                          context,
-                          title: 'Comparable Games',
-                          icon: Icons.videogame_asset,
-                          content: _buildComparableGames(result.marketAnalysis),
-                        ),
-                        const SizedBox(height: 24),
-                        _buildSection(
-                          context,
-                          title: 'Next Steps & Recommendations',
-                          icon: Icons.playlist_add_check,
-                          content: _buildNextSteps(result.greenlight),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ],
             ),
+          ),
+        ),
+      ],
     );
   }
 

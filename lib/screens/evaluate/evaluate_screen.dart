@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../providers/evaluate_provider.dart';
 import '../../models/evaluate_models.dart';
 import '../../constants.dart';
+import '../../widgets/evaluate_result_card.dart';
 import 'evaluate_detail_screen.dart';
 
 class EvaluateScreen extends StatefulWidget {
@@ -147,9 +148,6 @@ class _EvaluateScreenState extends State<EvaluateScreen> {
   }
 
   Widget _buildLatestResultCard(BuildContext context, EvaluateResponse latest) {
-    final result = latest.result;
-    if (result == null) return const SizedBox.shrink();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -158,143 +156,8 @@ class _EvaluateScreenState extends State<EvaluateScreen> {
           style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 16),
-        InkWell(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => EvaluateDetailScreen(evaluation: latest),
-            ),
-          ),
-          child: Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildGreenlightIndicator(result.greenlight.status),
-                      Text(
-                        'Completed: ${DateFormat('MMM dd, yyyy HH:mm').format(latest.completedAt ?? latest.createdAt)}',
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      _buildMetricItem(context, 'Knowledge Gaps', result.gaps.length.toString(), Icons.error_outline),
-                      _buildMetricItem(context, 'Risks', result.risks.length.toString(), Icons.warning_amber),
-                      _buildMetricItem(context, 'Next Steps', result.greenlight.nextSteps.length.toString(), Icons.playlist_add_check),
-                    ],
-                  ),
-                  const Divider(height: 48),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Greenlight Decision',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              result.greenlight.reasoning,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      TextButton.icon(
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => EvaluateDetailScreen(evaluation: latest),
-                          ),
-                        ),
-                        icon: const Icon(Icons.arrow_forward),
-                        label: const Text('View Full Report'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        EvaluateResultCard(evaluation: latest),
       ],
-    );
-  }
-
-  Widget _buildMetricItem(BuildContext context, String label, String value, IconData icon) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, color: primaryColor, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGreenlightIndicator(String status) {
-    Color color;
-    String label;
-    IconData icon;
-
-    switch (status.toLowerCase()) {
-      case 'green':
-        color = Colors.green;
-        label = 'READY FOR PRODUCTION';
-        icon = Icons.check_circle;
-        break;
-      case 'yellow':
-        color = Colors.orange;
-        label = 'NEEDS ATTENTION';
-        icon = Icons.warning;
-        break;
-      case 'red':
-        color = Colors.red;
-        label = 'CRITICAL ISSUES';
-        icon = Icons.cancel;
-        break;
-      default:
-        color = Colors.grey;
-        label = 'UNKNOWN';
-        icon = Icons.help_outline;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 16),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
-          ),
-        ],
-      ),
     );
   }
 
