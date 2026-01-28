@@ -104,6 +104,14 @@ class SideMenu extends BaseSideMenu {
               .changeScreen(ScreenType.gameDesignAssistant);
         },
       ),
+      ListTile(
+        title: const Text("Design Evaluation"),
+        leading: const Icon(Icons.analytics),
+        onTap: () {
+          Provider.of<MenuAppController>(context, listen: false)
+              .changeScreen(ScreenType.evaluate);
+        },
+      ),
 
       // Development - code editor, image generator, sound generator, music generator, web server
       buildSectionHeader(context, icon: Icons.code, title: "Development"),

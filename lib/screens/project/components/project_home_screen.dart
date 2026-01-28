@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../../services/projects_api_service.dart';
 import '../../game_design_assistant/models/project_model.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/evaluate_provider.dart';
 import '../../../constants.dart';
 import '../../../models/project_overview_models.dart';
+import '../../../models/evaluate_models.dart';
 import '../../../widgets/project_flow_chart.dart';
 import '../../../utils/error_handler.dart';
 import '../../../controllers/menu_app_controller.dart';
+import '../../evaluate/evaluate_detail_screen.dart';
+import '../../evaluate/evaluate_screen.dart';
 
 class ProjectHomeScreen extends StatefulWidget {
   final String projectId;
@@ -39,6 +44,9 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
       authProvider: context.read<AuthProvider>(),
     );
     _loadProject();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<EvaluateProvider>().loadProjectEvaluations(int.parse(widget.projectId));
+    });
   }
 
   Future<void> _loadProject() async {
@@ -342,6 +350,16 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
 
           const SizedBox(height: defaultPadding),
 
+          const SizedBox(height: defaultPadding),
+
+          // Latest Evaluation Summary
+          _buildEvaluationSummaryCard(),
+
+          // Game Introduction Card (moved to bottom)
+          _buildGameIntroductionCard(),
+
+          const SizedBox(height: defaultPadding),
+
           // Game Introduction Card (moved to bottom)
           _buildGameIntroductionCard(),
 
@@ -478,6 +496,268 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} at ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildEvaluationSummaryCard() {
+    return Consumer<EvaluateProvider>(
+      builder: (context, evaluateProvider, child) {
+        if (evaluateProvider.isLoading && evaluateProvider.latestEvaluation == null) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(defaultPadding),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Loading evaluation...',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final EvaluateResponse? latest = evaluateProvider.latestEvaluation;
+        
+        if (latest == null || latest.result == null) {
+          return Card(
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => EvaluateScreen(
+                      projectId: widget.projectId,
+                      projectName: _project?.name ?? 'Project',
+                    ),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(defaultPadding),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.analytics_outlined,
+                        size: 24,
+                        color: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Game Design Evaluation',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'No evaluation has been run yet',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).brightness == Brightness.dark
+                                      ? Colors.grey[400]
+                                      : Colors.grey[600],
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[400]
+                          : Colors.grey[600],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final result = latest.result!;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Latest Evaluation',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => EvaluateScreen(
+                          projectId: widget.projectId,
+                          projectName: _project?.name ?? 'Project',
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('View All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => EvaluateDetailScreen(evaluation: latest),
+                ),
+              ),
+              child: Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildGreenlightIndicator(result.greenlight.status),
+                          Text(
+                            'Completed: ${DateFormat('MMM dd, yyyy HH:mm').format(latest.completedAt ?? latest.createdAt)}',
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        children: [
+                          _buildMetricItem(context, 'Knowledge Gaps', result.gaps.length.toString(), Icons.error_outline),
+                          _buildMetricItem(context, 'Risks', result.risks.length.toString(), Icons.warning_amber),
+                          _buildMetricItem(context, 'Next Steps', result.greenlight.nextSteps.length.toString(), Icons.playlist_add_check),
+                        ],
+                      ),
+                      const Divider(height: 48),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Greenlight Decision',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  result.greenlight.reasoning,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 24),
+                          TextButton.icon(
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => EvaluateDetailScreen(evaluation: latest),
+                              ),
+                            ),
+                            icon: const Icon(Icons.arrow_forward),
+                            label: const Text('View Full Report'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMetricItem(BuildContext context, String label, String value, IconData icon) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, color: primaryColor, size: 28),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGreenlightIndicator(String status) {
+    Color color;
+    String label;
+    IconData icon;
+
+    switch (status.toLowerCase()) {
+      case 'green':
+        color = Colors.green;
+        label = 'READY FOR PRODUCTION';
+        icon = Icons.check_circle;
+        break;
+      case 'yellow':
+        color = Colors.orange;
+        label = 'NEEDS ATTENTION';
+        icon = Icons.warning;
+        break;
+      case 'red':
+        color = Colors.red;
+        label = 'CRITICAL ISSUES';
+        icon = Icons.cancel;
+        break;
+      default:
+        color = Colors.grey;
+        label = 'UNKNOWN';
+        icon = Icons.help_outline;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
