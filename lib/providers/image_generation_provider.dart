@@ -580,7 +580,7 @@ class ImageGenerationProvider extends ChangeNotifier implements AssetCreationPro
           assetId,
           limit: limit,
         );
-        return result['generations'] as List<ImageGeneration>;
+        return List<ImageGeneration>.from(result['generations'] as List);
       } else {
         // For mock service, get from cached asset
         final asset = getAssetFromCache(assetId);

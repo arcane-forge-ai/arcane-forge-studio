@@ -62,6 +62,21 @@ void main() async {
     FlutterError.presentError(details);
   };
 
+  // Handle unhandled async exceptions (e.g., from Supabase background token refresh)
+  PlatformDispatcher.instance.onError = (error, stack) {
+    // Filter out Supabase auth refresh errors that are known to be non-critical
+    // These errors occur when the backend has a configuration issue but the app still works
+    final errorString = error.toString();
+    if (errorString.contains('AuthRetryableFetchException') &&
+        errorString.contains('missing destination name oauth_client_id')) {
+      // Log the error but don't pause the debugger
+      debugPrint('Filtered Supabase auth refresh error (non-critical): $error');
+      return true; // Return true to indicate the error was handled
+    }
+    // For other errors, let them propagate
+    return false;
+  };
+
   runApp(MyApp());
 }
 

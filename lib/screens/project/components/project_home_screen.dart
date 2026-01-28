@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../services/projects_api_service.dart';
 import '../../game_design_assistant/models/project_model.dart';
+import '../../projects/project_members_screen.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/evaluate_provider.dart';
@@ -122,7 +123,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
             } catch (e) {
               if (!mounted) return;
               setState(() => _isSaving = false);
-              _showSnackBar('Failed to update introduction: ${ErrorHandler.getErrorMessage(e)}');
+              _showSnackBar(
+                  'Failed to update introduction: ${ErrorHandler.getErrorMessage(e)}');
             }
           },
         ),
@@ -363,6 +365,11 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
           // Game Introduction Card (moved to bottom)
           _buildGameIntroductionCard(),
 
+          const SizedBox(height: defaultPadding),
+
+          // Team Members Card
+          _buildTeamMembersCard(),
+
           // Project Flow Chart
           if (_overview != null) ...[
             const SizedBox(height: defaultPadding),
@@ -446,6 +453,71 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTeamMembersCard() {
+    return Card(
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ProjectMembersScreen(
+                projectId: widget.projectId,
+                projectName: _project?.name ?? 'Project',
+              ),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(defaultPadding),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.group,
+                  size: 24,
+                  color: primaryColor,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Team Members',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'View and manage project collaborators',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey[400]
+                    : Colors.grey[600],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -820,7 +892,9 @@ class _GameIntroductionEditorScreenState
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving: ${ErrorHandler.getErrorMessage(e)}')),
+          SnackBar(
+              content:
+                  Text('Error saving: ${ErrorHandler.getErrorMessage(e)}')),
         );
       }
     }
