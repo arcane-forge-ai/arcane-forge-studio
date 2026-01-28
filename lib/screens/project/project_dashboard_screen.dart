@@ -17,7 +17,6 @@ import '../feedback/feedback_screen.dart';
 import 'release_info_screen.dart';
 import '../shared/coming_soon_screen.dart';
 import '../development/code_screen.dart';
-import '../evaluate/evaluate_screen.dart';
 
 class ProjectDashboardScreen extends StatelessWidget {
   final String projectId;
@@ -112,9 +111,6 @@ class ProjectDashboardScreen extends StatelessWidget {
                           projectId: projectId, projectName: projectName);
                     case ScreenType.feedbacks:
                       return FeedbackScreen(
-                          projectId: projectId, projectName: projectName);
-                    case ScreenType.evaluate:
-                      return EvaluateScreen(
                           projectId: projectId, projectName: projectName);
                     case ScreenType.versions:
                       return ReleaseInfoScreen(
