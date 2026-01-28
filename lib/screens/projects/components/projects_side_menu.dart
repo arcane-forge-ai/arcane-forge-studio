@@ -28,6 +28,19 @@ class ProjectsSideMenu extends BaseSideMenu {
           );
         },
       ),
+      Consumer<MenuAppController>(
+        builder: (context, controller, child) {
+          return ListTile(
+            title: const Text("Invites"),
+            leading: const Icon(Icons.mail_outline),
+            selected: controller.currentScreen == ScreenType.invites,
+            onTap: () {
+              Provider.of<MenuAppController>(context, listen: false)
+                  .changeScreen(ScreenType.invites);
+            },
+          );
+        },
+      ),
       
       const SizedBox(height: 16),
       

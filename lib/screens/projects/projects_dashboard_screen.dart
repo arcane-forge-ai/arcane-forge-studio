@@ -6,6 +6,7 @@ import '../settings/settings_screen.dart';
 import '../user/user_screen.dart';
 import 'components/projects_side_menu.dart';
 import 'projects_screen.dart';
+import 'project_invites_screen.dart';
 
 class ProjectsDashboardScreen extends StatelessWidget {
   const ProjectsDashboardScreen({super.key});
@@ -33,6 +34,8 @@ class ProjectsDashboardScreen extends StatelessWidget {
                   switch (controller.currentScreen) {
                     case ScreenType.projects:
                       return const ProjectsScreen();
+                    case ScreenType.invites:
+                      return const ProjectInvitesScreen();
                     case ScreenType.settings:
                       return const SettingsScreen();
                     case ScreenType.user:

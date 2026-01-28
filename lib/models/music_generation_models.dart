@@ -13,6 +13,8 @@ class MusicAsset {
   final Map<String, dynamic> metadata;
   final int? fileSize;
   final int totalGenerations;
+  final String? createdByUserId; // User who created this asset
+  final String? createdByUsername; // Username for display
 
   MusicAsset({
     required this.id,
@@ -27,6 +29,8 @@ class MusicAsset {
     this.metadata = const {},
     this.fileSize,
     this.totalGenerations = 0,
+    this.createdByUserId,
+    this.createdByUsername,
   });
 
   MusicAsset copyWith({
@@ -42,6 +46,8 @@ class MusicAsset {
     Map<String, dynamic>? metadata,
     int? fileSize,
     int? totalGenerations,
+    String? createdByUserId,
+    String? createdByUsername,
   }) {
     return MusicAsset(
       id: id ?? this.id,
@@ -56,6 +62,8 @@ class MusicAsset {
       metadata: metadata ?? this.metadata,
       fileSize: fileSize ?? this.fileSize,
       totalGenerations: totalGenerations ?? this.totalGenerations,
+      createdByUserId: createdByUserId ?? this.createdByUserId,
+      createdByUsername: createdByUsername ?? this.createdByUsername,
     );
   }
 
@@ -182,4 +190,3 @@ class MusicGenerationParameters {
   dynamic operator [](String key) => _params[key];
   Map<String, dynamic> toJson() => Map<String, dynamic>.from(_params);
 }
-

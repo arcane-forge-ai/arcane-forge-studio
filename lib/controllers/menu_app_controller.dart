@@ -23,6 +23,7 @@ enum ScreenType {
   evaluate,
   // Main dashboard screens
   projects,
+  invites,
   settings,
   user,
 }

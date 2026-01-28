@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../utils/app_constants.dart' as app_utils;
 import '../../services/projects_api_service.dart';
 import '../game_design_assistant/models/project_model.dart';
 import '../project/project_dashboard_screen.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/auth_provider.dart';
+import 'project_members_screen.dart';
 
 class ProjectsScreen extends StatefulWidget {
   const ProjectsScreen({super.key});
@@ -44,18 +44,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     });
 
     try {
-      // Ensure we have a valid auth session before making API calls
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      if (authProvider.isAuthenticated) {
-        try {
-          // Verify and refresh session if needed
-          await Supabase.instance.client.auth.refreshSession();
-        } catch (e) {
-          print('Session refresh check: $e');
-          // Continue anyway - the API interceptor will handle it
-        }
-      }
-      
+      // The API client will automatically handle token refresh on 401 errors
+      // No need to proactively refresh the session here
       _projects = await _getProjectsApiService().getProjects();
     } catch (e) {
       print('Error loading projects: $e');
@@ -153,7 +143,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Project "${updatedProject.name}" updated successfully!'),
+              content: Text(
+                  'Project "${updatedProject.name}" updated successfully!'),
               backgroundColor: Colors.green,
             ),
           );
@@ -232,6 +223,18 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ProjectDashboardScreen(
+          projectId: project.id,
+          projectName: project.name,
+        ),
+      ),
+    );
+  }
+
+  void _openMembers(Project project) {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ProjectMembersScreen(
           projectId: project.id,
           projectName: project.name,
         ),
@@ -491,7 +494,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                      PopupMenuButton<String>(
+                    PopupMenuButton<String>(
                       icon: Icon(
                         Icons.more_vert,
                         color: isDark ? Colors.white70 : Colors.black54,
@@ -501,9 +504,21 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                           _editProject(project);
                         } else if (value == 'delete') {
                           _deleteProject(project);
+                        } else if (value == 'members') {
+                          _openMembers(project);
                         }
                       },
                       itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'members',
+                          child: Row(
+                            children: [
+                              Icon(Icons.group),
+                              SizedBox(width: 8),
+                              Text('Team Members'),
+                            ],
+                          ),
+                        ),
                         const PopupMenuItem(
                           value: 'edit',
                           child: Row(
@@ -578,7 +593,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       ),
     );
   }
-
 }
 
 class _EditProjectDialog extends StatefulWidget {
@@ -593,7 +607,8 @@ class _EditProjectDialog extends StatefulWidget {
 class _EditProjectDialogState extends State<_EditProjectDialog> {
   final _formKey = GlobalKey<FormState>();
   late final _nameController = TextEditingController(text: widget.project.name);
-  late final _descriptionController = TextEditingController(text: widget.project.description);
+  late final _descriptionController =
+      TextEditingController(text: widget.project.description);
 
   @override
   void dispose() {
