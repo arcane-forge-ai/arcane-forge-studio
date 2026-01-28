@@ -22,7 +22,7 @@ import 'widgets/chat_history_sidebar.dart';
 import '../../providers/settings_provider.dart';
 import '../../utils/app_constants.dart' as app_utils;
 import '../../utils/error_handler.dart';
-import '../../services/design_assistant_data_service.dart';
+import '../../services/mutation_design_service.dart';
 import '../../utils/web_file_picker_stub.dart'
     if (dart.library.html) '../../utils/web_file_picker.dart';
 import '../../services/feedback_discussion_service.dart';
@@ -120,7 +120,7 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
     _fetchProjectDetails();
 
     // Check for pending mutation design data
-    _checkForComposedMessageData();
+    _checkForMutationDesignData();
 
     // Check for pending feedback discussion data
     _checkForFeedbackDiscussionData();
@@ -260,15 +260,15 @@ Ask me anything about game design, or try one of the example questions below!
     }
   }
 
-  /// Check for pending composed message data and automatically send it
-  void _checkForComposedMessageData() {
-    final dataService = DesignAssistantDataService();
-    if (dataService.hasPendingData) {
+  /// Check for pending mutation design data and automatically send it
+  void _checkForMutationDesignData() {
+    final mutationService = MutationDesignService();
+    if (mutationService.hasPendingMutationDesign) {
       // Use a post-frame callback to ensure the UI is ready
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _sendComposedMessage(
-          dataService.pendingMessage!,
-          dataService.pendingTitle!,
+        _sendMutationDesignMessage(
+          mutationService.pendingMessage!,
+          mutationService.pendingTitle!,
         );
       });
     }
@@ -291,10 +291,10 @@ Ask me anything about game design, or try one of the example questions below!
     }
   }
 
-  /// Send a composed message (mutation design or gap improvement) with custom title
-  Future<void> _sendComposedMessage(String message, String title) async {
-    // Clear the data since we're using it now
-    DesignAssistantDataService().clearComposedMessageData();
+  /// Send the mutation design message with custom title
+  Future<void> _sendMutationDesignMessage(String message, String title) async {
+    // Clear the mutation design data since we're using it now
+    MutationDesignService().clearMutationDesignData();
 
     // Create and send the user message
     final userMessage = ChatMessage(
@@ -303,12 +303,8 @@ Ask me anything about game design, or try one of the example questions below!
       createdAt: DateTime.now(),
     );
 
-    // Use minimal RAG for all auto-initiated design assistant messages
-    await _sendMessageWithTitle(
-      userMessage, 
-      title,
-      agentType: 'minimal_rag',
-    );
+    // Send the message with custom title
+    await _sendMessageWithTitle(userMessage, title);
   }
 
   /// Send the feedback discussion message with RAG agent

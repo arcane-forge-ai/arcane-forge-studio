@@ -20,7 +20,6 @@ enum ScreenType {
   versions,
   stats,
   feedbacks,
-  evaluate,
   // Main dashboard screens
   projects,
   invites,

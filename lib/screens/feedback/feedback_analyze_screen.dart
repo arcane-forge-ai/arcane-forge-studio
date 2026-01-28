@@ -12,7 +12,7 @@ import '../../controllers/menu_app_controller.dart';
 import '../../utils/error_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import '../../services/design_assistant_data_service.dart';
+import '../../services/mutation_design_service.dart';
 import 'package:intl/intl.dart';
 
 class FeedbackAnalyzeScreen extends StatefulWidget {
@@ -1070,7 +1070,7 @@ $mutationPrompt""";
         menuController.changeScreen(ScreenType.gameDesignAssistant);
         
         // Store the composed message and session title for the Game Design Assistant to pick up
-        DesignAssistantDataService().setComposedMessageData(composedMessage, sessionTitle);
+        MutationDesignService().setMutationDesignData(composedMessage, sessionTitle);
         
         // Navigate back to project dashboard so the menu controller can switch screens
         Navigator.of(context).pop();

@@ -9,7 +9,6 @@ import 'package:arcane_forge/providers/workflow_provider.dart';
 import 'package:arcane_forge/providers/sfx_generation_provider.dart';
 import 'package:arcane_forge/services/sfx_generation_services.dart';
 import 'package:arcane_forge/providers/music_generation_provider.dart';
-import 'package:arcane_forge/providers/evaluate_provider.dart';
 import 'package:arcane_forge/services/music_generation_services.dart';
 import 'package:arcane_forge/screens/login/login_screen.dart';
 import 'package:arcane_forge/services/comfyui_service_manager.dart';
@@ -181,16 +180,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               settingsProvider: settingsProvider,
               authProvider: authProvider,
             ),
-          ),
-        ),
-        ChangeNotifierProxyProvider2<SettingsProvider, AuthProvider, EvaluateProvider>(
-          create: (context) => EvaluateProvider(
-            settingsProvider: context.read<SettingsProvider>(),
-            authProvider: context.read<AuthProvider>(),
-          ),
-          update: (context, settingsProvider, authProvider, previous) => previous ?? EvaluateProvider(
-            settingsProvider: settingsProvider,
-            authProvider: authProvider,
           ),
         ),
       ],
