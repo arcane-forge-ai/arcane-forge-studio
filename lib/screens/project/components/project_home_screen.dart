@@ -5,11 +5,15 @@ import '../../game_design_assistant/models/project_model.dart';
 import '../../projects/project_members_screen.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/evaluate_provider.dart';
 import '../../../constants.dart';
 import '../../../models/project_overview_models.dart';
+import '../../../models/evaluate_models.dart';
 import '../../../widgets/project_flow_chart.dart';
+import '../../../widgets/evaluate_result_card.dart';
 import '../../../utils/error_handler.dart';
 import '../../../controllers/menu_app_controller.dart';
+import '../../evaluate/evaluate_screen.dart';
 
 class ProjectHomeScreen extends StatefulWidget {
   final String projectId;
@@ -40,6 +44,11 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
       authProvider: context.read<AuthProvider>(),
     );
     _loadProject();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context
+          .read<EvaluateProvider>()
+          .loadProjectEvaluations(int.parse(widget.projectId));
+    });
   }
 
   Future<void> _loadProject() async {
@@ -342,6 +351,8 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
             ),
           ],
 
+          const SizedBox(height: defaultPadding),
+
           // Game Introduction Card (moved to bottom)
           _buildGameIntroductionCard(),
 
@@ -358,6 +369,11 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
               onNodeTap: _navigateToScreen,
             ),
           ],
+
+          const SizedBox(height: defaultPadding),
+
+          // Latest Evaluation Summary
+          _buildEvaluationSummaryCard(),
         ],
       ),
     );
@@ -549,6 +565,136 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.day}/${dateTime.month}/${dateTime.year} at ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
+
+  Widget _buildEvaluationSummaryCard() {
+    return Consumer<EvaluateProvider>(
+      builder: (context, evaluateProvider, child) {
+        if (evaluateProvider.isLoading &&
+            evaluateProvider.latestEvaluation == null) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(defaultPadding),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Loading evaluation...',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final EvaluateResponse? latest = evaluateProvider.latestEvaluation;
+
+        if (latest == null || latest.result == null) {
+          return Card(
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => EvaluateScreen(
+                      projectId: widget.projectId,
+                      projectName: _project?.name ?? 'Project',
+                    ),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(defaultPadding),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.analytics_outlined,
+                        size: 24,
+                        color: primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Game Design Evaluation',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'No evaluation has been run yet',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.grey[400]
+                                          : Colors.grey[600],
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.grey[400]
+                          : Colors.grey[600],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Latest Evaluation',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => EvaluateScreen(
+                          projectId: widget.projectId,
+                          projectName: _project?.name ?? 'Project',
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('View All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            EvaluateResultCard(evaluation: latest),
+          ],
+        );
+      },
+    );
+  }
+
 
   @override
   void dispose() {
