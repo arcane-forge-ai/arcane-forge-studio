@@ -7,6 +7,7 @@ import 'components/side_menu.dart';
 import 'components/project_home_screen.dart';
 import '../game_design_assistant/game_design_assistant_screen.dart';
 import '../knowledge_base/knowledge_base_screen.dart';
+import '../knowledge_base_qa/knowledge_base_qa_screen.dart';
 import '../image_generation/image_overview_screen.dart';
 import '../image_generation/workflow/select_target_screen.dart';
 import '../sfx_generation/sfx_generation_screen.dart';
@@ -72,6 +73,11 @@ class ProjectDashboardScreen extends StatelessWidget {
                       );
                     case ScreenType.gameDesignAssistant:
                       return GameDesignAssistantScreen(
+                        projectId: projectId,
+                        projectName: projectName,
+                      );
+                    case ScreenType.knowledgeBaseQA:
+                      return KnowledgeBaseQAScreen(
                         projectId: projectId,
                         projectName: projectName,
                       );

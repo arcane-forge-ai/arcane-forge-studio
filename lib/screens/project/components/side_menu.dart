@@ -93,6 +93,14 @@ class SideMenu extends BaseSideMenu {
               .changeScreen(ScreenType.knowledgeBase);
         },
       ),
+      ListTile(
+        title: const Text("Knowledge Base Q&A"),
+        leading: const Icon(Icons.question_answer),
+        onTap: () {
+          Provider.of<MenuAppController>(context, listen: false)
+              .changeScreen(ScreenType.knowledgeBaseQA);
+        },
+      ),
 
       // Idealization
       buildSectionHeader(context, icon: Icons.lightbulb, title: "Idealization"),
@@ -104,6 +112,7 @@ class SideMenu extends BaseSideMenu {
               .changeScreen(ScreenType.gameDesignAssistant);
         },
       ),
+
       ListTile(
         title: const Text("Design Evaluation"),
         leading: const Icon(Icons.analytics),

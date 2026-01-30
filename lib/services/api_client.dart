@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide MultipartFile;
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
@@ -190,14 +191,20 @@ class ApiClient {
       },
     ));
 
-    // Add logging interceptor for development
-    if (!useMockMode) {
+    // Add logging interceptor for development (only in debug mode)
+    if (!useMockMode && kDebugMode) {
       _dio.interceptors.add(LogInterceptor(
-        requestBody: true,
-        responseBody: false, // Set to true for debugging
-        requestHeader: true,
+        requestBody: false, // Disable verbose request body logging
+        responseBody: false, // Disable verbose response body logging
+        requestHeader: false, // Disable verbose request header logging
         responseHeader: false,
-        error: true,
+        error: true, // Still log errors
+        logPrint: (obj) {
+          // Only log basic request info and errors
+          if (obj.toString().contains('ERROR') || obj.toString().contains('DioException')) {
+            print(obj);
+          }
+        },
       ));
     }
   }

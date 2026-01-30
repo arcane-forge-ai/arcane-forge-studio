@@ -180,7 +180,7 @@ class ChatApiService {
     }
   }
 
-  /// Delete file from knowledge base
+  /// Delete file from knowledge base (works for both file and non-file entries)
   Future<bool> deleteFile(String projectId, int fileId) async {
     if (_useMockMode) {
       await Future.delayed(const Duration(seconds: 1)); // Simulate deletion
@@ -188,11 +188,18 @@ class ChatApiService {
     }
 
     try {
-      final response = await _apiClient.delete('/projects/$projectId/files/$fileId');
+      // Try knowledge-base endpoint first (for non-file entries)
+      final response = await _apiClient.delete('/projects/$projectId/knowledge-base/$fileId');
       return response.data['success'] == true;
     } catch (e) {
-      print('File Delete Error: $e');
-      rethrow;
+      // If that fails, try the files endpoint (for document entries)
+      try {
+        final response = await _apiClient.delete('/projects/$projectId/files/$fileId');
+        return response.data['success'] == true;
+      } catch (fallbackError) {
+        print('File Delete Error: $fallbackError');
+        rethrow;
+      }
     }
   }
 
@@ -214,6 +221,127 @@ class ChatApiService {
       return FileDownloadResponse.fromJson(response.data);
     } catch (e) {
       print('File Download URL Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Add new knowledge base entry (non-file types: link, contact, folder, other)
+  /// For document uploads, use uploadFile() instead
+  Future<KnowledgeBaseFile> addKnowledgeBaseEntry(
+    String projectId,
+    KnowledgeBaseFile entry,
+  ) async {
+    if (_useMockMode) {
+      return _mockAddKnowledgeBaseEntry(entry);
+    }
+
+    try {
+      // Prepare request body according to API spec
+      final requestBody = <String, dynamic>{
+        'document_name': entry.documentName,
+        'entry_type': entry.entryType,
+        'visibility': entry.visibility,
+        'authority_level': entry.authorityLevel,
+        'tags': entry.tags,
+      };
+
+      // Add optional fields
+      if (entry.description != null && entry.description!.isNotEmpty) {
+        requestBody['description'] = entry.description;
+      }
+      
+      if (entry.url != null && entry.url!.isNotEmpty) {
+        requestBody['url'] = entry.url;
+      }
+      
+      if (entry.contactInfo != null && entry.contactInfo!.isNotEmpty) {
+        requestBody['contact_info'] = entry.contactInfo;
+      }
+
+      final response = await _apiClient.post(
+        '/projects/$projectId/knowledge-base',
+        data: requestBody,
+      );
+      return KnowledgeBaseFile.fromJson(response.data);
+    } catch (e) {
+      print('Add KB Entry Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update knowledge base entry metadata
+  Future<KnowledgeBaseFile> updateKnowledgeBaseEntry(
+    String projectId,
+    int entryId,
+    KnowledgeBaseFile entry,
+  ) async {
+    if (_useMockMode) {
+      return _mockUpdateKnowledgeBaseEntry(entryId, entry);
+    }
+
+    try {
+      // Prepare PATCH request body with only fields that should be updated
+      final requestBody = <String, dynamic>{};
+      
+      // Add fields to update
+      if (entry.documentName.isNotEmpty) {
+        requestBody['document_name'] = entry.documentName;
+      }
+      if (entry.description != null) {
+        requestBody['description'] = entry.description;
+      }
+      requestBody['tags'] = entry.tags;
+      requestBody['visibility'] = entry.visibility;
+      requestBody['authority_level'] = entry.authorityLevel;
+      
+      if (entry.url != null) {
+        requestBody['url'] = entry.url;
+      }
+      if (entry.contactInfo != null) {
+        requestBody['contact_info'] = entry.contactInfo;
+      }
+
+      final response = await _apiClient.patch(
+        '/projects/$projectId/knowledge-base/$entryId',
+        data: requestBody,
+      );
+      return KnowledgeBaseFile.fromJson(response.data);
+    } catch (e) {
+      print('Update KB Entry Error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get knowledge base entries with optional filtering
+  Future<List<KnowledgeBaseFile>> getKnowledgeBaseEntries(
+    String projectId, {
+    String? entryType,
+    String? visibility,
+    List<String>? tags,
+  }) async {
+    if (_useMockMode) {
+      return _mockGetKnowledgeBaseEntries(
+        entryType: entryType,
+        visibility: visibility,
+        tags: tags,
+      );
+    }
+
+    try {
+      final queryParams = <String, dynamic>{};
+      if (entryType != null) queryParams['entry_type'] = entryType;
+      if (visibility != null) queryParams['visibility'] = visibility;
+      if (tags != null && tags.isNotEmpty) queryParams['tags'] = tags.join(',');
+
+      final response = await _apiClient.get(
+        '/projects/$projectId/knowledge-base',
+        queryParameters: queryParams,
+      );
+      
+      final List<dynamic> entries = response.data['entries'] ?? response.data;
+      return entries.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
+    } catch (e) {
+      print('Get KB Entries Error: $e');
       rethrow;
     }
   }
@@ -467,27 +595,122 @@ What specific aspect of game design would you like to explore? I can create deta
     }
   }
 
+  // Static storage for mock KB entries
+  static final List<KnowledgeBaseFile> _mockKBEntries = [
+    KnowledgeBaseFile(
+      id: 1,
+      documentName: 'Game Design Document.md',
+      fileType: 'md',
+      createdAt: DateTime.now().subtract(const Duration(days: 5)),
+      entryType: 'document',
+      visibility: 'vendor_visible',
+      authorityLevel: 'source_of_truth',
+      tags: ['documentation', 'design', 'core'],
+      description: 'Main game design document with core mechanics',
+    ),
+    KnowledgeBaseFile(
+      id: 2,
+      documentName: 'Character Progression System.md',
+      fileType: 'md',
+      createdAt: DateTime.now().subtract(const Duration(days: 3)),
+      entryType: 'document',
+      visibility: 'vendor_visible',
+      authorityLevel: 'source_of_truth',
+      tags: ['progression', 'mechanics', 'balance'],
+      description: 'Detailed character progression and leveling system',
+    ),
+    KnowledgeBaseFile(
+      id: 3,
+      documentName: 'Art Style Guide.pdf',
+      fileType: 'pdf',
+      createdAt: DateTime.now().subtract(const Duration(days: 1)),
+      entryType: 'document',
+      visibility: 'internal_only',
+      authorityLevel: 'reference',
+      tags: ['art', 'style', 'guide'],
+      description: 'Visual style guidelines for artists',
+    ),
+    KnowledgeBaseFile(
+      id: 4,
+      documentName: 'Unity Asset Store',
+      fileType: 'link',
+      createdAt: DateTime.now().subtract(const Duration(days: 7)),
+      entryType: 'link',
+      visibility: 'vendor_visible',
+      authorityLevel: 'reference',
+      tags: ['resources', 'assets', 'unity'],
+      description: 'Unity Asset Store for approved asset packages',
+      url: 'https://assetstore.unity.com/',
+    ),
+    KnowledgeBaseFile(
+      id: 5,
+      documentName: 'Alice Chen - UI Lead',
+      fileType: 'contact',
+      createdAt: DateTime.now().subtract(const Duration(days: 2)),
+      entryType: 'contact',
+      visibility: 'vendor_visible',
+      authorityLevel: 'source_of_truth',
+      tags: ['ui', 'contact', 'lead'],
+      description: 'UI/UX Lead for design questions',
+      contactInfo: {
+        'email': 'alice@studio.com',
+        'role': 'UI/UX Lead',
+        'method': 'slack: #ui-questions',
+      },
+    ),
+  ];
+
   List<KnowledgeBaseFile> _mockKnowledgeBaseFiles() {
-    return [
-      KnowledgeBaseFile(
-        id: 1,
-        documentName: 'Game Design Document.md',
-        fileType: 'md',
-        createdAt: DateTime.now().subtract(const Duration(days: 5)),
-      ),
-      KnowledgeBaseFile(
-        id: 2,
-        documentName: 'Character Progression System.md',
-        fileType: 'md',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-      ),
-      KnowledgeBaseFile(
-        id: 3,
-        documentName: 'Art Style Guide.pdf',
-        fileType: 'pdf',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      ),
-    ];
+    return List.from(_mockKBEntries);
+  }
+
+  KnowledgeBaseFile _mockAddKnowledgeBaseEntry(KnowledgeBaseFile entry) {
+    final newId = _mockKBEntries.isEmpty 
+        ? 1 
+        : _mockKBEntries.map((e) => e.id).reduce((a, b) => a > b ? a : b) + 1;
+    
+    final newEntry = entry.copyWith(
+      id: newId,
+      createdAt: DateTime.now(),
+    );
+    
+    _mockKBEntries.add(newEntry);
+    return newEntry;
+  }
+
+  KnowledgeBaseFile _mockUpdateKnowledgeBaseEntry(int entryId, KnowledgeBaseFile entry) {
+    final index = _mockKBEntries.indexWhere((e) => e.id == entryId);
+    if (index == -1) {
+      throw Exception('Entry not found');
+    }
+    
+    final updatedEntry = entry.copyWith(id: entryId);
+    _mockKBEntries[index] = updatedEntry;
+    return updatedEntry;
+  }
+
+  List<KnowledgeBaseFile> _mockGetKnowledgeBaseEntries({
+    String? entryType,
+    String? visibility,
+    List<String>? tags,
+  }) {
+    var filtered = List<KnowledgeBaseFile>.from(_mockKBEntries);
+    
+    if (entryType != null) {
+      filtered = filtered.where((e) => e.entryType == entryType).toList();
+    }
+    
+    if (visibility != null) {
+      filtered = filtered.where((e) => e.visibility == visibility).toList();
+    }
+    
+    if (tags != null && tags.isNotEmpty) {
+      filtered = filtered.where((e) {
+        return tags.any((tag) => e.tags.contains(tag));
+      }).toList();
+    }
+    
+    return filtered;
   }
 
   List<ChatSession> _mockChatSessions(int projectId) {

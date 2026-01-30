@@ -59,14 +59,8 @@ class EvaluateResponse {
             ? DateTime.parse(json['completed_at'].toString())
             : null,
       );
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('Error parsing EvaluateResponse: $e');
-      print('JSON was: $json');
-      print('Field types:');
-      json.forEach((key, value) {
-        print('  $key: ${value.runtimeType} = $value');
-      });
-      print('Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -123,7 +117,6 @@ class EvaluateResult {
       );
     } catch (e) {
       print('Error parsing EvaluateResult: $e');
-      print('JSON data: $json');
       rethrow;
     }
   }
@@ -362,20 +355,14 @@ class EvaluateHistoryResponse {
 
   factory EvaluateHistoryResponse.fromJson(Map<String, dynamic> json) {
     try {
-      print('Parsing EvaluateHistoryResponse from: $json');
       return EvaluateHistoryResponse(
         projectId: json['project_id'] as int,
         evaluations: (json['evaluations'] as List? ?? [])
-            .map((e) {
-              print('Parsing evaluation item: $e (type: ${e.runtimeType})');
-              return EvaluateResponse.fromJson(e as Map<String, dynamic>);
-            })
+            .map((e) => EvaluateResponse.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('Error parsing EvaluateHistoryResponse: $e');
-      print('JSON was: $json');
-      print('Stack trace: $stackTrace');
       rethrow;
     }
   }

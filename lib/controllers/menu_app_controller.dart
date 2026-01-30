@@ -6,6 +6,7 @@ enum ScreenType {
   projectHome,
   knowledgeBase,
   gameDesignAssistant,
+  knowledgeBaseQA,
   codeEditor,
   imageGenerator,
   imageGenerationOverview,

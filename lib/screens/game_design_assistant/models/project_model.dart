@@ -13,6 +13,8 @@ class Project {
   final String? gameIntroduction;
   final String? codeMapUrl;
   final String? knowledgeBaseName;
+  final bool qaExternalAccessEnabled;
+  final String? qaAccessPasscode;
 
   Project({
     required this.id,
@@ -29,6 +31,8 @@ class Project {
     this.gameIntroduction,
     this.codeMapUrl,
     this.knowledgeBaseName,
+    this.qaExternalAccessEnabled = false,
+    this.qaAccessPasscode,
   });
 
   Map<String, dynamic> toJson() {
@@ -47,6 +51,8 @@ class Project {
       'gameIntroduction': gameIntroduction,
       'codeMapUrl': codeMapUrl,
       'knowledgeBaseName': knowledgeBaseName,
+      'qaExternalAccessEnabled': qaExternalAccessEnabled,
+      'qaAccessPasscode': qaAccessPasscode,
     };
   }
 
@@ -67,6 +73,8 @@ class Project {
       gameIntroduction: json['gameIntroduction'],
       codeMapUrl: json['codeMapUrl'],
       knowledgeBaseName: json['knowledgeBaseName'],
+      qaExternalAccessEnabled: json['qaExternalAccessEnabled'] ?? false,
+      qaAccessPasscode: json['qaAccessPasscode'],
     );
   }
 
@@ -90,6 +98,8 @@ class Project {
       gameIntroduction: json['game_introduction'],
       codeMapUrl: json['code_map_url'],
       knowledgeBaseName: json['knowledge_base_name'],
+      qaExternalAccessEnabled: json['qa_external_access_enabled'] ?? false,
+      qaAccessPasscode: json['qa_access_passcode'],
     );
   }
 
@@ -108,6 +118,8 @@ class Project {
     String? gameIntroduction,
     String? codeMapUrl,
     String? knowledgeBaseName,
+    bool? qaExternalAccessEnabled,
+    String? qaAccessPasscode,
   }) {
     return Project(
       id: id ?? this.id,
@@ -124,6 +136,8 @@ class Project {
       gameIntroduction: gameIntroduction ?? this.gameIntroduction,
       codeMapUrl: codeMapUrl ?? this.codeMapUrl,
       knowledgeBaseName: knowledgeBaseName ?? this.knowledgeBaseName,
+      qaExternalAccessEnabled: qaExternalAccessEnabled ?? this.qaExternalAccessEnabled,
+      qaAccessPasscode: qaAccessPasscode ?? this.qaAccessPasscode,
     );
   }
 }

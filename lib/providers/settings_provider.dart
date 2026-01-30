@@ -100,11 +100,11 @@ class SettingsProvider extends ChangeNotifier {
 
   /// Load settings from environment (for development)
   void _loadFromEnvironment() {
-    // Prioritize --dart-define (production), fallback to .env (dev) on desktop only
+    // Prioritize --dart-define (production), fallback to .env (dev)
     const apiUrlDefine = String.fromEnvironment('API_BASE_URL', defaultValue: '');
     String apiUrl = apiUrlDefine;
     
-    if (apiUrlDefine.isEmpty && !kIsWeb && dotenv.isInitialized) {
+    if (apiUrlDefine.isEmpty && dotenv.isInitialized) {
       apiUrl = dotenv.env['API_BASE_URL'] ?? ApiConfig.defaultBaseUrl;
     } else if (apiUrlDefine.isEmpty) {
       apiUrl = ApiConfig.defaultBaseUrl;
@@ -114,17 +114,17 @@ class SettingsProvider extends ChangeNotifier {
     const useApiDefine = String.fromEnvironment('USE_API_SERVICE', defaultValue: '');
     if (useApiDefine.isNotEmpty) {
       _useApiService = useApiDefine.toLowerCase() == 'true';
-    } else if (!kIsWeb && dotenv.isInitialized) {
+    } else if (dotenv.isInitialized) {
       _useApiService = dotenv.env['USE_API_SERVICE']?.toLowerCase() == 'true' || ApiConfig.useApiService;
     } else {
       _useApiService = ApiConfig.useApiService;
     }
 
-    // A1111 Mode: prioritize --dart-define, fallback to .env on desktop
+    // A1111 Mode: prioritize --dart-define, fallback to .env
     const a1111ModeDefine = String.fromEnvironment('A1111_MODE', defaultValue: '');
     String a1111ModeString = a1111ModeDefine;
     
-    if (a1111ModeDefine.isEmpty && !kIsWeb && dotenv.isInitialized) {
+    if (a1111ModeDefine.isEmpty && dotenv.isInitialized) {
       a1111ModeString = dotenv.env['A1111_MODE'] ?? '';
     }
         
