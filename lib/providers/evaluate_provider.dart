@@ -53,32 +53,22 @@ class EvaluateProvider extends ChangeNotifier {
       }
       
       // Check if any evaluation is still in progress and resume polling
-      debugPrint('📊 Checking history for in-progress evaluations...');
-      debugPrint('📊 History count: ${_history.length}');
-      _history.forEach((eval) {
-        debugPrint('📊   Evaluation #${eval.id}: status=${eval.status}');
-      });
-      
       EvaluateResponse? inProgress;
       try {
         inProgress = _history.firstWhere(
           (eval) => eval.isPending || eval.isProcessing,
         );
-        debugPrint('📊 Found in-progress evaluation #${inProgress.id}');
       } catch (e) {
         // No in-progress evaluation found, clear active evaluation
-        debugPrint('📊 No in-progress evaluations found');
         inProgress = null;
       }
       
       if (inProgress != null) {
         // Resume polling for this evaluation
-        debugPrint('📊 Resuming polling for evaluation #${inProgress.id}');
         _activeEvaluation = inProgress;
         _startPolling(projectId, inProgress.id);
       } else {
         // No in-progress evaluation, clear active state and stop polling
-        debugPrint('📊 Clearing active evaluation and stopping polling');
         _activeEvaluation = null;
         _stopPolling();
       }
@@ -122,30 +112,24 @@ class EvaluateProvider extends ChangeNotifier {
     _pollingTimer?.cancel();
     _isPollingActive = true;
     _activeEvaluationId = evaluationId;
-    debugPrint('📊 Starting polling for evaluation #$evaluationId on project #$projectId');
     
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       // Check if polling is still active and this is still the active evaluation
       if (!_isPollingActive || _activeEvaluationId != evaluationId) {
-        debugPrint('📊 Polling cancelled or evaluation changed, ignoring stale response');
         return;
       }
       
       try {
-        debugPrint('📊 Polling evaluation #$evaluationId...');
         final evaluation = await _apiService.getEvaluationById(projectId, evaluationId);
         
         // Double-check after async call - polling might have stopped while we were waiting
         if (!_isPollingActive || _activeEvaluationId != evaluationId) {
-          debugPrint('📊 Polling stopped during API call, ignoring stale response');
           return;
         }
         
-        debugPrint('📊 Evaluation #$evaluationId status: ${evaluation.status}');
         _activeEvaluation = evaluation;
         
         if (evaluation.isCompleted || evaluation.isFailed) {
-          debugPrint('📊 Evaluation #$evaluationId finished with status: ${evaluation.status}');
           _stopPolling();
           _activeEvaluation = null; // Clear active state
           
@@ -167,18 +151,14 @@ class EvaluateProvider extends ChangeNotifier {
           notifyListeners(); // Update UI with current status
         }
       } catch (e) {
-        // Only log errors if polling is still active for this evaluation
-        if (_isPollingActive && _activeEvaluationId == evaluationId) {
-          debugPrint('❌ Polling error for evaluation #$evaluationId: $e');
-          // We continue polling despite temporary errors
-        }
+        // Continue polling despite temporary errors
+        debugPrint('Polling error for evaluation #$evaluationId: $e');
       }
     });
   }
 
   void _stopPolling() {
     if (_pollingTimer != null) {
-      debugPrint('📊 Stopping polling');
       _isPollingActive = false;
       _pollingTimer?.cancel();
       _pollingTimer = null;

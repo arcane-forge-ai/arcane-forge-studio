@@ -71,6 +71,13 @@
       });
     }
   </script>
+  
+  <!-- PDF.js library for Syncfusion PDF Viewer web support -->
+  <script type="module" async>
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs";
+  </script>
+  
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

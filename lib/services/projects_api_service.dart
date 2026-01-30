@@ -280,6 +280,8 @@ class ProjectsApiService {
         createdAt: DateTime.now(),
         userId: defaultUserId,
         hasKnowledgeBase: false,
+        qaExternalAccessEnabled: true,
+        qaAccessPasscode: 'test123',
       );
     }
   }
@@ -390,6 +392,43 @@ class ProjectsApiService {
   // =====================================================
   // Team Collaboration APIs
   // =====================================================
+
+  /// Update QA public access settings for a project
+  /// Requires: project membership
+  Future<Project> updateQAPublicAccess({
+    required String projectId,
+    required bool isEnabled,
+    String? passcode,
+  }) async {
+    if (_useMockMode) {
+      return _mockUpdateQAPublicAccess(
+        projectId: projectId,
+        isEnabled: isEnabled,
+        passcode: passcode,
+      );
+    }
+
+    final Map<String, dynamic> body = {
+      'qa_external_access_enabled': isEnabled,
+      'qa_access_passcode': passcode,
+    };
+
+    try {
+      final response = await _apiClient.put(
+        '/projects/$projectId',
+        data: body,
+      );
+
+      if (response.statusCode == 200) {
+        return Project.fromApiJson(response.data);
+      } else {
+        throw Exception('Failed to update QA public access: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Update QA Public Access API Error: $e');
+      rethrow;
+    }
+  }
 
   /// Get all members of a project
   /// Requires: project membership
@@ -575,6 +614,20 @@ class ProjectsApiService {
       print('Get Project Pending Invites API Error: $e');
       rethrow;
     }
+  }
+
+  Project _mockUpdateQAPublicAccess({
+    required String projectId,
+    required bool isEnabled,
+    String? passcode,
+  }) {
+    // In mock mode, just return a project with updated values
+    final current = _mockGetProjectById(int.parse(projectId));
+    return current.copyWith(
+      qaExternalAccessEnabled: isEnabled,
+      qaAccessPasscode: passcode,
+      updatedAt: DateTime.now(),
+    );
   }
 
   // Mock data for team collaboration

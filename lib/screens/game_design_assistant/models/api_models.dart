@@ -188,6 +188,15 @@ class KnowledgeBaseFile {
   final String fileType;
   final DateTime createdAt;
   final Map<String, dynamic>? metadata;
+  
+  // Unified Knowledge Base fields
+  final String entryType;        // 'document', 'link', 'folder', 'contact', 'other'
+  final String visibility;       // 'vendor_visible', 'internal_only'
+  final String authorityLevel;   // 'source_of_truth', 'reference', 'deprecated'
+  final List<String> tags;       // Keywords for search
+  final String? description;     // Summary/context
+  final String? url;            // For link entries
+  final Map<String, String>? contactInfo; // For contact entries
 
   KnowledgeBaseFile({
     required this.id,
@@ -195,6 +204,13 @@ class KnowledgeBaseFile {
     required this.fileType,
     required this.createdAt,
     this.metadata,
+    this.entryType = 'document',
+    this.visibility = 'vendor_visible',
+    this.authorityLevel = 'reference',
+    this.tags = const [],
+    this.description,
+    this.url,
+    this.contactInfo,
   });
 
   factory KnowledgeBaseFile.fromJson(Map<String, dynamic> json) {
@@ -209,6 +225,64 @@ class KnowledgeBaseFile {
               ? DateTime.parse(json['createdAt'])
               : DateTime.now()),
       metadata: json['metadata'],
+      entryType: json['entry_type'] ?? json['entryType'] ?? 'document',
+      visibility: json['visibility'] ?? 'vendor_visible',
+      authorityLevel: json['authority_level'] ?? json['authorityLevel'] ?? 'reference',
+      tags: json['tags'] != null 
+          ? List<String>.from(json['tags'])
+          : [],
+      description: json['description'],
+      url: json['url'],
+      contactInfo: json['contact_info'] != null
+          ? Map<String, String>.from(json['contact_info'])
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'document_name': documentName,
+      'file_type': fileType,
+      'created_at': createdAt.toIso8601String(),
+      if (metadata != null) 'metadata': metadata,
+      'entry_type': entryType,
+      'visibility': visibility,
+      'authority_level': authorityLevel,
+      'tags': tags,
+      if (description != null) 'description': description,
+      if (url != null) 'url': url,
+      if (contactInfo != null) 'contact_info': contactInfo,
+    };
+  }
+
+  KnowledgeBaseFile copyWith({
+    int? id,
+    String? documentName,
+    String? fileType,
+    DateTime? createdAt,
+    Map<String, dynamic>? metadata,
+    String? entryType,
+    String? visibility,
+    String? authorityLevel,
+    List<String>? tags,
+    String? description,
+    String? url,
+    Map<String, String>? contactInfo,
+  }) {
+    return KnowledgeBaseFile(
+      id: id ?? this.id,
+      documentName: documentName ?? this.documentName,
+      fileType: fileType ?? this.fileType,
+      createdAt: createdAt ?? this.createdAt,
+      metadata: metadata ?? this.metadata,
+      entryType: entryType ?? this.entryType,
+      visibility: visibility ?? this.visibility,
+      authorityLevel: authorityLevel ?? this.authorityLevel,
+      tags: tags ?? this.tags,
+      description: description ?? this.description,
+      url: url ?? this.url,
+      contactInfo: contactInfo ?? this.contactInfo,
     );
   }
 }

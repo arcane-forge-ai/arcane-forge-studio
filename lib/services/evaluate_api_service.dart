@@ -65,15 +65,12 @@ class EvaluateApiService {
       );
 
       if (response.statusCode == 200) {
-        print('History response data type: ${response.data.runtimeType}');
-        print('History response data: ${response.data}');
         return EvaluateHistoryResponse.fromJson(response.data);
       } else {
         throw Exception('Failed to get evaluation history: ${response.statusCode}');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('Evaluate API Error (history): $e');
-      print('Stack trace: $stackTrace');
       rethrow;
     }
   }
