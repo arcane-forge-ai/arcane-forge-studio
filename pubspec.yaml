@@ -4,7 +4,7 @@ description: "Arcane Forge: AI-powered desktop assistant for game design, asset 
 # Prevent accidental publishing to pub.dev.
 publish_to: 'none'
 
-version: 1.4.1
+version: 1.5.0
 
 environment:
   sdk: ^3.5.3
