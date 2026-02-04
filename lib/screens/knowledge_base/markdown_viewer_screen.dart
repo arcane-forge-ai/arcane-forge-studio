@@ -9,6 +9,7 @@ class MarkdownViewerScreen extends StatefulWidget {
   final List<KnowledgeBaseFile> allVersions;
   final String projectId;
   final ChatApiService chatApiService;
+  final String? passcode;
 
   const MarkdownViewerScreen({
     Key? key,
@@ -16,6 +17,7 @@ class MarkdownViewerScreen extends StatefulWidget {
     required this.allVersions,
     required this.projectId,
     required this.chatApiService,
+    this.passcode,
   }) : super(key: key);
 
   @override
@@ -52,6 +54,7 @@ class _MarkdownViewerScreenState extends State<MarkdownViewerScreen> {
       final downloadResponse = await widget.chatApiService.getFileDownloadUrl(
         widget.projectId,
         _currentFile.id,
+        passcode: widget.passcode,
       );
 
       if (downloadResponse == null) {
