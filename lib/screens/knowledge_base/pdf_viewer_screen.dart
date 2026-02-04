@@ -9,6 +9,7 @@ class PdfViewerScreen extends StatefulWidget {
   final List<KnowledgeBaseFile> allVersions;
   final String projectId;
   final ChatApiService chatApiService;
+  final String? passcode;
 
   const PdfViewerScreen({
     Key? key,
@@ -16,6 +17,7 @@ class PdfViewerScreen extends StatefulWidget {
     required this.allVersions,
     required this.projectId,
     required this.chatApiService,
+    this.passcode,
   }) : super(key: key);
 
   @override
@@ -60,6 +62,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       final downloadResponse = await widget.chatApiService.getFileDownloadUrl(
         widget.projectId,
         _currentFile.id,
+        passcode: widget.passcode,
       );
 
       if (downloadResponse == null) {

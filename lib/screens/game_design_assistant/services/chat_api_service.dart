@@ -123,16 +123,35 @@ class ChatApiService {
   }
 
   /// Get knowledge base files for a project
-  Future<List<KnowledgeBaseFile>> getKnowledgeBaseFiles(String projectId) async {
+  Future<List<KnowledgeBaseFile>> getKnowledgeBaseFiles(
+    String projectId, {
+    String? passcode,
+  }) async {
     if (_useMockMode) {
       return _mockKnowledgeBaseFiles();
     }
 
     try {
-      final response = await _apiClient.get('/projects/$projectId/files');
-      final Map<String, dynamic> responseData = response.data;
-      final List<dynamic> files = responseData['files'] ?? [];
-      return files.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
+      // Use passcode authentication if provided (for unauthenticated access)
+      if (passcode != null) {
+        final response = await _apiClient.dio.get(
+          '${_apiClient.apiUrl}/projects/$projectId/files',
+          options: Options(
+            headers: {
+              'X-QA-Passcode': passcode,
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+        final Map<String, dynamic> responseData = response.data;
+        final List<dynamic> files = responseData['files'] ?? [];
+        return files.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
+      } else {
+        final response = await _apiClient.get('/projects/$projectId/files');
+        final Map<String, dynamic> responseData = response.data;
+        final List<dynamic> files = responseData['files'] ?? [];
+        return files.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
+      }
     } catch (e) {
       print('Knowledge Base API Error: $e');
       rethrow;
@@ -204,7 +223,11 @@ class ChatApiService {
   }
 
   /// Get download URL for a file
-  Future<FileDownloadResponse?> getFileDownloadUrl(String projectId, int fileId) async {
+  Future<FileDownloadResponse?> getFileDownloadUrl(
+    String projectId,
+    int fileId, {
+    String? passcode,
+  }) async {
     if (_useMockMode) {
       await Future.delayed(const Duration(seconds: 1)); // Simulate API call
       return FileDownloadResponse(
@@ -217,8 +240,22 @@ class ChatApiService {
     }
 
     try {
-      final response = await _apiClient.get('/projects/$projectId/files/$fileId/download');
-      return FileDownloadResponse.fromJson(response.data);
+      // Use passcode authentication if provided (for unauthenticated access)
+      if (passcode != null) {
+        final response = await _apiClient.dio.get(
+          '${_apiClient.apiUrl}/projects/$projectId/files/$fileId/download',
+          options: Options(
+            headers: {
+              'X-QA-Passcode': passcode,
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+        return FileDownloadResponse.fromJson(response.data);
+      } else {
+        final response = await _apiClient.get('/projects/$projectId/files/$fileId/download');
+        return FileDownloadResponse.fromJson(response.data);
+      }
     } catch (e) {
       print('File Download URL Error: $e');
       rethrow;
@@ -318,6 +355,7 @@ class ChatApiService {
     String? entryType,
     String? visibility,
     List<String>? tags,
+    String? passcode,
   }) async {
     if (_useMockMode) {
       return _mockGetKnowledgeBaseEntries(
@@ -333,13 +371,30 @@ class ChatApiService {
       if (visibility != null) queryParams['visibility'] = visibility;
       if (tags != null && tags.isNotEmpty) queryParams['tags'] = tags.join(',');
 
-      final response = await _apiClient.get(
-        '/projects/$projectId/knowledge-base',
-        queryParameters: queryParams,
-      );
-      
-      final List<dynamic> entries = response.data['entries'] ?? response.data;
-      return entries.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
+      // Use passcode authentication if provided (for unauthenticated access)
+      if (passcode != null) {
+        final response = await _apiClient.dio.get(
+          '${_apiClient.apiUrl}/projects/$projectId/knowledge-base',
+          queryParameters: queryParams,
+          options: Options(
+            headers: {
+              'X-QA-Passcode': passcode,
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+        
+        final List<dynamic> entries = response.data['entries'] ?? response.data;
+        return entries.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
+      } else {
+        final response = await _apiClient.get(
+          '/projects/$projectId/knowledge-base',
+          queryParameters: queryParams,
+        );
+        
+        final List<dynamic> entries = response.data['entries'] ?? response.data;
+        return entries.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
+      }
     } catch (e) {
       print('Get KB Entries Error: $e');
       rethrow;

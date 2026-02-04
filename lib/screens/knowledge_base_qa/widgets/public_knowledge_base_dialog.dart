@@ -1,63 +1,55 @@
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
-import 'package:universal_io/io.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../game_design_assistant/models/api_models.dart';
-import '../game_design_assistant/services/chat_api_service.dart';
-import '../../providers/settings_provider.dart';
-import '../../providers/auth_provider.dart';
-import '../../widgets/file_rename_dialog.dart';
-import '../../services/file_download_service.dart';
-import '../../utils/web_file_picker_stub.dart'
-    if (dart.library.html) '../../utils/web_file_picker.dart';
-import 'markdown_viewer_screen.dart';
-import 'pdf_viewer_screen.dart';
-import 'models/file_version_group.dart';
-import 'models/kb_entry_filter.dart';
-import 'dialogs/add_link_dialog.dart';
-import 'dialogs/add_contact_dialog.dart';
-import 'dialogs/add_other_entry_dialog.dart';
-import 'dialogs/edit_entry_metadata_dialog.dart';
-import 'widgets/entry_type_icon.dart';
-import 'widgets/visibility_badge.dart';
-import 'widgets/authority_badge.dart';
-import 'widgets/tags_chips.dart';
+import '../../game_design_assistant/models/api_models.dart';
+import '../../game_design_assistant/services/chat_api_service.dart';
+import '../../../providers/settings_provider.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../services/file_download_service.dart';
+import '../../knowledge_base/models/file_version_group.dart';
+import '../../knowledge_base/widgets/entry_type_icon.dart';
+import '../../knowledge_base/widgets/visibility_badge.dart';
+import '../../knowledge_base/widgets/authority_badge.dart';
+import '../../knowledge_base/widgets/tags_chips.dart';
+import '../../knowledge_base/markdown_viewer_screen.dart';
+import '../../knowledge_base/pdf_viewer_screen.dart';
 
-class KnowledgeBaseScreen extends StatefulWidget {
+/// Public Knowledge Base Dialog for vendors
+/// Shows only vendor-visible documents in read-only mode
+class PublicKnowledgeBaseDialog extends StatefulWidget {
   final String projectId;
-  final String projectName;
-  
-  const KnowledgeBaseScreen({
+  final String passcode;
+  final String? highlightDocumentId;
+
+  const PublicKnowledgeBaseDialog({
     Key? key,
     required this.projectId,
-    required this.projectName,
+    required this.passcode,
+    this.highlightDocumentId,
   }) : super(key: key);
-  
+
   @override
-  _KnowledgeBaseScreenState createState() => _KnowledgeBaseScreenState();
+  State<PublicKnowledgeBaseDialog> createState() => _PublicKnowledgeBaseDialogState();
 }
 
 enum SortField { name, date, type }
 enum SortDirection { ascending, descending }
 
-class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
+class _PublicKnowledgeBaseDialogState extends State<PublicKnowledgeBaseDialog> {
   late final ChatApiService _chatApiService;
   List<FileVersionGroup> _fileGroups = [];
   Set<String> _expandedGroups = {};
   bool _isLoading = false;
-  bool _isUploading = false;
-  KBEntryFilter _filter = const KBEntryFilter();
   SortField _sortField = SortField.date;
   SortDirection _sortDirection = SortDirection.descending;
 
   @override
   void initState() {
     super.initState();
-    // Initialize chat API service with settings and auth providers
+    // Initialize chat API service with passcode authentication
     final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _chatApiService = ChatApiService(
@@ -75,12 +67,19 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     });
 
     try {
-      final files = await _chatApiService.getKnowledgeBaseFiles(widget.projectId);
+      // Get all files using passcode, then filter for vendor-visible
+      final allFiles = await _chatApiService.getKnowledgeBaseFiles(
+        widget.projectId,
+        passcode: widget.passcode,
+      );
+      
+      // Filter to only vendor-visible documents
+      final files = allFiles.where((f) => f.visibility == 'vendor_visible').toList();
       
       if (!mounted) return;
       
       setState(() {
-        _fileGroups = _groupFilesByName(_applyFilters(files));
+        _fileGroups = _groupFilesByName(files);
         _isLoading = false;
       });
     } catch (e) {
@@ -91,37 +90,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
       });
       _showErrorSnackBar('Error loading files: $e');
     }
-  }
-
-  /// Apply current filters to the file list
-  List<KnowledgeBaseFile> _applyFilters(List<KnowledgeBaseFile> files) {
-    var filtered = files;
-
-    if (_filter.entryTypes.isNotEmpty) {
-      filtered = filtered
-          .where((f) => _filter.entryTypes.contains(f.entryType))
-          .toList();
-    }
-
-    if (_filter.visibility != null) {
-      filtered = filtered
-          .where((f) => f.visibility == _filter.visibility)
-          .toList();
-    }
-
-    if (_filter.authorityLevels.isNotEmpty) {
-      filtered = filtered
-          .where((f) => _filter.authorityLevels.contains(f.authorityLevel))
-          .toList();
-    }
-
-    if (_filter.tags.isNotEmpty) {
-      filtered = filtered.where((f) {
-        return _filter.tags.any((tag) => f.tags.contains(tag));
-      }).toList();
-    }
-
-    return filtered;
   }
 
   /// Group files by name and sort versions by date
@@ -201,202 +169,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     });
   }
 
-  Future<void> _uploadFiles() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
-        allowMultiple: true,
-        withData: true,
-      );
-
-      List<PlatformFile>? files = result?.files;
-      if (kIsWeb && (files == null || files.isEmpty || files.any((f) => f.bytes == null))) {
-        files = await pickFilesWithWebFallback(
-          allowedExtensions: const ['pdf', 'txt', 'md', 'doc', 'docx'],
-          allowMultiple: true,
-        );
-      }
-
-      if (files != null && files.isNotEmpty) {
-        // Show rename dialog
-        final fileNames = await showDialog<List<String>>(
-          context: context,
-          builder: (context) => FileRenameDialog(files: files!),
-        );
-
-        // User cancelled the dialog
-        if (fileNames == null) {
-          return;
-        }
-
-        setState(() {
-          _isUploading = true;
-        });
-        
-        int successCount = 0;
-        for (var i = 0; i < files.length; i++) {
-          final file = files[i];
-          final fileName = fileNames[i];
-          final uploadSuccess = await _chatApiService.uploadFile(
-            widget.projectId,
-            fileName,
-            filePath: kIsWeb ? null : file.path,
-            bytes: file.bytes,
-          );
-
-          if (uploadSuccess) {
-            successCount++;
-          }
-        }
-
-        setState(() {
-          _isUploading = false;
-        });
-
-        if (successCount > 0) {
-          _showSuccessSnackBar('Uploaded $successCount file(s) successfully');
-          await _loadFiles(); // Refresh the file list
-        }
-
-        if (successCount < files.length) {
-          _showErrorSnackBar('Some files failed to upload');
-        }
-      }
-    } catch (e) {
-      setState(() {
-        _isUploading = false;
-      });
-      _showErrorSnackBar('Error uploading files: $e');
-    }
-  }
-
-  Future<void> _addEntryOfType(String entryType) async {
-    KnowledgeBaseFile? entry;
-    
-    switch (entryType) {
-      case 'link':
-        entry = await showDialog<KnowledgeBaseFile>(
-          context: context,
-          builder: (context) => const AddLinkDialog(),
-        );
-        break;
-      case 'contact':
-        entry = await showDialog<KnowledgeBaseFile>(
-          context: context,
-          builder: (context) => const AddContactDialog(),
-        );
-        break;
-      case 'other':
-        entry = await showDialog<KnowledgeBaseFile>(
-          context: context,
-          builder: (context) => AddOtherEntryDialog(entryType: 'other'),
-        );
-        break;
-    }
-
-    if (entry != null) {
-      try {
-        await _chatApiService.addKnowledgeBaseEntry(widget.projectId, entry);
-        _showSuccessSnackBar('Entry added successfully');
-        await _loadFiles();
-      } catch (e) {
-        _showErrorSnackBar('Error adding entry: $e');
-      }
-    }
-  }
-
-  Future<void> _editEntryMetadata(KnowledgeBaseFile entry) async {
-    KnowledgeBaseFile? updatedEntry;
-    
-    // Route to the appropriate dialog based on entry type
-    switch (entry.entryType) {
-      case 'link':
-        updatedEntry = await showDialog<KnowledgeBaseFile>(
-          context: context,
-          builder: (context) => AddLinkDialog(existingEntry: entry),
-        );
-        break;
-      case 'contact':
-        updatedEntry = await showDialog<KnowledgeBaseFile>(
-          context: context,
-          builder: (context) => AddContactDialog(existingEntry: entry),
-        );
-        break;
-      case 'other':
-        updatedEntry = await showDialog<KnowledgeBaseFile>(
-          context: context,
-          builder: (context) => AddOtherEntryDialog(
-            entryType: 'other',
-            existingEntry: entry,
-          ),
-        );
-        break;
-      case 'document':
-      default:
-        // For documents and other types, use the metadata-only dialog
-        updatedEntry = await showDialog<KnowledgeBaseFile>(
-          context: context,
-          builder: (context) => EditEntryMetadataDialog(entry: entry),
-        );
-        break;
-    }
-
-    if (updatedEntry != null) {
-      try {
-        await _chatApiService.updateKnowledgeBaseEntry(
-          widget.projectId,
-          entry.id,
-          updatedEntry,
-        );
-        _showSuccessSnackBar('Entry updated successfully');
-        await _loadFiles();
-      } catch (e) {
-        _showErrorSnackBar('Error updating entry: $e');
-      }
-    }
-  }
-
-
-  Future<void> _deleteFile(KnowledgeBaseFile file) async {
-    final confirm = await _showDeleteConfirmDialog(file.documentName);
-    if (!confirm) return;
-
-    try {
-      final success = await _chatApiService.deleteFile(widget.projectId, file.id);
-      
-      if (success) {
-        _showSuccessSnackBar('File deleted successfully');
-        await _loadFiles(); // Refresh the file list
-      } else {
-        _showErrorSnackBar('Failed to delete file');
-      }
-    } catch (e) {
-      _showErrorSnackBar('Error deleting file: $e');
-    }
-  }
-
-  Future<bool> _showDeleteConfirmDialog(String fileName) async {
-    return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete File'),
-        content: Text('Are you sure you want to delete "$fileName"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text('Delete'),
-          ),
-        ],
-      ),
-    ) ?? false;
-  }
-
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -417,146 +189,58 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Knowledge Base',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Manage your project\'s knowledge base entries',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
-                          ),
-                        ],
+    return Dialog.fullscreen(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Public Knowledge Base'),
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          actions: [
+            // Refresh button
+            IconButton(
+              onPressed: _isLoading ? null : _loadFiles,
+              icon: Icon(
+                Icons.refresh,
+                color: _isLoading ? Colors.grey : Colors.blue,
+              ),
+              tooltip: 'Refresh entries',
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header section
+                    Text(
+                      'Browse vendor-visible documents',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
-                      Row(
-                        children: [
-                          // Refresh button
-                          IconButton(
-                            onPressed: _isLoading ? null : _loadFiles,
-                            icon: Icon(
-                              Icons.refresh,
-                              color: _isLoading ? Colors.grey : Colors.blue,
-                            ),
-                            tooltip: 'Refresh entries',
-                          ),
-                          const SizedBox(width: 8),
-                          // Filter indicator
-                          if (_filter.hasActiveFilters)
-                            Container(
-                              margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.filter_alt, size: 16, color: Colors.blue),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Filtered',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.blue[700],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        _filter = _filter.clearAll();
-                                      });
-                                      _loadFiles();
-                                    },
-                                    child: const Icon(Icons.close, size: 16, color: Colors.blue),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          MenuAnchor(
-                            builder: (context, controller, child) {
-                              return ElevatedButton.icon(
-                                onPressed: () {
-                                  if (controller.isOpen) {
-                                    controller.close();
-                                  } else {
-                                    controller.open();
-                                  }
-                                },
-                                icon: const Icon(Icons.add),
-                                label: const Text('Add Entry'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.green,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                ),
-                              );
-                            },
-                            menuChildren: [
-                              MenuItemButton(
-                                leadingIcon: const Icon(Icons.upload_file),
-                                onPressed: _isUploading ? null : _uploadFiles,
-                                child: const Text('Upload Documents'),
-                              ),
-                              MenuItemButton(
-                                leadingIcon: const Icon(Icons.link),
-                                onPressed: () => _addEntryOfType('link'),
-                                child: const Text('Add Link'),
-                              ),
-                              MenuItemButton(
-                                leadingIcon: const Icon(Icons.person),
-                                onPressed: () => _addEntryOfType('contact'),
-                                child: const Text('Add Contact'),
-                              ),
-                              MenuItemButton(
-                                leadingIcon: const Icon(Icons.notes),
-                                onPressed: () => _addEntryOfType('other'),
-                                child: const Text('Add Other Entry'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Files list
-                  Expanded(
-                    child: _isLoading 
-                      ? Center(child: CircularProgressIndicator())
-                      : _fileGroups.isEmpty
-                        ? _buildEmptyState()
-                        : _buildFilesList(),
-                  ),
-                ],
+                    ),
+                    
+                    const SizedBox(height: 32),
+                    
+                    // Files list
+                    Expanded(
+                      child: _isLoading 
+                        ? const Center(child: CircularProgressIndicator())
+                        : _fileGroups.isEmpty
+                          ? _buildEmptyState()
+                          : _buildFilesList(),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -573,36 +257,16 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'No files in knowledge base',
+            'No vendor-visible documents',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Upload files to start building your project\'s knowledge base',
+            'There are no documents shared with external vendors yet',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Colors.grey[500],
-            ),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: _isUploading ? null : _uploadFiles,
-            icon: _isUploading 
-              ? SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-              : Icon(Icons.upload_file),
-            label: Text(_isUploading ? 'Uploading...' : 'Upload Your First File'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
           ),
         ],
@@ -707,7 +371,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         // Version count and expansion control
         if (group.hasMultipleVersions)
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               border: Border(bottom: BorderSide(
                 color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
@@ -715,11 +379,11 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
             ),
             child: Row(
               children: [
-                SizedBox(width: 36), // Align with file icon
+                const SizedBox(width: 36), // Align with file icon
                 InkWell(
                   onTap: () => _toggleGroupExpansion(group.fileName),
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
                       color: isDark 
                           ? Colors.blue.withOpacity(0.15)
@@ -737,7 +401,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                             color: isDark ? Colors.blue[300] : Colors.blue[700],
                           ),
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Icon(
                           isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
                           size: 16,
@@ -853,7 +517,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     ],
                   ),
                   // Email for contact entries or URL for link entries
-                  // Email for contact entries (backend auto-creates mailto: url from contact_info.email)
                   if (file.entryType == 'contact' && file.url != null && file.url!.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     SelectableText(
@@ -913,7 +576,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
               ),
             ),
             
-            // Action buttons
+            // Action buttons (read-only: view info, open link, download)
             Row(
               children: [
                 // View metadata button for non-file entries
@@ -923,7 +586,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     icon: const Icon(Icons.info_outline, color: Colors.blue),
                     tooltip: 'View details',
                   ),
-                // Open link button for links and contacts (both use url field)
+                // Open link button for links and contacts
                 if ((file.entryType == 'link' || file.entryType == 'contact') && file.url != null)
                   IconButton(
                     onPressed: () => _openLink(file),
@@ -937,12 +600,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     icon: const Icon(Icons.copy, color: Colors.purple),
                     tooltip: 'Copy to clipboard',
                   ),
-                // Edit metadata button
-                IconButton(
-                  onPressed: () => _editEntryMetadata(file),
-                  icon: const Icon(Icons.edit, color: Colors.orange),
-                  tooltip: 'Edit metadata',
-                ),
                 // View button for markdown files
                 if (file.fileType.toLowerCase() == 'md')
                   IconButton(
@@ -964,11 +621,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     icon: const Icon(Icons.download, color: Colors.green),
                     tooltip: 'Download file',
                   ),
-                IconButton(
-                  onPressed: () => _deleteFile(file),
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  tooltip: 'Delete entry',
-                ),
               ],
             ),
           ],
@@ -1031,7 +683,11 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Future<void> _downloadFile(KnowledgeBaseFile file) async {
     try {
-      final downloadResponse = await _chatApiService.getFileDownloadUrl(widget.projectId, file.id);
+      final downloadResponse = await _chatApiService.getFileDownloadUrl(
+        widget.projectId,
+        file.id,
+        passcode: widget.passcode,
+      );
 
       if (downloadResponse == null) {
         _showErrorSnackBar('Failed to get download URL');
@@ -1066,8 +722,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           default:
             errorMessage += e.message ?? 'Unknown network error';
         }
-      } else if (e is FileSystemException) {
-        errorMessage += 'Could not save file. Check permissions and disk space.';
       } else {
         errorMessage += e.toString();
       }
@@ -1089,6 +743,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           allVersions: group.versions,
           projectId: widget.projectId,
           chatApiService: _chatApiService,
+          passcode: widget.passcode,
         ),
       ),
     );
@@ -1108,6 +763,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           allVersions: group.versions,
           projectId: widget.projectId,
           chatApiService: _chatApiService,
+          passcode: widget.passcode,
         ),
       ),
     );
@@ -1212,7 +868,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     String? urlString;
     
     // Both link and contact entries use the url field
-    // For contacts, backend auto-creates mailto: url from contact_info.email
     if ((file.entryType == 'link' || file.entryType == 'contact') && file.url != null) {
       urlString = file.url;
     }
@@ -1236,7 +891,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     String? successMessage;
     
     // Both link and contact entries use the url field
-    // For contacts, backend auto-creates mailto: url from contact_info.email
     if (file.entryType == 'link' && file.url != null) {
       textToCopy = file.url;
       successMessage = 'Link copied to clipboard';
@@ -1254,5 +908,4 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
       }
     }
   }
-
-} 
+}

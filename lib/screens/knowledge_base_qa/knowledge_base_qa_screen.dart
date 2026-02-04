@@ -10,9 +10,8 @@ import '../../providers/settings_provider.dart';
 import '../../services/qa_api_service.dart';
 import '../../services/projects_api_service.dart';
 import '../game_design_assistant/models/project_model.dart';
-import 'widgets/confidence_badge.dart';
-import 'widgets/escalation_banner.dart';
 import 'widgets/public_access_settings_dialog.dart';
+import 'widgets/public_knowledge_base_dialog.dart';
 import 'responsibility_areas_screen.dart';
 
 /// Knowledge Base QA Screen with dual access mode
@@ -257,10 +256,34 @@ class _KnowledgeBaseQAScreenState extends State<KnowledgeBaseQAScreen> {
       if (response.references.isNotEmpty) {
         responseText += '\n\n**References:**';
         for (final ref in response.references) {
-          responseText += '\n- ${ref.title}';
+          // Add reference type icon
+          String typeIcon = '';
+          switch (ref.type) {
+            case 'document':
+              typeIcon = '📄';
+              break;
+            case 'link':
+              typeIcon = '🔗';
+              break;
+            case 'contact':
+              typeIcon = '👤';
+              break;
+            case 'folder':
+              typeIcon = '📁';
+              break;
+            default:
+              typeIcon = '📋';
+          }
+          
+          responseText += '\n- $typeIcon ${ref.title}';
           if (ref.source != null) {
             responseText += ' (${ref.source})';
           }
+        }
+        
+        // Add helpful note for vendors about viewing documents
+        if (!_isAuthenticated && response.references.any((ref) => ref.type == 'document')) {
+          responseText += '\n\n💡 *Tip: Click the "Browse Documents" button above to view these files.*';
         }
       }
       
@@ -327,6 +350,27 @@ class _KnowledgeBaseQAScreenState extends State<KnowledgeBaseQAScreen> {
     }
   }
 
+  void _showPublicKnowledgeBase({String? highlightDocumentId}) {
+    if (widget.passcode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to access knowledge base: No passcode available'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => PublicKnowledgeBaseDialog(
+        projectId: widget.projectId,
+        passcode: widget.passcode!,
+        highlightDocumentId: highlightDocumentId,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -353,7 +397,15 @@ class _KnowledgeBaseQAScreenState extends State<KnowledgeBaseQAScreen> {
               ),
             ),
           ],
-          if (!_isAuthenticated)
+          if (!_isAuthenticated) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: IconButton(
+                onPressed: _showPublicKnowledgeBase,
+                icon: const Icon(Icons.library_books),
+                tooltip: 'Browse Documents',
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.only(right: 16.0),
               child: TextButton.icon(
@@ -365,6 +417,7 @@ class _KnowledgeBaseQAScreenState extends State<KnowledgeBaseQAScreen> {
                 ),
               ),
             ),
+          ],
         ],
       ),
       body: Center(

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide MultipartFile;
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
@@ -306,6 +307,34 @@ class ApiClient {
     );
   }
 
+  /// Get the appropriate MIME type for a file based on its extension
+  static MediaType? _getMimeType(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'pdf':
+        return MediaType('application', 'pdf');
+      case 'md':
+        return MediaType('text', 'markdown');
+      case 'txt':
+        return MediaType('text', 'plain');
+      case 'doc':
+        return MediaType('application', 'msword');
+      case 'docx':
+        return MediaType('application', 'vnd.openxmlformats-officedocument.wordprocessingml.document');
+      case 'jpg':
+      case 'jpeg':
+        return MediaType('image', 'jpeg');
+      case 'png':
+        return MediaType('image', 'png');
+      case 'gif':
+        return MediaType('image', 'gif');
+      case 'svg':
+        return MediaType('image', 'svg+xml');
+      default:
+        return null; // Let Dio handle it with default lookup
+    }
+  }
+
   /// Upload a file using multipart/form-data
   Future<Response<T>> uploadFile<T>(
     String path, {
@@ -319,6 +348,7 @@ class ApiClient {
       fileFieldName: await MultipartFile.fromFile(
         filePath,
         filename: fileName,
+        contentType: fileName != null ? _getMimeType(fileName) : null,
       ),
       if (additionalData != null) ...additionalData,
     });
@@ -343,6 +373,7 @@ class ApiClient {
       fileFieldName: MultipartFile.fromBytes(
         bytes,
         filename: fileName,
+        contentType: _getMimeType(fileName),
       ),
       if (additionalData != null) ...additionalData,
     });

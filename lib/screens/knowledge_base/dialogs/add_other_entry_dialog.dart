@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../game_design_assistant/models/api_models.dart';
 
-/// Dialog for adding folder or other entry types to the knowledge base
+/// Dialog for adding other entry types to the knowledge base
 class AddOtherEntryDialog extends StatefulWidget {
-  final String entryType; // 'folder' or 'other'
+  final String entryType; // 'other'
   final KnowledgeBaseFile? existingEntry;
 
   const AddOtherEntryDialog({
@@ -19,7 +19,6 @@ class AddOtherEntryDialog extends StatefulWidget {
 class _AddOtherEntryDialogState extends State<AddOtherEntryDialog> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
-  final _contentController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _tagsController = TextEditingController();
   
@@ -31,7 +30,6 @@ class _AddOtherEntryDialogState extends State<AddOtherEntryDialog> {
     super.initState();
     if (widget.existingEntry != null) {
       _titleController.text = widget.existingEntry!.documentName;
-      _contentController.text = widget.existingEntry!.metadata?['content'] ?? '';
       _descriptionController.text = widget.existingEntry!.description ?? '';
       _tagsController.text = widget.existingEntry!.tags.join(', ');
       _visibility = widget.existingEntry!.visibility;
@@ -42,21 +40,17 @@ class _AddOtherEntryDialogState extends State<AddOtherEntryDialog> {
   @override
   void dispose() {
     _titleController.dispose();
-    _contentController.dispose();
     _descriptionController.dispose();
     _tagsController.dispose();
     super.dispose();
   }
 
   String get _dialogTitle {
-    if (widget.existingEntry != null) {
-      return widget.entryType == 'folder' ? 'Edit Folder' : 'Edit Entry';
-    }
-    return widget.entryType == 'folder' ? 'Add Folder' : 'Add Other Entry';
+    return widget.existingEntry != null ? 'Edit Entry' : 'Add Other Entry';
   }
 
   IconData get _icon {
-    return widget.entryType == 'folder' ? Icons.folder : Icons.notes;
+    return Icons.notes;
   }
 
   @override
@@ -85,18 +79,6 @@ class _AddOtherEntryDialogState extends State<AddOtherEntryDialog> {
                     }
                     return null;
                   },
-                ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: _contentController,
-                  decoration: const InputDecoration(
-                    labelText: 'Content / Notes',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.text_fields),
-                    hintText: 'Additional information or notes',
-                  ),
-                  maxLines: 5,
                 ),
                 const SizedBox(height: 16),
                 
@@ -222,10 +204,6 @@ class _AddOtherEntryDialogState extends State<AddOtherEntryDialog> {
           .where((tag) => tag.isNotEmpty)
           .toList();
 
-      final metadata = _contentController.text.trim().isEmpty
-          ? null
-          : {'content': _contentController.text.trim()};
-
       final entry = KnowledgeBaseFile(
         id: widget.existingEntry?.id ?? 0,
         documentName: _titleController.text.trim(),
@@ -238,7 +216,6 @@ class _AddOtherEntryDialogState extends State<AddOtherEntryDialog> {
         description: _descriptionController.text.trim().isEmpty 
             ? null 
             : _descriptionController.text.trim(),
-        metadata: metadata,
       );
 
       Navigator.of(context).pop(entry);
