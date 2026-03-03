@@ -11,7 +11,7 @@ class MenuBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color) = switch (type) {
       MenuBadgeType.alpha => ('ALPHA', Colors.blue),
-      MenuBadgeType.beta => ('BETA', Colors.purple),
+      MenuBadgeType.beta => ('BETA', Colors.purple.shade200),
       MenuBadgeType.comingSoon => ('COMING SOON', Colors.orange),
     };
 
