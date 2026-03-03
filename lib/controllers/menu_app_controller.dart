@@ -6,6 +6,7 @@ enum ScreenType {
   projectHome,
   knowledgeBase,
   gameDesignAssistant,
+  gameDesignAssistantV2,
   knowledgeBaseQA,
   codeEditor,
   imageGenerator,
@@ -41,7 +42,7 @@ class MenuAppController extends ChangeNotifier {
     _preSelectedAsset = preSelectedAsset;
     notifyListeners();
   }
-  
+
   void clearPreSelectedAsset() {
     _preSelectedAsset = null;
     // No need to notify listeners - clearing doesn't need to trigger rebuild

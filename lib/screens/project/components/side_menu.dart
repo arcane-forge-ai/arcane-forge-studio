@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import '../../../controllers/menu_app_controller.dart';
 import '../../shared/components/base_side_menu.dart';
+import '../../shared/components/menu_badge.dart';
 import '../../projects/projects_dashboard_screen.dart';
 
 class SideMenu extends BaseSideMenu {
@@ -24,26 +25,7 @@ class SideMenu extends BaseSideMenu {
         children: [
           Text(title),
           const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.orange,
-                width: 1,
-              ),
-            ),
-            child: Text(
-              'COMING SOON',
-              style: TextStyle(
-                color: Colors.orange.shade700,
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
+          const MenuBadge(MenuBadgeType.comingSoon),
         ],
       ),
       leading: icon != null ? Icon(icon) : null,
@@ -112,6 +94,20 @@ class SideMenu extends BaseSideMenu {
               .changeScreen(ScreenType.gameDesignAssistant);
         },
       ),
+      ListTile(
+        title: Row(
+          children: [
+            const Text("Game Design Assistant v2"),
+            const SizedBox(width: 8),
+            const MenuBadge(MenuBadgeType.alpha),
+          ],
+        ),
+        leading: const Icon(Icons.psychology_alt),
+        onTap: () {
+          Provider.of<MenuAppController>(context, listen: false)
+              .changeScreen(ScreenType.gameDesignAssistantV2);
+        },
+      ),
 
       ListTile(
         title: const Text("Design Evaluation"),
@@ -125,7 +121,13 @@ class SideMenu extends BaseSideMenu {
       // Development - code editor, image generator, sound generator, music generator, web server
       buildSectionHeader(context, icon: Icons.code, title: "Development"),
       ExpansionTile(
-        title: const Text("Image Generation"),
+        title: const Row(
+          children: [
+            Text("Image Generation"),
+            SizedBox(width: 8),
+            MenuBadge(MenuBadgeType.beta),
+          ],
+        ),
         leading: const Icon(Icons.image, color: iconColor),
         initiallyExpanded: true,
         children: [

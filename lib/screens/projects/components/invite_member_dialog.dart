@@ -30,12 +30,16 @@ class _InviteMemberDialogState extends State<InviteMemberDialog> {
   }
 
   String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
+    final email = value?.trim() ?? '';
+
+    if (email.isEmpty) {
       return 'Please enter an email address';
     }
-    // Basic email validation
-    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(value)) {
+    // Flexible email validation that supports modern TLDs (e.g. .studio).
+    final emailRegex = RegExp(
+      r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$",
+    );
+    if (!emailRegex.hasMatch(email)) {
       return 'Please enter a valid email address';
     }
     return null;

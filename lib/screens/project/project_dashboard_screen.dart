@@ -6,6 +6,7 @@ import '../dashboard/dashboard_screen.dart';
 import 'components/side_menu.dart';
 import 'components/project_home_screen.dart';
 import '../game_design_assistant/game_design_assistant_screen.dart';
+import '../game_design_assistant_v2/game_design_assistant_v2_screen.dart';
 import '../knowledge_base/knowledge_base_screen.dart';
 import '../knowledge_base_qa/knowledge_base_qa_screen.dart';
 import '../image_generation/image_overview_screen.dart';
@@ -76,6 +77,11 @@ class ProjectDashboardScreen extends StatelessWidget {
                         projectId: projectId,
                         projectName: projectName,
                       );
+                    case ScreenType.gameDesignAssistantV2:
+                      return GameDesignAssistantV2Screen(
+                        projectId: projectId,
+                        projectName: projectName,
+                      );
                     case ScreenType.knowledgeBaseQA:
                       return KnowledgeBaseQAScreen(
                         projectId: projectId,
@@ -131,7 +137,8 @@ class ProjectDashboardScreen extends StatelessWidget {
                       return const ComingSoonScreen(
                         featureName: 'Analytics & Stats',
                         icon: Icons.analytics_outlined,
-                        description: 'Comprehensive analytics and statistics for your game project will be available soon. Track performance, user engagement, and more.',
+                        description:
+                            'Comprehensive analytics and statistics for your game project will be available soon. Track performance, user engagement, and more.',
                       );
                     default:
                       return DashboardScreen();
