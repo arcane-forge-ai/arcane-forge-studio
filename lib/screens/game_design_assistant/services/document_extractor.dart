@@ -32,6 +32,28 @@ class DocumentExtractor {
     return extractMarkdownBlock(content) != null;
   }
 
+  /// Extract the best content for saving.
+  /// If exactly one large markdown block is found, returns its inner content.
+  /// Otherwise (zero or multiple blocks), returns the full message as-is.
+  static String extractContentForSave(String content) {
+    final RegExp markdownPattern = RegExp(
+      r'```(?:markdown)?\s*\n(.*?)\n```',
+      dotAll: true,
+      caseSensitive: false,
+    );
+
+    final matches = markdownPattern.allMatches(content).toList();
+
+    if (matches.length == 1) {
+      final extracted = matches.first.group(1)?.trim() ?? '';
+      if (extracted.length >= _minDocumentLength) {
+        return extracted;
+      }
+    }
+
+    return content;
+  }
+
   /// Create ExtractedDocument from AI response
   static ExtractedDocument? createExtractedDocument(
     String content,
