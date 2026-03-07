@@ -41,6 +41,10 @@ class V2SessionProvider with ChangeNotifier {
   List<ChatMessage> _messages = [];
   GetContextResponse? _contextData;
   GetProgressResponse? _progress;
+  List<Map<String, dynamic>> _documents = [];
+  String? _selectedDocPath;
+  String? _selectedDocContent;
+  int? _selectedDocVersionNumber;
   String? _gddContent;
   int? _gddVersionNumber;
   Confirmation? _pendingConfirmation;
@@ -63,6 +67,10 @@ class V2SessionProvider with ChangeNotifier {
   List<ChatMessage> get messages => _messages;
   GetContextResponse? get contextData => _contextData;
   GetProgressResponse? get progress => _progress;
+  List<Map<String, dynamic>> get documents => _documents;
+  String? get selectedDocPath => _selectedDocPath;
+  String? get selectedDocContent => _selectedDocContent;
+  int? get selectedDocVersionNumber => _selectedDocVersionNumber;
   String? get gddContent => _gddContent;
   int? get gddVersionNumber => _gddVersionNumber;
   Confirmation? get pendingConfirmation => _pendingConfirmation;
@@ -111,6 +119,10 @@ class V2SessionProvider with ChangeNotifier {
     _messages = [];
     _contextData = null;
     _progress = null;
+    _documents = [];
+    _selectedDocPath = null;
+    _selectedDocContent = null;
+    _selectedDocVersionNumber = null;
     _gddContent = null;
     _gddVersionNumber = null;
     _pendingConfirmation = null;
@@ -142,6 +154,7 @@ class V2SessionProvider with ChangeNotifier {
 
   Future<void> _loadSessionData(String sessionId,
       {bool reloadHistory = true}) async {
+    await loadDocuments();
     _contextData = await _apiService.getContext(sessionId);
 
     try {
@@ -150,10 +163,12 @@ class V2SessionProvider with ChangeNotifier {
       _progress = null;
     }
 
-    final fileData =
-        await _apiService.getProjectFileWithVersion(projectId, 'gdd.md');
-    _gddContent = fileData['content']?.toString() ?? '';
-    _gddVersionNumber = (fileData['version_number'] as num?)?.toInt();
+    // Don't auto-select any document, let user choose
+    _selectedDocPath = null;
+    _selectedDocContent = null;
+    _selectedDocVersionNumber = null;
+    _gddContent = null;
+    _gddVersionNumber = null;
 
     if (reloadHistory) {
       _messages = await _apiService.getHistory(sessionId);
@@ -301,14 +316,39 @@ class V2SessionProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _apiService.confirmTransaction(
+      final result = await _apiService.confirmTransaction(
         sessionId: sessionId,
         action: 'confirm',
         transactionId: transactionId,
       );
-      await Future.delayed(const Duration(milliseconds: 300));
-      await refreshData(reloadHistory: true);
-      await loadSessions();
+
+      if (result['status'] == 'awaiting_confirmation' &&
+          result['confirmation'] != null) {
+        // New pending step: append a message with confirmation card
+        final conf = Confirmation.fromJson(
+          Map<String, dynamic>.from(result['confirmation'] as Map),
+        );
+        _pendingConfirmation = conf;
+        _messages = [
+          ..._messages,
+          ChatMessage(
+            role: 'assistant',
+            content: '',
+            timestamp: DateTime.now(),
+            confirmation: conf,
+          ),
+        ];
+        notifyListeners();
+        // Refresh context/doc but don't reload history (avoid overwriting local confirmation message)
+        await Future.delayed(const Duration(milliseconds: 300));
+        await refreshData(reloadHistory: false);
+        await loadSessions();
+      } else {
+        // Normal completion or failure: reload history (TurnManager wrote the completion message)
+        await Future.delayed(const Duration(milliseconds: 300));
+        await refreshData(reloadHistory: true);
+        await loadSessions();
+      }
     } catch (e) {
       _chatError = 'Error confirming transaction: $e';
       _messages = [
@@ -370,10 +410,17 @@ class V2SessionProvider with ChangeNotifier {
       } catch (_) {
         _progress = null;
       }
-      final fileData =
-          await _apiService.getProjectFileWithVersion(projectId, 'gdd.md');
-      _gddContent = fileData['content']?.toString() ?? '';
-      _gddVersionNumber = (fileData['version_number'] as num?)?.toInt();
+
+      // Only load document content if a document is selected
+      if (_selectedDocPath != null) {
+        final fileData = await _apiService.getProjectFileWithVersion(
+            projectId, _selectedDocPath!);
+        _selectedDocContent = fileData['content']?.toString() ?? '';
+        _selectedDocVersionNumber = (fileData['version_number'] as num?)?.toInt();
+        _gddContent = _selectedDocContent;
+        _gddVersionNumber = _selectedDocVersionNumber;
+      }
+
       _currentSession = await _apiService.getSession(sessionId);
 
       if (reloadHistory) {
@@ -390,17 +437,92 @@ class V2SessionProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> saveGddContent(String newContent, {String? comment}) async {
-    if (_currentSession?.projectId == null && projectId.isEmpty) return false;
+  Future<void> loadDocuments() async {
     try {
-      final result = await _apiService.saveGddContent(
+      _documents = await _apiService.listDocuments(projectId);
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading documents: $e');
+      }
+    }
+  }
+
+  Future<void> selectDocument(String filePath) async {
+    _selectedDocPath = filePath;
+    try {
+      final fileData =
+          await _apiService.getProjectFileWithVersion(projectId, filePath);
+      _selectedDocContent = fileData['content']?.toString() ?? '';
+      _selectedDocVersionNumber = (fileData['version_number'] as num?)?.toInt();
+      _gddContent = _selectedDocContent;
+      _gddVersionNumber = _selectedDocVersionNumber;
+      notifyListeners();
+    } catch (e) {
+      _chatError = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> createDocument(String title, {String? filePath}) async {
+    try {
+      await _apiService.createDocument(projectId, title, filePath: filePath);
+      await loadDocuments();
+    } catch (e) {
+      _chatError = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> renameDocument(String slug, String title) async {
+    try {
+      await _apiService.renameDocument(projectId, slug, title);
+      await loadDocuments();
+    } catch (e) {
+      _chatError = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> deleteDocument(String slug) async {
+    try {
+      await _apiService.deleteDocument(projectId, slug, _authProvider.userId);
+      await loadDocuments();
+      // If deleted document was selected, clear selection
+      final deletedPath = _documents
+          .where((d) => d['slug'] == slug)
+          .map((d) => d['file_path']?.toString())
+          .firstOrNull;
+      if (_selectedDocPath == deletedPath) {
+        _selectedDocPath = null;
+        _selectedDocContent = null;
+        _selectedDocVersionNumber = null;
+        _gddContent = null;
+        _gddVersionNumber = null;
+      }
+    } catch (e) {
+      _chatError = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<bool> saveDocumentContent(String newContent, {String? comment}) async {
+    if (projectId.isEmpty || _selectedDocPath == null) return false;
+    try {
+      final result = await _apiService.saveDocumentContent(
         projectId: projectId,
+        filePath: _selectedDocPath!,
         contentMarkdown: newContent,
-        baseVersionNumber: _gddVersionNumber,
+        baseVersionNumber: _selectedDocVersionNumber,
         comment: comment,
       );
-      _gddContent = newContent;
-      _gddVersionNumber = (result['version_number'] as num?)?.toInt();
+      _selectedDocContent = newContent;
+      _selectedDocVersionNumber = (result['version_number'] as num?)?.toInt();
+      _gddContent = _selectedDocContent;
+      _gddVersionNumber = _selectedDocVersionNumber;
       notifyListeners();
       return true;
     } on ConflictException {
@@ -411,6 +533,10 @@ class V2SessionProvider with ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  Future<bool> saveGddContent(String newContent, {String? comment}) async {
+    return saveDocumentContent(newContent, comment: comment);
   }
 
   Future<bool> uploadFileToKnowledgeBase(

@@ -172,6 +172,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
   Widget _buildDocumentToolbar(BuildContext context) {
     final provider = context.watch<V2SessionProvider>();
     final canEdit = provider.currentSession != null;
+    final hasDocuments = provider.documents.isNotEmpty && !provider.hasDraftConversation;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -183,15 +184,50 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
       ),
       child: Row(
         children: [
+          if (hasDocuments) ...[
+            DropdownButton<String?>(
+              value: provider.selectedDocPath,
+              hint: const Text('Select document'),
+              items: provider.documents.map((doc) {
+                final filePath = doc['file_path']?.toString() ?? '';
+                final title = doc['title']?.toString() ?? filePath;
+                return DropdownMenuItem(value: filePath, child: Text(title));
+              }).toList(),
+              onChanged: canEdit
+                  ? (path) {
+                      if (path != null) provider.selectDocument(path);
+                    }
+                  : null,
+            ),
+            const SizedBox(width: 8),
+          ],
+          IconButton(
+            icon: const Icon(Icons.add, size: 20),
+            tooltip: 'New document',
+            onPressed: canEdit ? () => _showCreateDialog(context) : null,
+          ),
+          if (hasDocuments && provider.selectedDocPath != null)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 20),
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                const PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+              onSelected: (action) {
+                if (action == 'rename') _showRenameDialog(context);
+                if (action == 'delete') _confirmDelete(context);
+              },
+            ),
+          const SizedBox(width: 8),
           ToggleButtons(
             isSelected: [!_isEditing, _isEditing],
             borderRadius: BorderRadius.circular(6),
             constraints: const BoxConstraints(minHeight: 32, minWidth: 74),
-            onPressed: canEdit
+            onPressed: canEdit && provider.selectedDocPath != null
                 ? (index) {
                     setState(() {
                       if (index == 1 && !_isEditing) {
-                        _editController.text = provider.gddContent ?? '';
+                        _editController.text = provider.selectedDocContent ?? '';
                         _saveError = null;
                       }
                       _isEditing = index == 1;
@@ -219,7 +255,9 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
               )
             else
               TextButton.icon(
-                onPressed: canEdit ? () => _saveGdd(context) : null,
+                onPressed: canEdit && provider.selectedDocPath != null
+                    ? () => _saveDoc(context)
+                    : null,
                 icon: const Icon(Icons.save, size: 18),
                 label: const Text('Save'),
               ),
@@ -264,14 +302,34 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
 
   Widget _buildPreview(BuildContext context) {
     final provider = context.watch<V2SessionProvider>();
-    final content = provider.gddContent ?? '';
+    final content = provider.selectedDocContent ?? '';
 
     if (provider.currentSession == null && provider.hasDraftConversation) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-              'GDD preview will load after the first message creates a session.'),
+              'Document preview will load after the first message creates a session.'),
+        ),
+      );
+    }
+
+    if (provider.documents.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+              'No documents yet. Click the + button to create your first document.'),
+        ),
+      );
+    }
+
+    if (provider.selectedDocPath == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+              'Please select a document from the dropdown above.'),
         ),
       );
     }
@@ -281,7 +339,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-              'No design document yet. Switch to Edit mode to start writing.'),
+              'No content yet. Switch to Edit mode to start writing.'),
         ),
       );
     }
@@ -335,7 +393,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
     );
   }
 
-  Future<void> _saveGdd(BuildContext context) async {
+  Future<void> _saveDoc(BuildContext context) async {
     final sessionProvider = context.read<V2SessionProvider>();
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
@@ -343,19 +401,19 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
       _saveError = null;
     });
     try {
-      await sessionProvider.saveGddContent(_editController.text);
+      await sessionProvider.saveDocumentContent(_editController.text);
       if (!mounted) return;
       setState(() {
         _isEditing = false;
       });
       messenger.showSnackBar(
-        const SnackBar(content: Text('Design document saved.')),
+        const SnackBar(content: Text('Document saved.')),
       );
     } on ConflictException catch (e) {
       setState(() {
         _saveError =
             'Conflict: $e The editor was reloaded with the latest version.';
-        _editController.text = sessionProvider.gddContent ?? '';
+        _editController.text = sessionProvider.selectedDocContent ?? '';
       });
     } catch (e) {
       setState(() {
@@ -368,5 +426,133 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
         });
       }
     }
+  }
+
+  void _showCreateDialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New Document'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Title'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final title = controller.text.trim();
+              if (title.isEmpty) return;
+              Navigator.pop(context);
+              try {
+                await context.read<V2SessionProvider>().createDocument(title);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to create: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRenameDialog(BuildContext context) {
+    final provider = context.read<V2SessionProvider>();
+    if (provider.selectedDocPath == null) return;
+
+    final currentDoc = provider.documents.firstWhere(
+      (d) => d['file_path'] == provider.selectedDocPath,
+      orElse: () => {},
+    );
+    final slug = currentDoc['slug']?.toString() ?? '';
+    final controller =
+        TextEditingController(text: currentDoc['title']?.toString() ?? '');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Document'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Title'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final title = controller.text.trim();
+              if (title.isEmpty) return;
+              Navigator.pop(context);
+              try {
+                await provider.renameDocument(slug, title);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to rename: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context) {
+    final provider = context.read<V2SessionProvider>();
+    if (provider.selectedDocPath == null) return;
+
+    final currentDoc = provider.documents.firstWhere(
+      (d) => d['file_path'] == provider.selectedDocPath,
+      orElse: () => {},
+    );
+    final slug = currentDoc['slug']?.toString() ?? '';
+    final title = currentDoc['title']?.toString() ?? 'this document';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Document'),
+        content: Text('Are you sure you want to delete "$title"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await provider.deleteDocument(slug);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to delete: $e')),
+                  );
+                }
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -104,13 +104,17 @@ class ConfirmationCard extends StatelessWidget {
                 else ...[
                   OutlinedButton(
                     onPressed: () =>
-                        context.read<V2SessionProvider>().cancelTransaction(),
+                        context.read<V2SessionProvider>().cancelTransaction(
+                              transactionId: confirmation.transactionId,
+                            ),
                     child: Text(confirmation.cancelText),
                   ),
                   const SizedBox(width: 10),
                   FilledButton.icon(
                     onPressed: () =>
-                        context.read<V2SessionProvider>().confirmTransaction(),
+                        context.read<V2SessionProvider>().confirmTransaction(
+                              transactionId: confirmation.transactionId,
+                            ),
                     icon: const Icon(Icons.check, size: 18),
                     label: Text(confirmation.confirmText),
                   ),

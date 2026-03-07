@@ -6,6 +6,7 @@ class Confirmation {
   final String? preview;
   final String confirmText;
   final String cancelText;
+  final String? transactionId;
 
   Confirmation({
     required this.state,
@@ -15,6 +16,7 @@ class Confirmation {
     this.preview,
     required this.confirmText,
     required this.cancelText,
+    this.transactionId,
   });
 
   factory Confirmation.fromJson(Map<String, dynamic> json) {
@@ -30,6 +32,7 @@ class Confirmation {
       cancelText: json['cancelText']?.toString() ??
           json['cancel_text']?.toString() ??
           'Cancel',
+      transactionId: json['transaction_id']?.toString(),
     );
   }
 }

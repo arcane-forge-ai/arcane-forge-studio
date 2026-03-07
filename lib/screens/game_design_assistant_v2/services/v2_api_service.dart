@@ -218,15 +218,77 @@ class V2ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> saveGddContent({
+  Future<List<Map<String, dynamic>>> listDocuments(String projectId) async {
+    try {
+      final response = await _apiClient.dio
+          .get('$_designBaseUrl/projects/$projectId/documents');
+      return _asList(response.data)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (e) {
+      throw Exception('Failed to list documents: ${_extractError(e)}');
+    }
+  }
+
+  Future<Map<String, dynamic>> createDocument(
+    String projectId,
+    String title, {
+    String? filePath,
+  }) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '$_designBaseUrl/projects/$projectId/documents',
+        data: {
+          'title': title,
+          if (filePath != null) 'file_path': filePath,
+        },
+      );
+      return _asMap(response.data);
+    } catch (e) {
+      throw Exception('Failed to create document: ${_extractError(e)}');
+    }
+  }
+
+  Future<Map<String, dynamic>> renameDocument(
+    String projectId,
+    String slug,
+    String title,
+  ) async {
+    try {
+      final response = await _apiClient.dio.patch(
+        '$_designBaseUrl/projects/$projectId/documents/$slug',
+        data: {'title': title},
+      );
+      return _asMap(response.data);
+    } catch (e) {
+      throw Exception('Failed to rename document: ${_extractError(e)}');
+    }
+  }
+
+  Future<void> deleteDocument(
+    String projectId,
+    String slug,
+    String userId,
+  ) async {
+    try {
+      await _apiClient.dio.delete(
+        '$_designBaseUrl/projects/$projectId/documents/$slug?user_id=$userId',
+      );
+    } catch (e) {
+      throw Exception('Failed to delete document: ${_extractError(e)}');
+    }
+  }
+
+  Future<Map<String, dynamic>> saveDocumentContent({
     required String projectId,
+    required String filePath,
     required String contentMarkdown,
     int? baseVersionNumber,
     String? comment,
   }) async {
     try {
       final response = await _apiClient.dio.post(
-        '$_designBaseUrl/projects/$projectId/files/gdd.md/versions',
+        '$_designBaseUrl/projects/$projectId/files/$filePath/versions',
         data: {
           'content_markdown': contentMarkdown,
           if (baseVersionNumber != null)
@@ -240,8 +302,23 @@ class V2ApiService {
         throw ConflictException(
             'Document was modified by another source. Please reload.');
       }
-      throw Exception('Failed to save GDD: ${_extractError(e)}');
+      throw Exception('Failed to save document: ${_extractError(e)}');
     }
+  }
+
+  Future<Map<String, dynamic>> saveGddContent({
+    required String projectId,
+    required String contentMarkdown,
+    int? baseVersionNumber,
+    String? comment,
+  }) async {
+    return saveDocumentContent(
+      projectId: projectId,
+      filePath: 'gdd.md',
+      contentMarkdown: contentMarkdown,
+      baseVersionNumber: baseVersionNumber,
+      comment: comment,
+    );
   }
 
   Future<bool> uploadFile(
