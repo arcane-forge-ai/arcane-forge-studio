@@ -99,19 +99,6 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (provider.progress != null) ...[
-          _sectionTitle(context, 'Progress'),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.insights_outlined),
-              title: Text(
-                  'Overall ${(provider.progress!.overallProgress * 100).toStringAsFixed(0)}%'),
-              subtitle:
-                  Text(provider.progress!.currentStage ?? 'No current stage'),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
         if (data.currentFocus != null) ...[
           _sectionTitle(context, 'Current Focus'),
           Card(
@@ -124,16 +111,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
           ),
           const SizedBox(height: 12),
         ],
-        _sectionList(
-          context,
-          title: 'Open Questions',
-          icon: Icons.help_outline,
-          color: Colors.orange,
-          items: data.openQuestions,
-          titleKey: 'question',
-          subtitleBuilder: (m) =>
-              m['priority'] == null ? null : 'Priority: ${m['priority']}',
-        ),
+        _buildOpenQuestionsSection(context, provider, data.openQuestions),
         _sectionList(
           context,
           title: 'Established Facts',
@@ -162,6 +140,52 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
               child: Text('No context available yet for this session.'),
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildOpenQuestionsSection(
+    BuildContext context,
+    V2SessionProvider provider,
+    List<Map<String, dynamic>> questions,
+  ) {
+    if (questions.isEmpty) return const SizedBox.shrink();
+
+    final canClose = provider.currentSession != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(context, 'Open Questions'),
+        ...questions.map((item) {
+          final questionText = item['question']?.toString() ?? '';
+          final priority = item['priority']?.toString();
+          return Card(
+            child: ListTile(
+              leading: const Icon(Icons.help_outline, color: Colors.orange),
+              title: Text(questionText),
+              subtitle: priority == null ? null : Text('Priority: $priority'),
+              trailing: canClose && questionText.trim().isNotEmpty
+                  ? IconButton(
+                      tooltip: 'Mark as resolved',
+                      icon: const Icon(Icons.check_circle_outline),
+                      onPressed: () async {
+                        try {
+                          await provider.closeOpenQuestion(questionText);
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to close question: $e'),
+                            ),
+                          );
+                        }
+                      },
+                    )
+                  : null,
+            ),
+          );
+        }),
+        const SizedBox(height: 12),
       ],
     );
   }
@@ -330,8 +354,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text(
-              'No documents created in this session yet.'),
+          child: Text('No documents created in this session yet.'),
         ),
       );
     }

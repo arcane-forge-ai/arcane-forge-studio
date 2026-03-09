@@ -175,6 +175,24 @@ class V2ApiService {
     }
   }
 
+  Future<void> updateContext({
+    required String sessionId,
+    required String key,
+    required dynamic value,
+  }) async {
+    try {
+      await _apiClient.dio.patch(
+        '$_designBaseUrl/sessions/$sessionId/context',
+        data: {
+          'key': key,
+          'value': value,
+        },
+      );
+    } catch (e) {
+      throw Exception('Failed to update context: ${_extractError(e)}');
+    }
+  }
+
   Future<GetProgressResponse> getProgress(String sessionId) async {
     try {
       final response = await _apiClient.dio

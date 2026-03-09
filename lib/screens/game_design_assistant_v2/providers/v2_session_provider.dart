@@ -7,7 +7,6 @@ import '../../../providers/settings_provider.dart';
 import '../models/confirmation.dart';
 import '../models/context.dart';
 import '../models/message.dart';
-import '../models/progress.dart';
 import '../models/selection.dart';
 import '../models/session.dart';
 import '../services/v2_api_service.dart';
@@ -39,7 +38,6 @@ class V2SessionProvider with ChangeNotifier {
   SessionInfo? _currentSession;
   List<ChatMessage> _messages = [];
   GetContextResponse? _contextData;
-  GetProgressResponse? _progress;
   List<Map<String, dynamic>> _documents = [];
   String? _selectedDocPath;
   String? _selectedDocContent;
@@ -65,7 +63,6 @@ class V2SessionProvider with ChangeNotifier {
   SessionInfo? get currentSession => _currentSession;
   List<ChatMessage> get messages => _messages;
   GetContextResponse? get contextData => _contextData;
-  GetProgressResponse? get progress => _progress;
   List<Map<String, dynamic>> get documents => _documents;
   String? get selectedDocPath => _selectedDocPath;
   String? get selectedDocContent => _selectedDocContent;
@@ -119,7 +116,6 @@ class V2SessionProvider with ChangeNotifier {
     _currentSession = null;
     _messages = [];
     _contextData = null;
-    _progress = null;
     _clearSelectedDocument();
     _pendingConfirmation = null;
     _pendingSelection = null;
@@ -156,12 +152,6 @@ class V2SessionProvider with ChangeNotifier {
     _documents = [];
     await loadDocuments(notify: false);
     _contextData = await _apiService.getContext(sessionId);
-
-    try {
-      _progress = await _apiService.getProgress(sessionId);
-    } catch (_) {
-      _progress = null;
-    }
 
     if (reloadHistory) {
       _messages = await _apiService.getHistory(sessionId);
@@ -423,12 +413,6 @@ class V2SessionProvider with ChangeNotifier {
 
     try {
       _contextData = await _apiService.getContext(sessionId);
-      try {
-        _progress = await _apiService.getProgress(sessionId);
-      } catch (_) {
-        _progress = null;
-      }
-
       _currentSession = await _apiService.getSession(sessionId);
       await loadDocuments(notify: false);
       final selectionChanged = await _syncDocumentSelectionWithSession();
@@ -447,6 +431,43 @@ class V2SessionProvider with ChangeNotifier {
         print('Error refreshing v2 data: $e');
       }
       notifyListeners();
+    }
+  }
+
+  Future<void> closeOpenQuestion(String question) async {
+    final sessionId = _currentSession?.sessionId;
+    final contextData = _contextData;
+    if (sessionId == null || contextData == null) return;
+
+    final normalizedTarget = _normalizeQuestionForCompare(question);
+    if (normalizedTarget.isEmpty) return;
+
+    final remainingQuestions = contextData.openQuestions.where((item) {
+      final text = item['question']?.toString() ?? '';
+      return _normalizeQuestionForCompare(text) != normalizedTarget;
+    }).toList(growable: false);
+
+    if (remainingQuestions.length == contextData.openQuestions.length) {
+      return;
+    }
+
+    final previousContext = contextData;
+    _contextData = contextData.copyWith(openQuestions: remainingQuestions);
+    _chatError = null;
+    notifyListeners();
+
+    try {
+      await _apiService.updateContext(
+        sessionId: sessionId,
+        key: 'open_questions_remove',
+        value: {'question': question},
+      );
+      await refreshData();
+    } catch (e) {
+      _contextData = previousContext;
+      _chatError = 'Failed to close question: $e';
+      notifyListeners();
+      rethrow;
     }
   }
 
@@ -713,6 +734,13 @@ class V2SessionProvider with ChangeNotifier {
     if (value is! String) return null;
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String _normalizeQuestionForCompare(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\u4e00-\u9fff]+'), '');
   }
 
   List<Map<String, dynamic>> _mergeDocumentsByPath(
