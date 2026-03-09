@@ -29,10 +29,14 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
   }
 
   void _submit() {
+    final provider = context.read<V2SessionProvider>();
+    final canAttemptSend =
+        !provider.isSending && !provider.isLoading && provider.canUseV2;
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || !canAttemptSend) return;
+
     _controller.clear();
-    context.read<V2SessionProvider>().sendMessage(text);
+    provider.sendMessage(text);
     _scrollToBottom();
   }
 
@@ -154,6 +158,11 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
   }
 
   Widget _buildInputBar(BuildContext context, V2SessionProvider provider) {
+    final inputEnabled = !provider.isLoading && provider.canUseV2;
+    final inputHint = !provider.canUseV2
+        ? 'Sign in to use Game Design Assistant v2'
+        : 'Ask about game design...';
+
     return SafeArea(
       top: false,
       child: Padding(
@@ -166,12 +175,10 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                 controller: _controller,
                 minLines: 1,
                 maxLines: 5,
-                enabled: !provider.isLoading && provider.canUseV2,
+                enabled: inputEnabled,
                 onSubmitted: (_) => _submit(),
                 decoration: InputDecoration(
-                  hintText: provider.canUseV2
-                      ? 'Ask about game design...'
-                      : 'Sign in to use Game Design Assistant v2',
+                  hintText: inputHint,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -363,6 +370,9 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                     ? Map<String, dynamic>.from(step['args'] as Map)
                     : <String, dynamic>{};
                 var preview = '';
+                final targetPath = args['path']?.toString();
+                final sectionId =
+                    (args['section_id'] ?? args['section'])?.toString();
                 if (args['content'] is String) {
                   preview = args['content'] as String;
                 } else if (args.isNotEmpty) {
@@ -376,6 +386,8 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                     reason: plan['description']?.toString() ??
                         'Confirmation required',
                     preview: preview.isEmpty ? null : preview,
+                    targetPath: targetPath,
+                    sectionId: sectionId,
                     confirmText: 'Confirm',
                     cancelText: 'Cancel',
                   ),

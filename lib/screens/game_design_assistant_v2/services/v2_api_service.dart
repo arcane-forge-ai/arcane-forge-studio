@@ -189,6 +189,7 @@ class V2ApiService {
     required String sessionId,
     required String action,
     String? transactionId,
+    String? argsChecksum,
   }) async {
     try {
       final response = await _apiClient.dio.post(
@@ -196,11 +197,27 @@ class V2ApiService {
         data: {
           'action': action,
           if (transactionId != null) 'transaction_id': transactionId,
+          if (argsChecksum != null) 'args_checksum': argsChecksum,
         },
       );
       return _asMap(response.data);
     } catch (e) {
       throw Exception('Failed to confirm transaction: ${_extractError(e)}');
+    }
+  }
+
+  Future<Map<String, dynamic>> setActiveDocument({
+    required String sessionId,
+    String? filePath,
+  }) async {
+    try {
+      final response = await _apiClient.dio.patch(
+        '$_designBaseUrl/sessions/$sessionId/active-document',
+        data: {'file_path': filePath},
+      );
+      return _asMap(response.data);
+    } catch (e) {
+      throw Exception('Failed to set active document: ${_extractError(e)}');
     }
   }
 
@@ -222,11 +239,38 @@ class V2ApiService {
     try {
       final response = await _apiClient.dio
           .get('$_designBaseUrl/projects/$projectId/documents');
-      return _asList(response.data)
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      final raw = response.data;
+      List<dynamic> docs;
+      if (raw is Map || raw is String) {
+        final map = _asMap(raw);
+        final nested = map['documents'];
+        docs = nested is List ? nested : _asList(raw);
+      } else {
+        docs = _asList(raw);
+      }
+      return docs.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     } catch (e) {
       throw Exception('Failed to list documents: ${_extractError(e)}');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> listSessionDocuments(
+      String sessionId) async {
+    try {
+      final response = await _apiClient.dio
+          .get('$_designBaseUrl/sessions/$sessionId/documents');
+      final raw = response.data;
+      List<dynamic> docs;
+      if (raw is Map || raw is String) {
+        final map = _asMap(raw);
+        final nested = map['documents'];
+        docs = nested is List ? nested : _asList(raw);
+      } else {
+        docs = _asList(raw);
+      }
+      return docs.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (e) {
+      throw Exception('Failed to list session documents: ${_extractError(e)}');
     }
   }
 
@@ -246,6 +290,25 @@ class V2ApiService {
       return _asMap(response.data);
     } catch (e) {
       throw Exception('Failed to create document: ${_extractError(e)}');
+    }
+  }
+
+  Future<Map<String, dynamic>> createSessionDocument(
+    String sessionId,
+    String title, {
+    String? filePath,
+  }) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '$_designBaseUrl/sessions/$sessionId/documents',
+        data: {
+          'title': title,
+          if (filePath != null) 'file_path': filePath,
+        },
+      );
+      return _asMap(response.data);
+    } catch (e) {
+      throw Exception('Failed to create session document: ${_extractError(e)}');
     }
   }
 
@@ -319,6 +382,55 @@ class V2ApiService {
       baseVersionNumber: baseVersionNumber,
       comment: comment,
     );
+  }
+
+  /// List all versions of a document
+  /// Backend returns {"versions": [...], "total": N}
+  Future<List<dynamic>> listVersions(String projectId, String filePath) async {
+    try {
+      final encodedPath = Uri.encodeComponent(filePath);
+      final response = await _apiClient.dio.get(
+        '$_designBaseUrl/projects/$projectId/files/$encodedPath/versions',
+      );
+      final body = _asMap(response.data);
+      return _asList(body['versions']);
+    } catch (e) {
+      throw Exception('Failed to list versions: ${_extractError(e)}');
+    }
+  }
+
+  /// Get a specific version's content
+  Future<Map<String, dynamic>> getVersion(
+    String projectId,
+    String filePath,
+    int versionNumber,
+  ) async {
+    try {
+      final encodedPath = Uri.encodeComponent(filePath);
+      final response = await _apiClient.dio.get(
+        '$_designBaseUrl/projects/$projectId/files/$encodedPath/versions/$versionNumber',
+      );
+      return _asMap(response.data);
+    } catch (e) {
+      throw Exception('Failed to get version: ${_extractError(e)}');
+    }
+  }
+
+  /// Restore a specific version
+  Future<void> restoreVersion(
+    String projectId,
+    String filePath,
+    int versionNumber,
+  ) async {
+    try {
+      final encodedPath = Uri.encodeComponent(filePath);
+      await _apiClient.dio.post(
+        '$_designBaseUrl/projects/$projectId/files/$encodedPath/versions/$versionNumber/restore',
+        data: {},
+      );
+    } catch (e) {
+      throw Exception('Failed to restore version: ${_extractError(e)}');
+    }
   }
 
   Future<bool> uploadFile(

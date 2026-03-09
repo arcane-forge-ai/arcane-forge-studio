@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 
+import '../../../providers/auth_provider.dart';
+import '../../../providers/settings_provider.dart';
 import '../providers/v2_session_provider.dart';
 import '../services/v2_api_service.dart';
 
@@ -17,6 +20,11 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
   bool _isSaving = false;
   String? _saveError;
   late final TextEditingController _editController;
+
+  bool _isVersionHistoryExpanded = false;
+  bool _isLoadingVersions = false;
+  bool _isRestoringVersion = false;
+  List<dynamic> _versions = [];
 
   @override
   void initState() {
@@ -159,12 +167,14 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
   }
 
   Widget _buildDocumentTab(BuildContext context) {
+    final provider = context.watch<V2SessionProvider>();
     return Column(
       children: [
         _buildDocumentToolbar(context),
         Expanded(
           child: _isEditing ? _buildEditor(context) : _buildPreview(context),
         ),
+        if (provider.selectedDocPath != null) _buildVersionHistory(context),
       ],
     );
   }
@@ -172,7 +182,15 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
   Widget _buildDocumentToolbar(BuildContext context) {
     final provider = context.watch<V2SessionProvider>();
     final canEdit = provider.currentSession != null;
-    final hasDocuments = provider.documents.isNotEmpty && !provider.hasDraftConversation;
+    final documents = provider.documents
+        .where((doc) => _documentPath(doc) != null)
+        .toList(growable: false);
+    final hasDocuments = documents.isNotEmpty;
+    final selectedPath = provider.selectedDocPath;
+    final dropdownValue = selectedPath != null &&
+            documents.any((doc) => _documentPath(doc) == selectedPath)
+        ? selectedPath
+        : null;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -186,12 +204,15 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
         children: [
           if (hasDocuments) ...[
             DropdownButton<String?>(
-              value: provider.selectedDocPath,
+              value: dropdownValue,
               hint: const Text('Select document'),
-              items: provider.documents.map((doc) {
-                final filePath = doc['file_path']?.toString() ?? '';
-                final title = doc['title']?.toString() ?? filePath;
-                return DropdownMenuItem(value: filePath, child: Text(title));
+              items: documents.map((doc) {
+                final filePath = _documentPath(doc)!;
+                final title = _documentTitle(doc, filePath);
+                return DropdownMenuItem(
+                  value: filePath,
+                  child: Text(title),
+                );
               }).toList(),
               onChanged: canEdit
                   ? (path) {
@@ -227,7 +248,8 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
                 ? (index) {
                     setState(() {
                       if (index == 1 && !_isEditing) {
-                        _editController.text = provider.selectedDocContent ?? '';
+                        _editController.text =
+                            provider.selectedDocContent ?? '';
                         _saveError = null;
                       }
                       _isEditing = index == 1;
@@ -304,22 +326,12 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
     final provider = context.watch<V2SessionProvider>();
     final content = provider.selectedDocContent ?? '';
 
-    if (provider.currentSession == null && provider.hasDraftConversation) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-              'Document preview will load after the first message creates a session.'),
-        ),
-      );
-    }
-
     if (provider.documents.isEmpty) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-              'No documents yet. Click the + button to create your first document.'),
+              'No documents created in this session yet.'),
         ),
       );
     }
@@ -328,8 +340,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text(
-              'Please select a document from the dropdown above.'),
+          child: Text('Please select a document from the dropdown above.'),
         ),
       );
     }
@@ -338,8 +349,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text(
-              'No content yet. Switch to Edit mode to start writing.'),
+          child: Text('No content yet. Switch to Edit mode to start writing.'),
         ),
       );
     }
@@ -348,6 +358,271 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
       data: content,
       padding: const EdgeInsets.all(16),
     );
+  }
+
+  Widget _buildVersionHistory(BuildContext context) {
+    final provider = context.watch<V2SessionProvider>();
+    final theme = Theme.of(context);
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: theme.colorScheme.outline.withOpacity(0.1),
+          ),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                _isVersionHistoryExpanded = !_isVersionHistoryExpanded;
+              });
+              if (_isVersionHistoryExpanded && _versions.isEmpty) {
+                _loadVersions(context);
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    _isVersionHistoryExpanded
+                        ? Icons.expand_more
+                        : Icons.chevron_right,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Version History',
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const Spacer(),
+                  if (provider.selectedDocVersionNumber != null)
+                    Text(
+                      'v${provider.selectedDocVersionNumber}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  if (_isVersionHistoryExpanded) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        iconSize: 16,
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Refresh versions',
+                        onPressed: _isLoadingVersions
+                            ? null
+                            : () => _loadVersions(context),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (_isVersionHistoryExpanded) ...[
+            if (_isLoadingVersions)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              )
+            else if (_versions.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: Text('No versions found.')),
+              )
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  itemCount: _versions.length,
+                  itemBuilder: (context, index) {
+                    final version =
+                        Map<String, dynamic>.from(_versions[index] as Map);
+                    final versionNumber =
+                        (version['version_number'] as num?)?.toInt() ?? 0;
+                    final source = version['source']?.toString() ?? 'unknown';
+                    final createdAt = version['created_at']?.toString() ?? '';
+                    final comment = version['comment']?.toString();
+                    final isCurrent =
+                        versionNumber == provider.selectedDocVersionNumber;
+
+                    return Card(
+                      elevation: isCurrent ? 2 : 0,
+                      color: isCurrent
+                          ? theme.colorScheme.primaryContainer.withOpacity(0.3)
+                          : null,
+                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(
+                          isCurrent ? Icons.check_circle : Icons.history,
+                          size: 18,
+                          color: isCurrent ? theme.colorScheme.primary : null,
+                        ),
+                        title: Text(
+                          'v$versionNumber${isCurrent ? ' (current)' : ''}',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: isCurrent ? FontWeight.w600 : null,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${_formatSource(source)}${comment != null ? ' - $comment' : ''}'
+                          '${createdAt.isNotEmpty ? '\n${_formatTimestamp(createdAt)}' : ''}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        trailing: isCurrent
+                            ? null
+                            : _isRestoringVersion
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : TextButton(
+                                    onPressed: () =>
+                                        _restoreVersion(context, versionNumber),
+                                    child: const Text('Restore'),
+                                  ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  V2ApiService _createApiService(BuildContext context) {
+    return V2ApiService(
+      settingsProvider: context.read<SettingsProvider>(),
+      authProvider: context.read<AuthProvider>(),
+    );
+  }
+
+  Future<void> _loadVersions(BuildContext context) async {
+    final provider = context.read<V2SessionProvider>();
+    final filePath = provider.selectedDocPath;
+    if (filePath == null) return;
+
+    setState(() {
+      _isLoadingVersions = true;
+    });
+
+    try {
+      final apiService = _createApiService(context);
+      final versions =
+          await apiService.listVersions(provider.projectId, filePath);
+      if (mounted) {
+        setState(() {
+          _versions = versions;
+          _isLoadingVersions = false;
+        });
+      }
+      apiService.dispose();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading versions: $e');
+      }
+      if (mounted) {
+        setState(() {
+          _isLoadingVersions = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load versions: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _restoreVersion(BuildContext context, int versionNumber) async {
+    final provider = context.read<V2SessionProvider>();
+    final filePath = provider.selectedDocPath;
+    if (filePath == null) return;
+
+    setState(() {
+      _isRestoringVersion = true;
+    });
+
+    try {
+      final apiService = _createApiService(context);
+      await apiService.restoreVersion(
+          provider.projectId, filePath, versionNumber);
+      apiService.dispose();
+
+      // Reload the document content and versions
+      await provider.selectDocument(filePath);
+      if (mounted) {
+        _loadVersions(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restored to version $versionNumber.')),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error restoring version: $e');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to restore version: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRestoringVersion = false;
+        });
+      }
+    }
+  }
+
+  String _formatSource(String source) {
+    switch (source) {
+      case 'ai':
+        return 'AI';
+      case 'user':
+        return 'User';
+      case 'system':
+        return 'System';
+      case 'restore':
+        return 'Restored';
+      default:
+        return source;
+    }
+  }
+
+  String _formatTimestamp(String timestamp) {
+    try {
+      final dt = DateTime.parse(timestamp);
+      final now = DateTime.now();
+      final diff = now.difference(dt);
+      if (diff.inMinutes < 1) return 'just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return timestamp;
+    }
   }
 
   Widget _sectionTitle(BuildContext context, String title) {
@@ -471,7 +746,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
     if (provider.selectedDocPath == null) return;
 
     final currentDoc = provider.documents.firstWhere(
-      (d) => d['file_path'] == provider.selectedDocPath,
+      (d) => _documentPath(d) == provider.selectedDocPath,
       orElse: () => {},
     );
     final slug = currentDoc['slug']?.toString() ?? '';
@@ -519,7 +794,7 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
     if (provider.selectedDocPath == null) return;
 
     final currentDoc = provider.documents.firstWhere(
-      (d) => d['file_path'] == provider.selectedDocPath,
+      (d) => _documentPath(d) == provider.selectedDocPath,
       orElse: () => {},
     );
     final slug = currentDoc['slug']?.toString() ?? '';
@@ -554,5 +829,24 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
         ],
       ),
     );
+  }
+
+  String? _documentPath(Map<String, dynamic> doc) {
+    final path = doc['file_path']?.toString() ??
+        doc['path']?.toString() ??
+        doc['document_path']?.toString() ??
+        doc['filePath']?.toString() ??
+        doc['documentPath']?.toString();
+    if (path == null) return null;
+    final trimmed = path.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String _documentTitle(Map<String, dynamic> doc, String fallbackPath) {
+    final title = doc['title']?.toString().trim();
+    if (title == null || title.isEmpty) {
+      return fallbackPath;
+    }
+    return title;
   }
 }

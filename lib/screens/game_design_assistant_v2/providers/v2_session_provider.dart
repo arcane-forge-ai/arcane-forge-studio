@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -86,6 +85,8 @@ class V2SessionProvider with ChangeNotifier {
   String? get chatError => _chatError;
 
   bool get canUseV2 => _authProvider.userId.trim().isNotEmpty;
+  bool get hasSelectedDocument =>
+      _selectedDocPath != null && _selectedDocPath!.trim().isNotEmpty;
 
   Future<void> loadSessions() async {
     _isSessionsLoading = true;
@@ -119,18 +120,15 @@ class V2SessionProvider with ChangeNotifier {
     _messages = [];
     _contextData = null;
     _progress = null;
-    _documents = [];
-    _selectedDocPath = null;
-    _selectedDocContent = null;
-    _selectedDocVersionNumber = null;
-    _gddContent = null;
-    _gddVersionNumber = null;
+    _clearSelectedDocument();
     _pendingConfirmation = null;
     _pendingSelection = null;
     _streamingContent = '';
     _thinkingContent = null;
     _chatError = null;
     _hasDraftConversation = true;
+    // Keep document inventory loaded for optional selection in draft mode.
+    unawaited(loadDocuments());
     notifyListeners();
   }
 
@@ -154,7 +152,9 @@ class V2SessionProvider with ChangeNotifier {
 
   Future<void> _loadSessionData(String sessionId,
       {bool reloadHistory = true}) async {
-    await loadDocuments();
+    _clearSelectedDocument();
+    _documents = [];
+    await loadDocuments(notify: false);
     _contextData = await _apiService.getContext(sessionId);
 
     try {
@@ -163,16 +163,12 @@ class V2SessionProvider with ChangeNotifier {
       _progress = null;
     }
 
-    // Don't auto-select any document, let user choose
-    _selectedDocPath = null;
-    _selectedDocContent = null;
-    _selectedDocVersionNumber = null;
-    _gddContent = null;
-    _gddVersionNumber = null;
-
     if (reloadHistory) {
       _messages = await _apiService.getHistory(sessionId);
     }
+
+    _currentSession = await _apiService.getSession(sessionId);
+    await _syncDocumentSelectionWithSession();
 
     _pendingConfirmation = null;
     _pendingSelection = null;
@@ -208,11 +204,15 @@ class V2SessionProvider with ChangeNotifier {
     }
 
     if (_currentSession == null) {
+      final draftSelectedPath = _selectedDocPath;
       _isLoading = true;
       _chatError = null;
       notifyListeners();
       try {
         await _createAndSelectSession(initialMessage: trimmed);
+        if (draftSelectedPath != null && draftSelectedPath.trim().isNotEmpty) {
+          await selectDocument(draftSelectedPath);
+        }
       } catch (e) {
         _chatError = e.toString();
         _isLoading = false;
@@ -245,6 +245,7 @@ class V2SessionProvider with ChangeNotifier {
       await for (final event in _sseService.streamMessage(
         sessionId: session.sessionId,
         content: trimmed,
+        documentPath: _selectedDocPath,
       )) {
         switch (event.type) {
           case 'thinking':
@@ -256,7 +257,20 @@ class V2SessionProvider with ChangeNotifier {
             notifyListeners();
             break;
           case 'done':
-            _pendingConfirmation = event.confirmation;
+            // Canvas mode guard: only suppress file_merge_section confirmation
+            // when canvas_document is present (backend canvas mode is active).
+            // Without canvas_document, show all confirmations normally.
+            if (event.confirmation != null) {
+              final isCanvasMode = event.canvasDocument != null;
+              if (isCanvasMode &&
+                  _isFileMergeConfirmation(event.confirmation!)) {
+                // Canvas mode: suppress file_merge_section confirmation card
+              } else {
+                _pendingConfirmation = event.confirmation;
+              }
+            } else {
+              _pendingConfirmation = null;
+            }
             _pendingSelection = event.selection;
             notifyListeners();
             break;
@@ -306,7 +320,10 @@ class V2SessionProvider with ChangeNotifier {
     }
   }
 
-  Future<void> confirmTransaction({String? transactionId}) async {
+  Future<void> confirmTransaction({
+    String? transactionId,
+    String? argsChecksum,
+  }) async {
     final sessionId = _currentSession?.sessionId;
     if (sessionId == null) return;
 
@@ -320,6 +337,7 @@ class V2SessionProvider with ChangeNotifier {
         sessionId: sessionId,
         action: 'confirm',
         transactionId: transactionId,
+        argsChecksum: argsChecksum,
       );
 
       if (result['status'] == 'awaiting_confirmation' &&
@@ -411,17 +429,12 @@ class V2SessionProvider with ChangeNotifier {
         _progress = null;
       }
 
-      // Only load document content if a document is selected
-      if (_selectedDocPath != null) {
-        final fileData = await _apiService.getProjectFileWithVersion(
-            projectId, _selectedDocPath!);
-        _selectedDocContent = fileData['content']?.toString() ?? '';
-        _selectedDocVersionNumber = (fileData['version_number'] as num?)?.toInt();
-        _gddContent = _selectedDocContent;
-        _gddVersionNumber = _selectedDocVersionNumber;
-      }
-
       _currentSession = await _apiService.getSession(sessionId);
+      await loadDocuments(notify: false);
+      final selectionChanged = await _syncDocumentSelectionWithSession();
+      if (!selectionChanged) {
+        await _refreshSelectedDocumentContent();
+      }
 
       if (reloadHistory) {
         _messages = await _apiService.getHistory(sessionId);
@@ -437,10 +450,35 @@ class V2SessionProvider with ChangeNotifier {
     }
   }
 
-  Future<void> loadDocuments() async {
+  Future<void> loadDocuments({bool notify = true}) async {
     try {
-      _documents = await _apiService.listDocuments(projectId);
-      notifyListeners();
+      final sessionId = _currentSession?.sessionId;
+      if (sessionId == null || sessionId.trim().isEmpty) {
+        _documents = [];
+      } else {
+        final sessionDocuments =
+            await _apiService.listSessionDocuments(sessionId);
+        var mergedDocuments = List<Map<String, dynamic>>.from(sessionDocuments);
+        final activePath =
+            _asNonEmptyString(_currentSession?.activeDocumentPath);
+        final selectedPath = _asNonEmptyString(_selectedDocPath);
+
+        // Backward compatibility:
+        // when backend doesn't support session-scoped document filtering yet,
+        // session endpoint may return empty; fallback to project-level list
+        // only when we have an existing selection/active-path to recover.
+        final shouldFallbackToProject = mergedDocuments.isEmpty &&
+            (activePath != null || selectedPath != null);
+        if (shouldFallbackToProject) {
+          final projectDocuments = await _apiService.listDocuments(projectId);
+          mergedDocuments = _mergeDocumentsByPath([], projectDocuments);
+        }
+
+        _documents = mergedDocuments;
+      }
+      if (notify) {
+        notifyListeners();
+      }
     } catch (e) {
       if (kDebugMode) {
         print('Error loading documents: $e');
@@ -448,15 +486,30 @@ class V2SessionProvider with ChangeNotifier {
     }
   }
 
-  Future<void> selectDocument(String filePath) async {
-    _selectedDocPath = filePath;
+  Future<void> selectDocument(
+    String filePath, {
+    bool syncSession = true,
+  }) async {
+    final normalized = filePath.trim();
+    if (normalized.isEmpty) return;
+
+    _selectedDocPath = normalized;
+    _chatError = null;
     try {
       final fileData =
-          await _apiService.getProjectFileWithVersion(projectId, filePath);
+          await _apiService.getProjectFileWithVersion(projectId, normalized);
       _selectedDocContent = fileData['content']?.toString() ?? '';
       _selectedDocVersionNumber = (fileData['version_number'] as num?)?.toInt();
       _gddContent = _selectedDocContent;
       _gddVersionNumber = _selectedDocVersionNumber;
+
+      final sessionId = _currentSession?.sessionId;
+      if (syncSession && sessionId != null) {
+        await _apiService.setActiveDocument(
+          sessionId: sessionId,
+          filePath: normalized,
+        );
+      }
       notifyListeners();
     } catch (e) {
       _chatError = e.toString();
@@ -465,9 +518,24 @@ class V2SessionProvider with ChangeNotifier {
   }
 
   Future<void> createDocument(String title, {String? filePath}) async {
+    final sessionId = _currentSession?.sessionId;
+    if (sessionId == null) {
+      _chatError = 'Please select a session before creating documents.';
+      notifyListeners();
+      throw Exception(_chatError);
+    }
+    _chatError = null;
     try {
-      await _apiService.createDocument(projectId, title, filePath: filePath);
+      final created = await _apiService.createSessionDocument(
+        sessionId,
+        title,
+        filePath: filePath,
+      );
       await loadDocuments();
+      final createdPath = created['file_path']?.toString();
+      if (createdPath != null && createdPath.isNotEmpty) {
+        await selectDocument(createdPath);
+      }
     } catch (e) {
       _chatError = e.toString();
       notifyListeners();
@@ -488,19 +556,15 @@ class V2SessionProvider with ChangeNotifier {
 
   Future<void> deleteDocument(String slug) async {
     try {
+      final deletedPath = _documents
+          .where((d) => d['slug']?.toString() == slug)
+          .map(_documentPathFromInventoryItem)
+          .whereType<String>()
+          .firstOrNull;
       await _apiService.deleteDocument(projectId, slug, _authProvider.userId);
       await loadDocuments();
-      // If deleted document was selected, clear selection
-      final deletedPath = _documents
-          .where((d) => d['slug'] == slug)
-          .map((d) => d['file_path']?.toString())
-          .firstOrNull;
       if (_selectedDocPath == deletedPath) {
-        _selectedDocPath = null;
-        _selectedDocContent = null;
-        _selectedDocVersionNumber = null;
-        _gddContent = null;
-        _gddVersionNumber = null;
+        _clearSelectedDocument();
       }
     } catch (e) {
       _chatError = e.toString();
@@ -556,5 +620,113 @@ class V2SessionProvider with ChangeNotifier {
   void dispose() {
     _apiService.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshSelectedDocumentContent() async {
+    if (_selectedDocPath == null) return;
+    final fileData = await _apiService.getProjectFileWithVersion(
+        projectId, _selectedDocPath!);
+    _selectedDocContent = fileData['content']?.toString() ?? '';
+    _selectedDocVersionNumber = (fileData['version_number'] as num?)?.toInt();
+    _gddContent = _selectedDocContent;
+    _gddVersionNumber = _selectedDocVersionNumber;
+  }
+
+  void _clearSelectedDocument() {
+    _selectedDocPath = null;
+    _selectedDocContent = null;
+    _selectedDocVersionNumber = null;
+    _gddContent = null;
+    _gddVersionNumber = null;
+  }
+
+  String? _documentPathFromInventoryItem(Map<String, dynamic> doc) {
+    return _asNonEmptyString(doc['file_path']) ??
+        _asNonEmptyString(doc['path']) ??
+        _asNonEmptyString(doc['document_path']) ??
+        _asNonEmptyString(doc['filePath']) ??
+        _asNonEmptyString(doc['documentPath']);
+  }
+
+  Future<bool> _syncDocumentSelectionWithSession() async {
+    final knownPaths = _documents
+        .map(_documentPathFromInventoryItem)
+        .whereType<String>()
+        .toList(growable: false);
+    final knownPathSet = knownPaths.toSet();
+    final activePath = _asNonEmptyString(_currentSession?.activeDocumentPath);
+
+    final selectedPath = _asNonEmptyString(_selectedDocPath);
+    final sessionId = _currentSession?.sessionId;
+    if (activePath != null && !knownPathSet.contains(activePath)) {
+      if (sessionId != null) {
+        try {
+          await _apiService.setActiveDocument(
+            sessionId: sessionId,
+            filePath: null,
+          );
+          _currentSession = await _apiService.getSession(sessionId);
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error clearing stale active document path: $e');
+          }
+        }
+      }
+
+      if (selectedPath == activePath ||
+          (selectedPath != null && !knownPathSet.contains(selectedPath))) {
+        _clearSelectedDocument();
+      }
+
+      if (_selectedDocPath == null && knownPaths.isNotEmpty) {
+        await selectDocument(knownPaths.first);
+      }
+      return true;
+    }
+
+    if (activePath != null &&
+        knownPathSet.contains(activePath) &&
+        selectedPath != activePath) {
+      await selectDocument(activePath, syncSession: false);
+      return true;
+    }
+
+    if (selectedPath != null && !knownPathSet.contains(selectedPath)) {
+      _clearSelectedDocument();
+    }
+
+    if (_selectedDocPath == null && knownPaths.isNotEmpty) {
+      // Heal stale session active_document_path by syncing to a valid document.
+      await selectDocument(knownPaths.first);
+      return true;
+    }
+
+    return false;
+  }
+
+  bool _isFileMergeConfirmation(Confirmation conf) {
+    return conf.action.contains('file_merge_section') ||
+        conf.action.contains('Merge section');
+  }
+
+  String? _asNonEmptyString(dynamic value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  List<Map<String, dynamic>> _mergeDocumentsByPath(
+    List<Map<String, dynamic>> sessionDocuments,
+    List<Map<String, dynamic>> projectDocuments,
+  ) {
+    final merged = <String, Map<String, dynamic>>{};
+
+    for (final doc in [...projectDocuments, ...sessionDocuments]) {
+      final path = _documentPathFromInventoryItem(doc);
+      if (path == null) continue;
+      merged[path] = doc;
+    }
+
+    return merged.values.toList(growable: false);
   }
 }

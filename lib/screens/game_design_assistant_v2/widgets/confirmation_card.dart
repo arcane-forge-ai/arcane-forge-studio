@@ -66,6 +66,28 @@ class ConfirmationCard extends StatelessWidget {
                 child: Text(confirmation.reason),
               ),
             ],
+            if ((confirmation.targetPath ?? '').isNotEmpty ||
+                (confirmation.sectionId ?? '').isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if ((confirmation.targetPath ?? '').isNotEmpty)
+                    Chip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: const Icon(Icons.description_outlined, size: 16),
+                      label: Text(confirmation.targetPath!),
+                    ),
+                  if ((confirmation.sectionId ?? '').isNotEmpty)
+                    Chip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: const Icon(Icons.bookmark_border, size: 16),
+                      label: Text(confirmation.sectionId!),
+                    ),
+                ],
+              ),
+            ],
             if (confirmation.preview != null &&
                 confirmation.preview!.isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -114,6 +136,7 @@ class ConfirmationCard extends StatelessWidget {
                     onPressed: () =>
                         context.read<V2SessionProvider>().confirmTransaction(
                               transactionId: confirmation.transactionId,
+                              argsChecksum: confirmation.argsChecksum,
                             ),
                     icon: const Icon(Icons.check, size: 18),
                     label: Text(confirmation.confirmText),

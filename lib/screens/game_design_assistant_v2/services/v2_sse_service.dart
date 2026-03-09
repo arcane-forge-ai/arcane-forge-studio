@@ -9,6 +9,32 @@ import '../../../providers/settings_provider.dart';
 import '../models/confirmation.dart';
 import '../models/selection.dart';
 
+class CanvasDocument {
+  final String filePath;
+  final int versionNumber;
+  final String? contentMarkdown;
+  final String source;
+  final String createdAt;
+
+  CanvasDocument({
+    required this.filePath,
+    required this.versionNumber,
+    this.contentMarkdown,
+    required this.source,
+    required this.createdAt,
+  });
+
+  factory CanvasDocument.fromJson(Map<String, dynamic> json) {
+    return CanvasDocument(
+      filePath: json['file_path'] as String,
+      versionNumber: json['version_number'] as int,
+      contentMarkdown: json['content_markdown'] as String?,
+      source: json['source'] as String? ?? 'ai',
+      createdAt: json['created_at'] as String? ?? '',
+    );
+  }
+}
+
 class SSEEvent {
   final String type;
   final String? content;
@@ -17,6 +43,7 @@ class SSEEvent {
   final Confirmation? confirmation;
   final SelectionInfo? selection;
   final bool? isFinal;
+  final CanvasDocument? canvasDocument;
 
   SSEEvent({
     required this.type,
@@ -26,6 +53,7 @@ class SSEEvent {
     this.confirmation,
     this.selection,
     this.isFinal,
+    this.canvasDocument,
   });
 
   factory SSEEvent.fromJson(Map<String, dynamic> json) {
@@ -45,6 +73,10 @@ class SSEEvent {
           : SelectionInfo.fromJson(
               Map<String, dynamic>.from(json['selection'] as Map)),
       isFinal: json['is_final'] as bool?,
+      canvasDocument: json['canvas_document'] != null
+          ? CanvasDocument.fromJson(
+              Map<String, dynamic>.from(json['canvas_document'] as Map))
+          : null,
     );
   }
 }
@@ -84,10 +116,17 @@ class V2SSEService {
   Stream<SSEEvent> streamMessage({
     required String sessionId,
     required String content,
+    String? documentPath,
   }) async* {
+    final query = StringBuffer(
+      '?content=${Uri.encodeComponent(content)}',
+    );
+    if (documentPath != null && documentPath.trim().isNotEmpty) {
+      query.write('&document_path=${Uri.encodeComponent(documentPath.trim())}');
+    }
     final uri = Uri.parse(
       '$_baseUrl/api/v2/design-agent/sessions/$sessionId/stream'
-      '?content=${Uri.encodeComponent(content)}',
+      '$query',
     );
 
     final client = http.Client();

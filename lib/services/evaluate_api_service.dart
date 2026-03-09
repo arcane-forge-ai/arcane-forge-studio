@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../models/evaluate_models.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
@@ -67,7 +69,8 @@ class EvaluateApiService {
       if (response.statusCode == 200) {
         return EvaluateHistoryResponse.fromJson(response.data);
       } else {
-        throw Exception('Failed to get evaluation history: ${response.statusCode}');
+        throw Exception(
+            'Failed to get evaluation history: ${response.statusCode}');
       }
     } catch (e) {
       print('Evaluate API Error (history): $e');
@@ -76,35 +79,41 @@ class EvaluateApiService {
   }
 
   /// Get the latest evaluation for a project
-  Future<EvaluateResponse> getLatestEvaluation(int projectId) async {
+  Future<EvaluateResponse?> getLatestEvaluation(int projectId) async {
     if (_useMockMode) {
       return _mockGetLatestEvaluation(projectId);
     }
 
     try {
-      final response = await _apiClient.get('/projects/$projectId/evaluate/latest');
+      final response =
+          await _apiClient.get('/projects/$projectId/evaluate/latest');
 
       if (response.statusCode == 200) {
         return EvaluateResponse.fromJson(response.data);
-      } else if (response.statusCode == 404) {
-        throw Exception('No evaluations found for this project');
       } else {
-        throw Exception('Failed to get latest evaluation: ${response.statusCode}');
+        throw Exception(
+            'Failed to get latest evaluation: ${response.statusCode}');
       }
     } catch (e) {
+      if (e is DioException && e.response?.statusCode == 404) {
+        // No evaluation yet for this project is a normal empty state.
+        return null;
+      }
       print('Evaluate API Error (latest): $e');
       rethrow;
     }
   }
 
   /// Get a specific evaluation by ID
-  Future<EvaluateResponse> getEvaluationById(int projectId, int evaluationId) async {
+  Future<EvaluateResponse> getEvaluationById(
+      int projectId, int evaluationId) async {
     if (_useMockMode) {
       return _mockGetEvaluationById(projectId, evaluationId);
     }
 
     try {
-      final response = await _apiClient.get('/projects/$projectId/evaluate/$evaluationId');
+      final response =
+          await _apiClient.get('/projects/$projectId/evaluate/$evaluationId');
 
       if (response.statusCode == 200) {
         return EvaluateResponse.fromJson(response.data);
@@ -141,7 +150,8 @@ class EvaluateApiService {
           projectId: projectId,
           status: 'completed',
           createdAt: DateTime.now().subtract(const Duration(days: 7)),
-          completedAt: DateTime.now().subtract(const Duration(days: 7, minutes: 2)),
+          completedAt:
+              DateTime.now().subtract(const Duration(days: 7, minutes: 2)),
           result: _mockResult('green'),
         ),
       ],
@@ -154,7 +164,8 @@ class EvaluateApiService {
       projectId: projectId,
       status: 'completed',
       createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-      completedAt: DateTime.now().subtract(const Duration(hours: 1, minutes: 58)),
+      completedAt:
+          DateTime.now().subtract(const Duration(hours: 1, minutes: 58)),
       result: _mockResult('yellow'),
     );
   }
@@ -189,10 +200,14 @@ class EvaluateApiService {
           id: 'gap-1',
           title: 'Missing Combat Mechanics',
           severity: 'high',
-          kbEvidence: ['No combat system documentation found in knowledge base.'],
+          kbEvidence: [
+            'No combat system documentation found in knowledge base.'
+          ],
           currentState: 'Combat mechanics are not defined.',
-          whatToDecide: 'The core combat loop is not defined in the knowledge base.',
-          whyItMatters: 'Define damage types, weapon scaling, and player movement during combat.',
+          whatToDecide:
+              'The core combat loop is not defined in the knowledge base.',
+          whyItMatters:
+              'Define damage types, weapon scaling, and player movement during combat.',
         ),
         KnowledgeGap(
           id: 'gap-2',
@@ -200,14 +215,17 @@ class EvaluateApiService {
           severity: 'medium',
           kbEvidence: ['Economy section exists but lacks specific numbers.'],
           currentState: 'Economy balance is described in general terms.',
-          whatToDecide: 'In-game currency acquisition rates vs item costs are unclear.',
-          whyItMatters: 'Add a spreadsheet or detailed table of expected player gold per hour.',
+          whatToDecide:
+              'In-game currency acquisition rates vs item costs are unclear.',
+          whyItMatters:
+              'Add a spreadsheet or detailed table of expected player gold per hour.',
         ),
       ],
       risks: [
         RiskAssessment(
           category: 'Retention',
-          risk: 'Lack of long-term progression goals may lead to player churn after 10 hours.',
+          risk:
+              'Lack of long-term progression goals may lead to player churn after 10 hours.',
           severity: 'high',
           mitigation: 'Implement a talent tree or prestige system.',
         ),
@@ -220,7 +238,10 @@ class EvaluateApiService {
       ],
       marketAnalysis: MarketAnalysis(
         differentiation: MarketDifferentiation(
-          unique: ['Craftable skills system', 'Accessible yet deep ARPG mechanics'],
+          unique: [
+            'Craftable skills system',
+            'Accessible yet deep ARPG mechanics'
+          ],
           genericOrExpected: ['Character progression', 'Loot system'],
           unclearOrUnproven: ['Monetization strategy'],
         ),
@@ -244,14 +265,14 @@ class EvaluateApiService {
       ),
       greenlight: GreenlightDecision(
         status: status,
-        blockers: status == 'red' 
+        blockers: status == 'red'
             ? ['Missing core combat mechanics', 'Unclear economy balance']
             : [],
         reasoningList: [
-          status == 'green' 
-              ? 'The design is comprehensive and addresses key player motivations.' 
-              : status == 'yellow' 
-                  ? 'The project has strong potential but needs more detail in core systems.' 
+          status == 'green'
+              ? 'The design is comprehensive and addresses key player motivations.'
+              : status == 'yellow'
+                  ? 'The project has strong potential but needs more detail in core systems.'
                   : 'Significant design gaps exist that make production risky.',
         ],
         toReachNextStatus: [
@@ -263,4 +284,3 @@ class EvaluateApiService {
     );
   }
 }
-

@@ -45,6 +45,7 @@ class SessionInfo {
   final String? projectId;
   final String? projectName;
   final String? title;
+  final String? activeDocumentPath;
   final String? currentStage;
   final String? currentPillar;
   final int turnCount;
@@ -57,6 +58,7 @@ class SessionInfo {
     this.projectId,
     this.projectName,
     this.title,
+    this.activeDocumentPath,
     this.currentStage,
     this.currentPillar,
     this.turnCount = 0,
@@ -71,6 +73,7 @@ class SessionInfo {
       projectId: json['project_id']?.toString(),
       projectName: json['project_name']?.toString(),
       title: json['title']?.toString(),
+      activeDocumentPath: json['active_document_path']?.toString(),
       currentStage: json['current_stage']?.toString(),
       currentPillar: json['current_pillar']?.toString(),
       turnCount: (json['turn_count'] as num?)?.toInt() ?? 0,
