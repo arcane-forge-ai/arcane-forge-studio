@@ -19,6 +19,12 @@ class ConflictException implements Exception {
   String toString() => message;
 }
 
+class ConfirmFlowDisabledException implements Exception {
+  @override
+  String toString() =>
+      'Confirmation flow has been removed. Documents are now written directly.';
+}
+
 class V2ApiService {
   final ApiClient _apiClient;
 
@@ -82,6 +88,10 @@ class V2ApiService {
 
   bool _is404(Object error) {
     return error is DioException && error.response?.statusCode == 404;
+  }
+
+  bool _is410(Object error) {
+    return error is DioException && error.response?.statusCode == 410;
   }
 
   Future<void> _enableProjectV2Runtime(String projectId) async {
@@ -220,6 +230,9 @@ class V2ApiService {
       );
       return _asMap(response.data);
     } catch (e) {
+      if (_is410(e)) {
+        throw ConfirmFlowDisabledException();
+      }
       throw Exception('Failed to confirm transaction: ${_extractError(e)}');
     }
   }

@@ -357,6 +357,10 @@ class V2SessionProvider with ChangeNotifier {
         await refreshData(reloadHistory: true);
         await loadSessions();
       }
+    } on ConfirmFlowDisabledException {
+      _pendingConfirmation = null;
+      _chatError = null;
+      // Silently dismiss — confirmation card is stale, no user-facing error needed.
     } catch (e) {
       _chatError = 'Error confirming transaction: $e';
       _messages = [
@@ -391,6 +395,9 @@ class V2SessionProvider with ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 300));
       await refreshData(reloadHistory: true);
       await loadSessions();
+    } on ConfirmFlowDisabledException {
+      _pendingConfirmation = null;
+      _chatError = null;
     } catch (e) {
       _chatError = 'Error cancelling transaction: $e';
       _messages = [
