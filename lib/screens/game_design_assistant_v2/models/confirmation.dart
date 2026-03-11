@@ -9,7 +9,10 @@ class Confirmation {
   final String confirmText;
   final String cancelText;
   final String? transactionId;
-  final String? argsChecksum;
+  final String? argsChecksum;  // 可选（向后兼容）
+  final String? permitId;      // 新增：可选
+  final int? stepNumber;
+  final int? totalSteps;       // 新增：总步骤数
 
   Confirmation({
     required this.state,
@@ -23,6 +26,9 @@ class Confirmation {
     required this.cancelText,
     this.transactionId,
     this.argsChecksum,
+    this.permitId,
+    this.stepNumber,
+    this.totalSteps,
   });
 
   factory Confirmation.fromJson(Map<String, dynamic> json) {
@@ -44,6 +50,13 @@ class Confirmation {
           'Cancel',
       transactionId: json['transaction_id']?.toString(),
       argsChecksum: json['args_checksum']?.toString(),
+      permitId: json['permit_id']?.toString(),
+      stepNumber: json['step_number'] != null
+          ? int.tryParse(json['step_number'].toString())
+          : null,
+      totalSteps: json['total_steps'] != null
+          ? int.tryParse(json['total_steps'].toString())
+          : null,
     );
   }
 }

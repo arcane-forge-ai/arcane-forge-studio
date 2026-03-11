@@ -335,6 +335,7 @@ class V2SessionProvider with ChangeNotifier {
   Future<void> confirmTransaction({
     String? transactionId,
     String? argsChecksum,
+    int retryCount = 0,
   }) async {
     final sessionId = _currentSession?.sessionId;
     if (sessionId == null) return;
@@ -378,6 +379,55 @@ class V2SessionProvider with ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 300));
         await refreshData(reloadHistory: true);
         await loadSessions();
+      }
+    } on DioException catch (e) {
+      // Handle 409 conflict with automatic retry
+      if (e.response?.statusCode == 409 && retryCount == 0) {
+        // Extract latest_confirmation from response
+        final responseData = e.response?.data;
+        if (responseData is Map && responseData['latest_confirmation'] != null) {
+          final latestConfirmation = Confirmation.fromJson(
+            Map<String, dynamic>.from(responseData['latest_confirmation'] as Map),
+          );
+
+          // Update pending confirmation
+          _pendingConfirmation = latestConfirmation;
+          notifyListeners();
+
+          // Automatic retry after 500ms
+          await Future.delayed(const Duration(milliseconds: 500));
+          return confirmTransaction(
+            transactionId: latestConfirmation.transactionId,
+            argsChecksum: latestConfirmation.argsChecksum,
+            retryCount: 1,
+          );
+        } else {
+          // 409 without latest_confirmation
+          _chatError = '操作内容已更新，请查看最新内容后再次确认';
+        }
+      } else if (e.response?.statusCode == 409 && retryCount > 0) {
+        // Retry failed: show friendly error
+        _chatError = '操作内容已更新，请查看最新内容后再次确认';
+      } else if (e.type == DioExceptionType.connectionTimeout) {
+        _chatError = '网络连接超时，请检查网络后重试';
+      } else if (e.response?.statusCode == 500) {
+        _chatError = '服务器错误，请稍后重试或联系客服';
+      } else if (e.response?.statusCode == 401) {
+        _chatError = '登录已过期，请重新登录';
+        // TODO: Handle auth expiration
+      } else {
+        _chatError = '操作失败，请重试';
+      }
+
+      if (_chatError != null) {
+        _messages = [
+          ..._messages,
+          ChatMessage(
+            role: 'assistant',
+            content: _chatError!,
+            timestamp: DateTime.now(),
+          ),
+        ];
       }
     } on ConfirmFlowDisabledException {
       _pendingConfirmation = null;
