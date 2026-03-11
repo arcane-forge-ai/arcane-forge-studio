@@ -9,6 +9,7 @@ import '../../../services/api_client.dart';
 import '../models/context.dart';
 import '../models/message.dart';
 import '../models/progress.dart';
+import '../models/project_context.dart';
 import '../models/session.dart';
 
 class ConflictException implements Exception {
@@ -92,6 +93,10 @@ class V2ApiService {
 
   bool _is410(Object error) {
     return error is DioException && error.response?.statusCode == 410;
+  }
+
+  String _encodeFilePath(String filePath) {
+    return Uri.encodeComponent(filePath.trim());
   }
 
   Future<void> _enableProjectV2Runtime(String projectId) async {
@@ -255,8 +260,9 @@ class V2ApiService {
   Future<Map<String, dynamic>> getProjectFileWithVersion(
       String projectId, String filePath) async {
     try {
+      final encodedPath = _encodeFilePath(filePath);
       final response = await _apiClient.dio
-          .get('$_designBaseUrl/projects/$projectId/files/$filePath');
+          .get('$_designBaseUrl/projects/$projectId/files/$encodedPath');
       return _asMap(response.data);
     } catch (e) {
       if (_is404(e)) {
@@ -381,8 +387,9 @@ class V2ApiService {
     String? comment,
   }) async {
     try {
+      final encodedPath = _encodeFilePath(filePath);
       final response = await _apiClient.dio.post(
-        '$_designBaseUrl/projects/$projectId/files/$filePath/versions',
+        '$_designBaseUrl/projects/$projectId/files/$encodedPath/versions',
         data: {
           'content_markdown': contentMarkdown,
           if (baseVersionNumber != null)
@@ -419,7 +426,7 @@ class V2ApiService {
   /// Backend returns {"versions": [...], "total": N}
   Future<List<dynamic>> listVersions(String projectId, String filePath) async {
     try {
-      final encodedPath = Uri.encodeComponent(filePath);
+      final encodedPath = _encodeFilePath(filePath);
       final response = await _apiClient.dio.get(
         '$_designBaseUrl/projects/$projectId/files/$encodedPath/versions',
       );
@@ -437,7 +444,7 @@ class V2ApiService {
     int versionNumber,
   ) async {
     try {
-      final encodedPath = Uri.encodeComponent(filePath);
+      final encodedPath = _encodeFilePath(filePath);
       final response = await _apiClient.dio.get(
         '$_designBaseUrl/projects/$projectId/files/$encodedPath/versions/$versionNumber',
       );
@@ -454,13 +461,28 @@ class V2ApiService {
     int versionNumber,
   ) async {
     try {
-      final encodedPath = Uri.encodeComponent(filePath);
+      final encodedPath = _encodeFilePath(filePath);
       await _apiClient.dio.post(
         '$_designBaseUrl/projects/$projectId/files/$encodedPath/versions/$versionNumber/restore',
         data: {},
       );
     } catch (e) {
       throw Exception('Failed to restore version: ${_extractError(e)}');
+    }
+  }
+
+  Future<void> deleteVersion(
+    String projectId,
+    String filePath,
+    int versionNumber,
+  ) async {
+    try {
+      final encodedPath = _encodeFilePath(filePath);
+      await _apiClient.dio.delete(
+        '$_designBaseUrl/projects/$projectId/files/$encodedPath/versions/$versionNumber',
+      );
+    } catch (e) {
+      throw Exception('Failed to delete version: ${_extractError(e)}');
     }
   }
 
@@ -495,6 +517,182 @@ class V2ApiService {
       return responseData['success'] == true || response.statusCode == 200;
     } catch (e) {
       throw Exception('Failed to upload file: ${_extractError(e)}');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Project Context / Pending Knowledge
+  // ---------------------------------------------------------------------------
+
+  Future<List<PendingKnowledgeItem>> listPendingKnowledge(
+      String sessionId) async {
+    try {
+      final response = await _apiClient.dio
+          .get('$_designBaseUrl/sessions/$sessionId/knowledge/pending');
+      final data = _asMap(response.data);
+      final items = data['items'] as List? ?? [];
+      return items
+          .map((e) =>
+              PendingKnowledgeItem.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(growable: false);
+    } catch (e) {
+      throw Exception('Failed to list pending knowledge: ${_extractError(e)}');
+    }
+  }
+
+  Future<ConfirmKnowledgeResult> confirmPendingKnowledge({
+    required String sessionId,
+    required List<Map<String, String>> decisions,
+  }) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '$_designBaseUrl/sessions/$sessionId/knowledge/confirm',
+        data: {'decisions': decisions},
+      );
+      return ConfirmKnowledgeResult.fromJson(_asMap(response.data));
+    } catch (e) {
+      throw Exception(
+          'Failed to confirm pending knowledge: ${_extractError(e)}');
+    }
+  }
+
+  Future<PendingKnowledgeItem> updatePendingItem({
+    required String sessionId,
+    required String itemId,
+    String? content,
+    String? type,
+  }) async {
+    try {
+      final response = await _apiClient.dio.patch(
+        '$_designBaseUrl/sessions/$sessionId/knowledge/pending/$itemId',
+        data: {
+          if (content != null) 'content': content,
+          if (type != null) 'type': type,
+        },
+      );
+      return PendingKnowledgeItem.fromJson(_asMap(response.data));
+    } catch (e) {
+      throw Exception('Failed to update pending item: ${_extractError(e)}');
+    }
+  }
+
+  Future<void> deletePendingItem({
+    required String sessionId,
+    required String itemId,
+  }) async {
+    try {
+      await _apiClient.dio.delete(
+        '$_designBaseUrl/sessions/$sessionId/knowledge/pending/$itemId',
+      );
+    } catch (e) {
+      throw Exception('Failed to delete pending item: ${_extractError(e)}');
+    }
+  }
+
+  Future<Map<String, dynamic>> extractSessionKnowledge(
+      String sessionId) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '$_designBaseUrl/sessions/$sessionId/knowledge/extract',
+      );
+      return _asMap(response.data);
+    } catch (e) {
+      throw Exception(
+          'Failed to extract session knowledge: ${_extractError(e)}');
+    }
+  }
+
+  Future<List<ProjectContextEntry>> listProjectContext({
+    required String projectId,
+    String? cursor,
+    int limit = 50,
+    String? type,
+    String? query,
+  }) async {
+    try {
+      final params = <String, dynamic>{
+        'limit': limit,
+        if (cursor != null) 'cursor': cursor,
+        if (type != null) 'type': type,
+        if (query != null) 'q': query,
+      };
+      final response = await _apiClient.dio.get(
+        '$_designBaseUrl/projects/$projectId/project-context',
+        queryParameters: params,
+      );
+      final data = _asMap(response.data);
+      final items = data['items'] as List? ?? [];
+      return items
+          .map((e) =>
+              ProjectContextEntry.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(growable: false);
+    } catch (e) {
+      throw Exception('Failed to list project context: ${_extractError(e)}');
+    }
+  }
+
+  Future<ProjectContextEntry> createProjectContextEntry({
+    required String projectId,
+    required String type,
+    required String content,
+    String? originalText,
+  }) async {
+    try {
+      final response = await _apiClient.dio.post(
+        '$_designBaseUrl/projects/$projectId/project-context',
+        data: {
+          'type': type,
+          'content': content,
+          if (originalText != null) 'original_text': originalText,
+        },
+      );
+      return ProjectContextEntry.fromJson(_asMap(response.data));
+    } catch (e) {
+      if (_is409(e)) {
+        throw ConflictException('Duplicate entry already exists');
+      }
+      throw Exception(
+          'Failed to create project context entry: ${_extractError(e)}');
+    }
+  }
+
+  Future<ProjectContextEntry> updateProjectContextEntry({
+    required String projectId,
+    required String entryId,
+    String? content,
+    String? type,
+    int? version,
+  }) async {
+    try {
+      final response = await _apiClient.dio.patch(
+        '$_designBaseUrl/projects/$projectId/project-context/$entryId',
+        data: {
+          if (content != null) 'content': content,
+          if (type != null) 'type': type,
+          if (version != null) 'version': version,
+        },
+      );
+      return ProjectContextEntry.fromJson(_asMap(response.data));
+    } catch (e) {
+      if (_is409(e)) {
+        throw ConflictException('Version conflict. Please refresh and retry.');
+      }
+      throw Exception(
+          'Failed to update project context entry: ${_extractError(e)}');
+    }
+  }
+
+  Future<void> deleteProjectContextEntry({
+    required String projectId,
+    required String entryId,
+  }) async {
+    try {
+      await _apiClient.dio.delete(
+        '$_designBaseUrl/projects/$projectId/project-context/$entryId',
+      );
+    } catch (e) {
+      throw Exception(
+          'Failed to delete project context entry: ${_extractError(e)}');
     }
   }
 

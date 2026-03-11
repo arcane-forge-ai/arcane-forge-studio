@@ -7,6 +7,7 @@ import '../../../providers/settings_provider.dart';
 import '../models/confirmation.dart';
 import '../models/context.dart';
 import '../models/message.dart';
+import '../models/project_context.dart';
 import '../models/selection.dart';
 import '../models/session.dart';
 import '../services/v2_api_service.dart';
@@ -59,6 +60,15 @@ class V2SessionProvider with ChangeNotifier {
   String? _sessionsError;
   String? _chatError;
 
+  // -- Project Context / Pending Knowledge state --
+  List<PendingKnowledgeItem> _pendingKnowledgeItems = [];
+  List<ProjectContextEntry> _projectContextEntries = [];
+  bool _isPendingKnowledgeLoading = false;
+  bool _isPendingKnowledgeSubmitting = false;
+  bool _isProjectContextLoading = false;
+  String? _pendingKnowledgeError;
+  String? _projectContextError;
+
   List<SessionInfo> get sessions => _sessions;
   SessionInfo? get currentSession => _currentSession;
   List<ChatMessage> get messages => _messages;
@@ -80,6 +90,18 @@ class V2SessionProvider with ChangeNotifier {
   String? get thinkingContent => _thinkingContent;
   String? get sessionsError => _sessionsError;
   String? get chatError => _chatError;
+
+  // -- Project Context / Pending Knowledge getters --
+  List<PendingKnowledgeItem> get pendingKnowledgeItems =>
+      _pendingKnowledgeItems;
+  List<ProjectContextEntry> get projectContextEntries =>
+      _projectContextEntries;
+  bool get isPendingKnowledgeLoading => _isPendingKnowledgeLoading;
+  bool get isPendingKnowledgeSubmitting => _isPendingKnowledgeSubmitting;
+  bool get isProjectContextLoading => _isProjectContextLoading;
+  String? get pendingKnowledgeError => _pendingKnowledgeError;
+  String? get projectContextError => _projectContextError;
+  bool get hasPendingKnowledge => _pendingKnowledgeItems.isNotEmpty;
 
   bool get canUseV2 => _authProvider.userId.trim().isNotEmpty;
   bool get hasSelectedDocument =>
@@ -763,5 +785,203 @@ class V2SessionProvider with ChangeNotifier {
     }
 
     return merged.values.toList(growable: false);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Project Context / Pending Knowledge Methods
+  // ---------------------------------------------------------------------------
+
+  /// Load pending knowledge items for the current session.
+  Future<void> loadPendingKnowledge() async {
+    final sessionId = _currentSession?.sessionId;
+    if (sessionId == null) return;
+
+    _isPendingKnowledgeLoading = true;
+    _pendingKnowledgeError = null;
+    notifyListeners();
+
+    try {
+      _pendingKnowledgeItems =
+          await _apiService.listPendingKnowledge(sessionId);
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+    } finally {
+      _isPendingKnowledgeLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Confirm or reject pending knowledge items.
+  Future<ConfirmKnowledgeResult?> confirmPendingKnowledge(
+      List<Map<String, String>> decisions) async {
+    final sessionId = _currentSession?.sessionId;
+    if (sessionId == null) return null;
+
+    _isPendingKnowledgeSubmitting = true;
+    _pendingKnowledgeError = null;
+    notifyListeners();
+
+    try {
+      final result = await _apiService.confirmPendingKnowledge(
+        sessionId: sessionId,
+        decisions: decisions,
+      );
+      // Refresh pending list and project context after confirmation
+      await loadPendingKnowledge();
+      await loadProjectContext();
+      return result;
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+      return null;
+    } finally {
+      _isPendingKnowledgeSubmitting = false;
+      notifyListeners();
+    }
+  }
+
+  /// Edit a pending knowledge item.
+  Future<bool> updatePendingItem(
+      String itemId, {String? content, String? type}) async {
+    final sessionId = _currentSession?.sessionId;
+    if (sessionId == null) return false;
+
+    try {
+      final updated = await _apiService.updatePendingItem(
+        sessionId: sessionId,
+        itemId: itemId,
+        content: content,
+        type: type,
+      );
+      final idx = _pendingKnowledgeItems.indexWhere((i) => i.id == itemId);
+      if (idx >= 0) {
+        _pendingKnowledgeItems[idx] = updated;
+        notifyListeners();
+      }
+      return true;
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Delete a pending knowledge item.
+  Future<bool> deletePendingItem(String itemId) async {
+    final sessionId = _currentSession?.sessionId;
+    if (sessionId == null) return false;
+
+    try {
+      await _apiService.deletePendingItem(
+        sessionId: sessionId,
+        itemId: itemId,
+      );
+      _pendingKnowledgeItems.removeWhere((i) => i.id == itemId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Trigger knowledge extraction for the current session.
+  Future<void> extractSessionKnowledge() async {
+    final sessionId = _currentSession?.sessionId;
+    if (sessionId == null) return;
+
+    _isPendingKnowledgeLoading = true;
+    notifyListeners();
+
+    try {
+      await _apiService.extractSessionKnowledge(sessionId);
+      await loadPendingKnowledge();
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+    } finally {
+      _isPendingKnowledgeLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Load project context entries (confirmed knowledge).
+  Future<void> loadProjectContext({String? type, String? query}) async {
+    _isProjectContextLoading = true;
+    _projectContextError = null;
+    notifyListeners();
+
+    try {
+      _projectContextEntries = await _apiService.listProjectContext(
+        projectId: projectId,
+        type: type,
+        query: query,
+      );
+    } catch (e) {
+      _projectContextError = e.toString();
+    } finally {
+      _isProjectContextLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Add a new entry to project context.
+  Future<bool> addProjectContextEntry({
+    required String type,
+    required String content,
+  }) async {
+    try {
+      final entry = await _apiService.createProjectContextEntry(
+        projectId: projectId,
+        type: type,
+        content: content,
+      );
+      _projectContextEntries.insert(0, entry);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _projectContextError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Edit a project context entry.
+  Future<bool> updateProjectContextEntry(
+      String entryId, {String? content, String? type}) async {
+    try {
+      final updated = await _apiService.updateProjectContextEntry(
+        projectId: projectId,
+        entryId: entryId,
+        content: content,
+        type: type,
+      );
+      final idx = _projectContextEntries.indexWhere((e) => e.id == entryId);
+      if (idx >= 0) {
+        _projectContextEntries[idx] = updated;
+        notifyListeners();
+      }
+      return true;
+    } catch (e) {
+      _projectContextError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Delete a project context entry (soft delete).
+  Future<bool> deleteProjectContextEntry(String entryId) async {
+    try {
+      await _apiService.deleteProjectContextEntry(
+        projectId: projectId,
+        entryId: entryId,
+      );
+      _projectContextEntries.removeWhere((e) => e.id == entryId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _projectContextError = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 }
