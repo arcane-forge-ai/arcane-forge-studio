@@ -40,6 +40,18 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
     });
   }
 
+  Future<void> _rejectSelected(V2SessionProvider provider) async {
+    if (_selectedIds.isEmpty) return;
+    final decisions = _selectedIds
+        .map((id) => {'id': id, 'action': 'reject'})
+        .toList();
+    await provider.confirmPendingKnowledge(decisions);
+    setState(() {
+      _selectedIds.clear();
+      _selectAll = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<V2SessionProvider>();
@@ -332,12 +344,3 @@ class _PendingItemTile extends StatelessWidget {
     );
   }
 }
-
-  Future<void> _rejectSelected(V2SessionProvider provider) async {
-    if (_selectedIds.isEmpty) return;
-    final decisions = _selectedIds
-        .map((id) => {'id': id, 'action': 'reject'})
-        .toList();
-    await provider.confirmPendingKnowledge(decisions);
-    setState(() {
-      _selectedIds.clear();
