@@ -464,6 +464,17 @@ class V2SessionProvider with ChangeNotifier {
         action: 'cancel',
         transactionId: transactionId,
       );
+
+      // Add friendly feedback message
+      _messages = [
+        ..._messages,
+        ChatMessage(
+          role: 'assistant',
+          content: '操作已取消，您可以继续对话。',
+          timestamp: DateTime.now(),
+        ),
+      ];
+
       await Future.delayed(const Duration(milliseconds: 300));
       await refreshData(reloadHistory: true);
       await loadSessions();

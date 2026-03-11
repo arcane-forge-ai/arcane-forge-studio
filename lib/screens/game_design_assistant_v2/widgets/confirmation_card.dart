@@ -35,11 +35,26 @@ class ConfirmationCard extends StatelessWidget {
                 Icon(Icons.warning_amber_rounded, color: colorScheme.tertiary),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    confirmation.action,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        confirmation.action,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (confirmation.stepNumber != null &&
+                          confirmation.totalSteps != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '步骤 ${confirmation.stepNumber} / ${confirmation.totalSteps}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],
