@@ -37,9 +37,10 @@ class _SelectionCardState extends State<SelectionCard> {
 
   void _submit() {
     if (_selectedIds.isEmpty) return;
+    final selected = _selectedIds.first;
     context
         .read<V2SessionProvider>()
-        .sendMessage('Selected: ${_selectedIds.join(',')}');
+        .sendMessage('Selected:$selected');
   }
 
   void _cancel() {

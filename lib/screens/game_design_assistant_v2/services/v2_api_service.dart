@@ -532,8 +532,8 @@ class V2ApiService {
       final data = _asMap(response.data);
       final items = data['items'] as List? ?? [];
       return items
-          .map((e) =>
-              PendingKnowledgeItem.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map((e) => PendingKnowledgeItem.fromJson(
+              Map<String, dynamic>.from(e as Map)))
           .toList(growable: false);
     } catch (e) {
       throw Exception('Failed to list pending knowledge: ${_extractError(e)}');
@@ -589,8 +589,7 @@ class V2ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> extractSessionKnowledge(
-      String sessionId) async {
+  Future<Map<String, dynamic>> extractSessionKnowledge(String sessionId) async {
     try {
       final response = await _apiClient.dio.post(
         '$_designBaseUrl/sessions/$sessionId/knowledge/extract',
@@ -598,7 +597,7 @@ class V2ApiService {
       return _asMap(response.data);
     } catch (e) {
       throw Exception(
-          'Failed to extract session knowledge: ${_extractError(e)}');
+          'Failed to extract to project context: ${_extractError(e)}');
     }
   }
 

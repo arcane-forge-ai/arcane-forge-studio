@@ -13,10 +13,6 @@ class ProjectContextPanel extends StatefulWidget {
 }
 
 class _ProjectContextPanelState extends State<ProjectContextPanel> {
-  String? _filterType;
-  String? _searchQuery;
-  final _searchController = TextEditingController();
-
   @override
   void initState() {
     super.initState();
@@ -25,17 +21,28 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
     });
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  void _refresh() {
+    context.read<V2SessionProvider>().loadProjectContext();
   }
 
-  void _refresh() {
-    context.read<V2SessionProvider>().loadProjectContext(
-          type: _filterType,
-          query: _searchQuery,
-        );
+  Future<void> _extractToProjectContext(V2SessionProvider provider) async {
+    final result = await provider.extractSessionKnowledge();
+    if (!mounted) return;
+
+    final error = provider.pendingKnowledgeError;
+    final messenger = ScaffoldMessenger.of(context);
+    if (error != null) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Extraction failed: $error')),
+      );
+      return;
+    }
+
+    final pendingCount = (result?['pending_count'] as num?)?.toInt() ?? 0;
+    final message = pendingCount > 0
+        ? 'Extracted $pendingCount context item(s) to Pending Context Items.'
+        : 'No new context found to extract.';
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -49,7 +56,7 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header with search and filter
+        // Header
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
           child: Row(
@@ -57,61 +64,28 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
               Icon(Icons.psychology_outlined,
                   size: 18, color: theme.colorScheme.primary),
               const SizedBox(width: 6),
-              Text('项目知识库', style: theme.textTheme.titleSmall),
+              Text('Project Context', style: theme.textTheme.titleSmall),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.add, size: 18),
-                tooltip: '添加知识',
+                tooltip: 'Add entry',
                 onPressed: () => _showAddDialog(context, provider),
                 visualDensity: VisualDensity.compact,
               ),
               IconButton(
-                icon: const Icon(Icons.refresh, size: 18),
-                tooltip: '刷新',
-                onPressed: _refresh,
+                icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                tooltip: 'Extract to Project Context',
+                onPressed: provider.currentSession == null ||
+                        provider.isPendingKnowledgeLoading
+                    ? null
+                    : () => _extractToProjectContext(provider),
                 visualDensity: VisualDensity.compact,
               ),
-            ],
-          ),
-        ),
-
-        // Filter chips
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Wrap(
-            spacing: 4,
-            children: [
-              _FilterChip(
-                label: '全部',
-                selected: _filterType == null,
-                onSelected: () {
-                  setState(() => _filterType = null);
-                  _refresh();
-                },
-              ),
-              _FilterChip(
-                label: '决策',
-                selected: _filterType == 'decision',
-                onSelected: () {
-                  setState(() => _filterType = 'decision');
-                  _refresh();
-                },
-              ),
-              _FilterChip(
-                label: '偏好',
-                selected: _filterType == 'preference',
-                onSelected: () {
-                  setState(() => _filterType = 'preference');
-                  _refresh();
-                },
-              ),
-              _FilterChip(
-                label: '概念',
-                selected: _filterType == 'domain_concept',
-                onSelected: () {
-                  setState(() => _filterType = 'domain_concept');
-                  _refresh();
-                },
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 18),
+                tooltip: 'Refresh',
+                onPressed: _refresh,
+                visualDensity: VisualDensity.compact,
               ),
             ],
           ),
@@ -121,8 +95,7 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Text(error,
-                style:
-                    TextStyle(color: theme.colorScheme.error, fontSize: 12)),
+                style: TextStyle(color: theme.colorScheme.error, fontSize: 12)),
           ),
 
         const SizedBox(height: 4),
@@ -137,10 +110,30 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
           Padding(
             padding: const EdgeInsets.all(24),
             child: Center(
-              child: Text(
-                '暂无已确认的知识条目',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.outline),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'No confirmed context entries yet.',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.outline),
+                  ),
+                  const SizedBox(height: 12),
+                  if (provider.currentSession != null)
+                    OutlinedButton.icon(
+                      onPressed: provider.isPendingKnowledgeLoading
+                          ? null
+                          : () => _extractToProjectContext(provider),
+                      icon: provider.isPendingKnowledgeLoading
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.auto_awesome_outlined, size: 16),
+                      label: const Text('Extract to Project Context'),
+                    ),
+                ],
               ),
             ),
           )
@@ -154,11 +147,9 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
                 final entry = entries[index];
                 return _ContextEntryTile(
                   entry: entry,
-                  onEdit: (content) =>
-                      provider.updateProjectContextEntry(
-                          entry.id, content: content),
-                  onDelete: () =>
-                      provider.deleteProjectContextEntry(entry.id),
+                  onEdit: (content) => provider
+                      .updateProjectContextEntry(entry.id, content: content),
+                  onDelete: () => provider.deleteProjectContextEntry(entry.id),
                 );
               },
             ),
@@ -175,22 +166,24 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('添加知识条目'),
+          title: const Text('Add Context Entry'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String>(
                 value: selectedType,
                 decoration: const InputDecoration(
-                  labelText: '类型',
+                  labelText: 'Type',
                   border: OutlineInputBorder(),
                 ),
                 items: const [
-                  DropdownMenuItem(value: 'decision', child: Text('决策')),
-                  DropdownMenuItem(value: 'preference', child: Text('偏好')),
-                  DropdownMenuItem(value: 'rejection', child: Text('否定')),
+                  DropdownMenuItem(value: 'decision', child: Text('Decision')),
                   DropdownMenuItem(
-                      value: 'domain_concept', child: Text('领域概念')),
+                      value: 'preference', child: Text('Preference')),
+                  DropdownMenuItem(
+                      value: 'rejection', child: Text('Rejection')),
+                  DropdownMenuItem(
+                      value: 'domain_concept', child: Text('Domain Concept')),
                 ],
                 onChanged: (v) =>
                     setDialogState(() => selectedType = v ?? 'decision'),
@@ -200,9 +193,9 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
                 controller: contentController,
                 maxLines: 4,
                 decoration: const InputDecoration(
-                  labelText: '内容',
+                  labelText: 'Content',
                   border: OutlineInputBorder(),
-                  hintText: '输入知识内容...',
+                  hintText: 'Enter context content...',
                 ),
               ),
             ],
@@ -210,7 +203,7 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () async {
@@ -222,35 +215,11 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
                   content: text,
                 );
               },
-              child: const Text('添加'),
+              child: const Text('Add'),
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onSelected;
-
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onSelected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return FilterChip(
-      label: Text(label, style: const TextStyle(fontSize: 11)),
-      selected: selected,
-      onSelected: (_) => onSelected(),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
     );
   }
 }
@@ -290,8 +259,7 @@ class _ContextEntryTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: _typeColor().withOpacity(0.15),
               borderRadius: BorderRadius.circular(4),
@@ -309,7 +277,9 @@ class _ContextEntryTile extends StatelessWidget {
           Expanded(
             child: Text(
               entry.content,
-              style: theme.textTheme.bodySmall,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: Colors.white,
+              ),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
@@ -325,8 +295,8 @@ class _ContextEntryTile extends StatelessWidget {
               }
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'edit', child: Text('编辑')),
-              const PopupMenuItem(value: 'delete', child: Text('删除')),
+              const PopupMenuItem(value: 'edit', child: Text('Edit')),
+              const PopupMenuItem(value: 'delete', child: Text('Delete')),
             ],
           ),
         ],
@@ -339,19 +309,19 @@ class _ContextEntryTile extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('编辑知识条目'),
+        title: const Text('Edit Knowledge Entry'),
         content: TextField(
           controller: controller,
           maxLines: 4,
           decoration: const InputDecoration(
             border: OutlineInputBorder(),
-            hintText: '输入内容...',
+            hintText: 'Enter content...',
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () {
@@ -361,7 +331,7 @@ class _ContextEntryTile extends StatelessWidget {
               }
               Navigator.pop(ctx);
             },
-            child: const Text('保存'),
+            child: const Text('Save'),
           ),
         ],
       ),

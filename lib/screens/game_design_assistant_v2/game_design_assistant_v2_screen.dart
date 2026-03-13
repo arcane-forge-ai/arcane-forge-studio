@@ -179,6 +179,100 @@ class _GameDesignAssistantV2ScreenState
     }
   }
 
+  Future<bool> _confirmBeforeSessionSwitch() async {
+    final provider = _provider;
+    final hasActiveSession = provider.currentSession != null;
+    final shouldPrompt = hasActiveSession &&
+        (provider.hasPendingKnowledge ||
+            provider.shouldPromptSessionKnowledgeExtraction);
+    if (!shouldPrompt) {
+      return true;
+    }
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Switch Session'),
+        content: const Text(
+          'There are unextracted session learnings. What should we do before switching?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('switch_direct'),
+            child: const Text('Switch Directly'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop('extract_then_switch'),
+            child: const Text('Extract & Switch'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == null || action == 'cancel') {
+      return false;
+    }
+    if (!mounted) return false;
+
+    if (action == 'extract_then_switch') {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (ctx) => const AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Expanded(child: Text('Extracting session context...')),
+            ],
+          ),
+        ),
+      );
+
+      Map<String, dynamic>? result;
+      try {
+        result = await provider.extractSessionKnowledge(
+          refreshAfterExtraction: false,
+          showLoadingState: false,
+        );
+      } finally {
+        if (mounted) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+      }
+
+      if (!mounted) return false;
+      if (result == null && (provider.pendingKnowledgeError ?? '').isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('Extraction failed: ${provider.pendingKnowledgeError}'),
+          ),
+        );
+        return false;
+      }
+
+      final pendingCount = (result?['pending_count'] as num?)?.toInt() ?? 0;
+      final message = pendingCount > 0
+          ? 'Extracted $pendingCount context item(s) for review. Switching session...'
+          : 'No new context found. Switching session...';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -282,18 +376,20 @@ class _GameDesignAssistantV2ScreenState
                         ],
                         IconButton(
                           tooltip: 'Save to Knowledge Base',
-                          onPressed:
-                              (provider.gddContent?.trim().isNotEmpty ??
-                                          false) &&
-                                      !_isSavingToKb
-                                  ? _saveDocumentToKnowledgeBase
-                                  : null,
+                          onPressed: (provider.gddContent?.trim().isNotEmpty ??
+                                      false) &&
+                                  !_isSavingToKb
+                              ? _saveDocumentToKnowledgeBase
+                              : null,
                           icon: const Icon(Icons.save_alt_rounded),
                         ),
                         IconButton(
                           tooltip: 'New Chat',
-                          onPressed: () =>
-                              context.read<V2SessionProvider>().startNewChat(),
+                          onPressed: () async {
+                            final allow = await _confirmBeforeSessionSwitch();
+                            if (!allow) return;
+                            _provider.startNewChat();
+                          },
                           icon: const Icon(Icons.add_comment),
                         ),
                         IconButton(

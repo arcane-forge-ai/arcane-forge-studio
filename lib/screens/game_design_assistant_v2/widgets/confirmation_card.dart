@@ -48,7 +48,7 @@ class ConfirmationCard extends StatelessWidget {
                           confirmation.totalSteps != null) ...[
                         const SizedBox(height: 4),
                         Text(
-                          '步骤 ${confirmation.stepNumber} / ${confirmation.totalSteps}',
+                          'Step ${confirmation.stepNumber} / ${confirmation.totalSteps}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),

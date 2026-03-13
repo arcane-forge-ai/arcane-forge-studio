@@ -103,6 +103,14 @@ class _V2KnowledgeBoardState extends State<V2KnowledgeBoard> {
                                 fontSize: 10, color: Colors.white),
                           ),
                         ),
+                      ] else if (provider
+                          .shouldPromptSessionKnowledgeExtraction) ...[
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.priority_high,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ],
                     ],
                   ),

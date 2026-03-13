@@ -30,9 +30,8 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
 
   Future<void> _approveSelected(V2SessionProvider provider) async {
     if (_selectedIds.isEmpty) return;
-    final decisions = _selectedIds
-        .map((id) => {'id': id, 'action': 'approve'})
-        .toList();
+    final decisions =
+        _selectedIds.map((id) => {'id': id, 'action': 'approve'}).toList();
     await provider.confirmPendingKnowledge(decisions);
     setState(() {
       _selectedIds.clear();
@@ -42,9 +41,8 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
 
   Future<void> _rejectSelected(V2SessionProvider provider) async {
     if (_selectedIds.isEmpty) return;
-    final decisions = _selectedIds
-        .map((id) => {'id': id, 'action': 'reject'})
-        .toList();
+    final decisions =
+        _selectedIds.map((id) => {'id': id, 'action': 'reject'}).toList();
     await provider.confirmPendingKnowledge(decisions);
     setState(() {
       _selectedIds.clear();
@@ -77,22 +75,19 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
                     size: 18, color: theme.colorScheme.primary),
                 const SizedBox(width: 6),
                 Text(
-                  '待确认知识 (${items.length})',
+                  'Pending Context Items (${items.length})',
                   style: theme.textTheme.titleSmall,
                 ),
                 const Spacer(),
                 if (items.isNotEmpty) ...[
                   TextButton.icon(
-                    onPressed: isSubmitting
-                        ? null
-                        : () => _toggleSelectAll(items),
+                    onPressed:
+                        isSubmitting ? null : () => _toggleSelectAll(items),
                     icon: Icon(
-                      _selectAll
-                          ? Icons.deselect
-                          : Icons.select_all,
+                      _selectAll ? Icons.deselect : Icons.select_all,
                       size: 16,
                     ),
-                    label: Text(_selectAll ? '取消全选' : '全选',
+                    label: Text(_selectAll ? 'Deselect all' : 'Select all',
                         style: const TextStyle(fontSize: 12)),
                   ),
                 ],
@@ -104,8 +99,8 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(error,
-                  style: TextStyle(
-                      color: theme.colorScheme.error, fontSize: 12)),
+                  style:
+                      TextStyle(color: theme.colorScheme.error, fontSize: 12)),
             ),
 
           if (isLoading)
@@ -114,35 +109,37 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             )
           else
-            // Item list
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final isSelected = _selectedIds.contains(item.id);
-                return _PendingItemTile(
-                  item: item,
-                  isSelected: isSelected,
-                  onToggle: () {
-                    setState(() {
-                      if (isSelected) {
-                        _selectedIds.remove(item.id);
-                      } else {
-                        _selectedIds.add(item.id);
-                      }
-                      _selectAll =
-                          _selectedIds.length == items.length;
-                    });
-                  },
-                  onDelete: () => provider.deletePendingItem(item.id),
-                  onEdit: (content) => provider.updatePendingItem(
-                      item.id,
-                      content: content),
-                );
-              },
+            // Item list (bounded height + internal scroll to avoid overflow)
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.45,
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final isSelected = _selectedIds.contains(item.id);
+                  return _PendingItemTile(
+                    item: item,
+                    isSelected: isSelected,
+                    onToggle: () {
+                      setState(() {
+                        if (isSelected) {
+                          _selectedIds.remove(item.id);
+                        } else {
+                          _selectedIds.add(item.id);
+                        }
+                        _selectAll = _selectedIds.length == items.length;
+                      });
+                    },
+                    onDelete: () => provider.deletePendingItem(item.id),
+                    onEdit: (content) =>
+                        provider.updatePendingItem(item.id, content: content),
+                  );
+                },
+              ),
             ),
 
           // Action buttons
@@ -156,7 +153,7 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
                     onPressed:
                         isSubmitting ? null : () => _rejectSelected(provider),
                     icon: const Icon(Icons.close, size: 16),
-                    label: Text('拒绝 (${_selectedIds.length})'),
+                    label: Text('Reject (${_selectedIds.length})'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: theme.colorScheme.error,
                     ),
@@ -172,7 +169,7 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.check, size: 16),
-                    label: Text('确认 (${_selectedIds.length})'),
+                    label: Text('Approve (${_selectedIds.length})'),
                   ),
                 ],
               ),
@@ -280,7 +277,9 @@ class _PendingItemTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     item.content,
-                    style: theme.textTheme.bodySmall,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.white,
+                    ),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -298,10 +297,8 @@ class _PendingItemTile extends StatelessWidget {
                 }
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(
-                    value: 'edit', child: Text('编辑')),
-                const PopupMenuItem(
-                    value: 'delete', child: Text('删除')),
+                const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                const PopupMenuItem(value: 'delete', child: Text('Delete')),
               ],
             ),
           ],
@@ -315,19 +312,19 @@ class _PendingItemTile extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('编辑知识条目'),
+        title: const Text('Edit Context Item'),
         content: TextField(
           controller: controller,
           maxLines: 4,
           decoration: const InputDecoration(
             border: OutlineInputBorder(),
-            hintText: '输入内容...',
+            hintText: 'Enter content...',
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () {
@@ -337,7 +334,7 @@ class _PendingItemTile extends StatelessWidget {
               }
               Navigator.pop(ctx);
             },
-            child: const Text('保存'),
+            child: const Text('Save'),
           ),
         ],
       ),

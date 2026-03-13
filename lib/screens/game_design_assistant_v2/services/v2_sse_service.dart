@@ -8,6 +8,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../models/confirmation.dart';
 import '../models/selection.dart';
+import '../models/write_summary.dart';
 
 class CanvasDocument {
   final String filePath;
@@ -44,6 +45,7 @@ class SSEEvent {
   final SelectionInfo? selection;
   final bool? isFinal;
   final CanvasDocument? canvasDocument;
+  final DocumentWriteSummary? writeSummary;
 
   SSEEvent({
     required this.type,
@@ -54,6 +56,7 @@ class SSEEvent {
     this.selection,
     this.isFinal,
     this.canvasDocument,
+    this.writeSummary,
   });
 
   factory SSEEvent.fromJson(Map<String, dynamic> json) {
@@ -76,6 +79,10 @@ class SSEEvent {
       canvasDocument: json['canvas_document'] != null
           ? CanvasDocument.fromJson(
               Map<String, dynamic>.from(json['canvas_document'] as Map))
+          : null,
+      writeSummary: json['write_summary'] != null
+          ? DocumentWriteSummary.fromJson(
+              Map<String, dynamic>.from(json['write_summary'] as Map))
           : null,
     );
   }

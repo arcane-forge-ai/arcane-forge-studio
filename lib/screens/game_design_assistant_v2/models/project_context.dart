@@ -78,13 +78,13 @@ class PendingKnowledgeItem {
   String get typeLabel {
     switch (type) {
       case 'preference':
-        return '偏好';
+        return 'Preference';
       case 'decision':
-        return '决策';
+        return 'Decision';
       case 'rejection':
-        return '否定';
+        return 'Rejection';
       case 'domain_concept':
-        return '概念';
+        return 'Domain Concept';
       default:
         return type;
     }
@@ -93,13 +93,13 @@ class PendingKnowledgeItem {
   String get mergeActionLabel {
     switch (mergeAction) {
       case 'add':
-        return '新增';
+        return 'Add';
       case 'conflict':
-        return '冲突';
+        return 'Conflict';
       case 'noop':
-        return '重复';
+        return 'Duplicate';
       default:
-        return mergeAction ?? '待处理';
+        return mergeAction ?? 'Pending';
     }
   }
 }
@@ -144,13 +144,13 @@ class ProjectContextEntry {
   String get typeLabel {
     switch (type) {
       case 'preference':
-        return '偏好';
+        return 'Preference';
       case 'decision':
-        return '决策';
+        return 'Decision';
       case 'rejection':
-        return '否定';
+        return 'Rejection';
       case 'domain_concept':
-        return '概念';
+        return 'Domain Concept';
       default:
         return type;
     }

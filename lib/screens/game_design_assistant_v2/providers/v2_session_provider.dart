@@ -11,10 +11,13 @@ import '../models/message.dart';
 import '../models/project_context.dart';
 import '../models/selection.dart';
 import '../models/session.dart';
+import '../models/write_summary.dart';
 import '../services/v2_api_service.dart';
 import '../services/v2_sse_service.dart';
 
 class V2SessionProvider with ChangeNotifier {
+  static const int _knowledgeExtractionPromptTurnGap = 1;
+
   final String projectId;
   final String projectName;
   final V2ApiService _apiService;
@@ -57,6 +60,7 @@ class V2SessionProvider with ChangeNotifier {
 
   String _streamingContent = '';
   String? _thinkingContent;
+  DocumentWriteSummary? _pendingWriteSummary;
 
   String? _sessionsError;
   String? _chatError;
@@ -69,6 +73,9 @@ class V2SessionProvider with ChangeNotifier {
   bool _isProjectContextLoading = false;
   String? _pendingKnowledgeError;
   String? _projectContextError;
+  bool _shouldPromptSessionKnowledgeExtraction = false;
+  String? _promptEligibleSessionId;
+  Map<String, String> _pendingItemSessionMap = {};
 
   List<SessionInfo> get sessions => _sessions;
   SessionInfo? get currentSession => _currentSession;
@@ -95,18 +102,65 @@ class V2SessionProvider with ChangeNotifier {
   // -- Project Context / Pending Knowledge getters --
   List<PendingKnowledgeItem> get pendingKnowledgeItems =>
       _pendingKnowledgeItems;
-  List<ProjectContextEntry> get projectContextEntries =>
-      _projectContextEntries;
+  List<ProjectContextEntry> get projectContextEntries => _projectContextEntries;
   bool get isPendingKnowledgeLoading => _isPendingKnowledgeLoading;
   bool get isPendingKnowledgeSubmitting => _isPendingKnowledgeSubmitting;
   bool get isProjectContextLoading => _isProjectContextLoading;
   String? get pendingKnowledgeError => _pendingKnowledgeError;
   String? get projectContextError => _projectContextError;
   bool get hasPendingKnowledge => _pendingKnowledgeItems.isNotEmpty;
+  bool get shouldPromptSessionKnowledgeExtraction =>
+      _shouldPromptSessionKnowledgeExtraction;
 
   bool get canUseV2 => _authProvider.userId.trim().isNotEmpty;
   bool get hasSelectedDocument =>
       _selectedDocPath != null && _selectedDocPath!.trim().isNotEmpty;
+
+  String? _pendingKnowledgeScopeSessionId() {
+    final current = _currentSession?.sessionId;
+    if (current != null && current.trim().isNotEmpty) {
+      return current;
+    }
+    for (final session in _sessions) {
+      final candidate = session.sessionId.trim();
+      if (candidate.isNotEmpty) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  List<String> _pendingKnowledgeScopeSessionIds() {
+    final seen = <String>{};
+    final ids = <String>[];
+
+    final current = _currentSession?.sessionId.trim();
+    if (current != null && current.isNotEmpty && seen.add(current)) {
+      ids.add(current);
+    }
+
+    for (final session in _sessions) {
+      final id = session.sessionId.trim();
+      if (id.isNotEmpty && seen.add(id)) {
+        ids.add(id);
+      }
+    }
+
+    return ids;
+  }
+
+  String? _sessionIdForPendingItem(String itemId) {
+    var sessionId = _pendingItemSessionMap[itemId];
+    sessionId ??= _pendingKnowledgeItems
+        .where((i) => i.id == itemId)
+        .map((i) => i.sessionId)
+        .firstWhere((v) => v.trim().isNotEmpty, orElse: () => '');
+    if (sessionId.trim().isEmpty) {
+      sessionId = null;
+    }
+    sessionId ??= _pendingKnowledgeScopeSessionId();
+    return sessionId;
+  }
 
   Future<void> loadSessions() async {
     _isSessionsLoading = true;
@@ -123,6 +177,9 @@ class V2SessionProvider with ChangeNotifier {
         if (match.isNotEmpty) {
           _currentSession = match.first;
         }
+      }
+      if (_currentSession == null) {
+        await loadPendingKnowledge(notify: false);
       }
     } catch (e) {
       _sessionsError = e.toString();
@@ -144,16 +201,24 @@ class V2SessionProvider with ChangeNotifier {
     _pendingSelection = null;
     _streamingContent = '';
     _thinkingContent = null;
+    _pendingWriteSummary = null;
     _chatError = null;
     _hasDraftConversation = true;
+    _shouldPromptSessionKnowledgeExtraction = false;
+    _promptEligibleSessionId = null;
     // Keep document inventory loaded for optional selection in draft mode.
     unawaited(loadDocuments());
+    // Pending queue is project-scoped; keep it visible in draft/new-chat mode.
+    unawaited(loadPendingKnowledge());
+    // Load project context for new chat
+    unawaited(loadProjectContext());
     notifyListeners();
   }
 
   Future<void> selectSession(String sessionId) async {
     _isLoading = true;
     _chatError = null;
+    _promptEligibleSessionId = null;
     notifyListeners();
 
     try {
@@ -171,6 +236,7 @@ class V2SessionProvider with ChangeNotifier {
 
   Future<void> _loadSessionData(String sessionId,
       {bool reloadHistory = true}) async {
+    _promptEligibleSessionId = null;
     _clearSelectedDocument();
     _documents = [];
     await loadDocuments(notify: false);
@@ -183,28 +249,26 @@ class V2SessionProvider with ChangeNotifier {
     _currentSession = await _apiService.getSession(sessionId);
     await _syncDocumentSelectionWithSession();
 
+    // Load session-scoped pending knowledge when switching sessions.
+    await loadPendingKnowledge(notify: false);
+
+    // Load project context when switching sessions
+    await loadProjectContext();
+
     _pendingConfirmation = null;
     _pendingSelection = null;
     _streamingContent = '';
     _thinkingContent = null;
+    _refreshExtractionPromptFlag();
   }
 
-  Future<void> _createAndSelectSession({String? initialMessage}) async {
+  Future<void> _createAndSelectSession() async {
     final req = CreateSessionRequest(
       projectId: projectId,
-      title: _buildDraftTitle(initialMessage),
     );
     final created = await _apiService.createSession(req);
     await loadSessions();
     await selectSession(created.sessionId);
-  }
-
-  String? _buildDraftTitle(String? content) {
-    if (content == null) return null;
-    final trimmed = content.trim();
-    if (trimmed.isEmpty) return null;
-    if (trimmed.length <= 60) return trimmed;
-    return '${trimmed.substring(0, 57)}...';
   }
 
   Future<void> sendMessage(String content) async {
@@ -222,7 +286,7 @@ class V2SessionProvider with ChangeNotifier {
       _chatError = null;
       notifyListeners();
       try {
-        await _createAndSelectSession(initialMessage: trimmed);
+        await _createAndSelectSession();
         if (draftSelectedPath != null && draftSelectedPath.trim().isNotEmpty) {
           await selectDocument(draftSelectedPath);
         }
@@ -238,6 +302,7 @@ class V2SessionProvider with ChangeNotifier {
 
     final session = _currentSession;
     if (session == null) return;
+    _promptEligibleSessionId = session.sessionId;
 
     final userMsg = ChatMessage(
       role: 'user',
@@ -250,6 +315,7 @@ class V2SessionProvider with ChangeNotifier {
     _chatError = null;
     _streamingContent = '';
     _thinkingContent = null;
+    _pendingWriteSummary = null;
     _pendingConfirmation = null;
     _pendingSelection = null;
     notifyListeners();
@@ -285,6 +351,7 @@ class V2SessionProvider with ChangeNotifier {
               _pendingConfirmation = null;
             }
             _pendingSelection = event.selection;
+            _pendingWriteSummary = event.writeSummary;
             notifyListeners();
             break;
           case 'error':
@@ -307,7 +374,8 @@ class V2SessionProvider with ChangeNotifier {
       final shouldAppendAssistantMessage = _streamingContent.isNotEmpty ||
           (_thinkingContent?.isNotEmpty ?? false) ||
           _pendingConfirmation != null ||
-          _pendingSelection != null;
+          _pendingSelection != null ||
+          _pendingWriteSummary != null;
       if (shouldAppendAssistantMessage) {
         _messages = [
           ..._messages,
@@ -318,6 +386,7 @@ class V2SessionProvider with ChangeNotifier {
             thinking: _thinkingContent,
             confirmation: _pendingConfirmation,
             selection: _pendingSelection,
+            writeSummary: _pendingWriteSummary,
           ),
         ];
       }
@@ -325,6 +394,7 @@ class V2SessionProvider with ChangeNotifier {
       _isSending = false;
       _streamingContent = '';
       _thinkingContent = null;
+      _pendingWriteSummary = null;
       notifyListeners();
 
       await Future.delayed(const Duration(milliseconds: 300));
@@ -386,9 +456,11 @@ class V2SessionProvider with ChangeNotifier {
       if (e.response?.statusCode == 409 && retryCount == 0) {
         // Extract latest_confirmation from response
         final responseData = e.response?.data;
-        if (responseData is Map && responseData['latest_confirmation'] != null) {
+        if (responseData is Map &&
+            responseData['latest_confirmation'] != null) {
           final latestConfirmation = Confirmation.fromJson(
-            Map<String, dynamic>.from(responseData['latest_confirmation'] as Map),
+            Map<String, dynamic>.from(
+                responseData['latest_confirmation'] as Map),
           );
 
           // Update pending confirmation
@@ -404,20 +476,22 @@ class V2SessionProvider with ChangeNotifier {
           );
         } else {
           // 409 without latest_confirmation
-          _chatError = '操作内容已更新，请查看最新内容后再次确认';
+          _chatError =
+              'Operation content has changed. Review the latest content and confirm again.';
         }
       } else if (e.response?.statusCode == 409 && retryCount > 0) {
         // Retry failed: show friendly error
-        _chatError = '操作内容已更新，请查看最新内容后再次确认';
+        _chatError =
+            'Operation content has changed. Review the latest content and confirm again.';
       } else if (e.type == DioExceptionType.connectionTimeout) {
-        _chatError = '网络连接超时，请检查网络后重试';
+        _chatError = 'Network timeout. Check your connection and try again.';
       } else if (e.response?.statusCode == 500) {
-        _chatError = '服务器错误，请稍后重试或联系客服';
+        _chatError = 'Server error. Please try again later.';
       } else if (e.response?.statusCode == 401) {
-        _chatError = '登录已过期，请重新登录';
+        _chatError = 'Login expired. Please sign in again.';
         // TODO: Handle auth expiration
       } else {
-        _chatError = '操作失败，请重试';
+        _chatError = 'Action failed. Please try again.';
       }
 
       if (_chatError != null) {
@@ -471,7 +545,7 @@ class V2SessionProvider with ChangeNotifier {
         ..._messages,
         ChatMessage(
           role: 'assistant',
-          content: '操作已取消，您可以继续对话。',
+          content: 'Operation cancelled. You can continue the conversation.',
           timestamp: DateTime.now(),
         ),
       ];
@@ -515,6 +589,9 @@ class V2SessionProvider with ChangeNotifier {
         _messages = await _apiService.getHistory(sessionId);
       }
 
+      await loadPendingKnowledge(notify: false);
+
+      _refreshExtractionPromptFlag();
       notifyListeners();
     } catch (e) {
       _chatError = e.toString();
@@ -853,40 +930,123 @@ class V2SessionProvider with ChangeNotifier {
   // Project Context / Pending Knowledge Methods
   // ---------------------------------------------------------------------------
 
-  /// Load pending knowledge items for the current session.
-  Future<void> loadPendingKnowledge() async {
-    final sessionId = _currentSession?.sessionId;
-    if (sessionId == null) return;
+  /// Load project-scoped pending knowledge items.
+  /// Uses active session id, or falls back to any session in the same project.
+  Future<void> loadPendingKnowledge({bool notify = true}) async {
+    final sessionIds = _pendingKnowledgeScopeSessionIds();
+    if (sessionIds.isEmpty) {
+      _pendingKnowledgeItems = [];
+      _pendingItemSessionMap = {};
+      _shouldPromptSessionKnowledgeExtraction = false;
+      if (notify) {
+        notifyListeners();
+      }
+      return;
+    }
 
     _isPendingKnowledgeLoading = true;
     _pendingKnowledgeError = null;
-    notifyListeners();
+    if (notify) {
+      notifyListeners();
+    }
 
     try {
-      _pendingKnowledgeItems =
-          await _apiService.listPendingKnowledge(sessionId);
+      final mergedItems = <PendingKnowledgeItem>[];
+      final itemSessionMap = <String, String>{};
+      Object? lastError;
+      var anySuccess = false;
+
+      for (final sessionId in sessionIds) {
+        try {
+          final items = await _apiService.listPendingKnowledge(sessionId);
+          anySuccess = true;
+          for (final item in items) {
+            if (itemSessionMap.containsKey(item.id)) {
+              continue;
+            }
+            mergedItems.add(item);
+            final sourceSession =
+                item.sessionId.trim().isNotEmpty ? item.sessionId : sessionId;
+            itemSessionMap[item.id] = sourceSession;
+          }
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      _pendingKnowledgeItems = mergedItems;
+      _pendingItemSessionMap = itemSessionMap;
+      if (!anySuccess && lastError != null) {
+        _pendingKnowledgeError = lastError.toString();
+      } else {
+        _pendingKnowledgeError = null;
+      }
+      _refreshExtractionPromptFlag();
     } catch (e) {
       _pendingKnowledgeError = e.toString();
     } finally {
       _isPendingKnowledgeLoading = false;
-      notifyListeners();
+      if (notify) {
+        notifyListeners();
+      }
     }
   }
 
   /// Confirm or reject pending knowledge items.
   Future<ConfirmKnowledgeResult?> confirmPendingKnowledge(
       List<Map<String, String>> decisions) async {
-    final sessionId = _currentSession?.sessionId;
-    if (sessionId == null) return null;
+    if (decisions.isEmpty) return null;
 
     _isPendingKnowledgeSubmitting = true;
     _pendingKnowledgeError = null;
     notifyListeners();
 
     try {
-      final result = await _apiService.confirmPendingKnowledge(
-        sessionId: sessionId,
-        decisions: decisions,
+      final grouped = <String, List<Map<String, String>>>{};
+      final errors = <Map<String, String>>[];
+      for (final decision in decisions) {
+        final id = decision['id'];
+        final action = decision['action'];
+        if (id == null || action == null) continue;
+        final sessionId = _pendingItemSessionMap[id] ??
+            _pendingKnowledgeItems
+                .where((i) => i.id == id)
+                .map((i) => i.sessionId)
+                .firstWhere((v) => v.trim().isNotEmpty, orElse: () => '');
+        if (sessionId.isEmpty) {
+          errors.add({'id': id, 'error': 'Missing session scope'});
+          continue;
+        }
+        grouped.putIfAbsent(sessionId, () => []).add({
+          'id': id,
+          'action': action,
+        });
+      }
+
+      final approved = <String>[];
+      final rejected = <String>[];
+      for (final entry in grouped.entries) {
+        try {
+          final result = await _apiService.confirmPendingKnowledge(
+            sessionId: entry.key,
+            decisions: entry.value,
+          );
+          approved.addAll(result.approved);
+          rejected.addAll(result.rejected);
+          errors.addAll(result.errors);
+        } catch (e) {
+          for (final d in entry.value) {
+            final id = d['id'];
+            if (id == null) continue;
+            errors.add({'id': id, 'error': e.toString()});
+          }
+        }
+      }
+
+      final result = ConfirmKnowledgeResult(
+        approved: approved,
+        rejected: rejected,
+        errors: errors,
       );
       // Refresh pending list and project context after confirmation
       await loadPendingKnowledge();
@@ -902,9 +1062,9 @@ class V2SessionProvider with ChangeNotifier {
   }
 
   /// Edit a pending knowledge item.
-  Future<bool> updatePendingItem(
-      String itemId, {String? content, String? type}) async {
-    final sessionId = _currentSession?.sessionId;
+  Future<bool> updatePendingItem(String itemId,
+      {String? content, String? type}) async {
+    final sessionId = _sessionIdForPendingItem(itemId);
     if (sessionId == null) return false;
 
     try {
@@ -929,7 +1089,7 @@ class V2SessionProvider with ChangeNotifier {
 
   /// Delete a pending knowledge item.
   Future<bool> deletePendingItem(String itemId) async {
-    final sessionId = _currentSession?.sessionId;
+    final sessionId = _sessionIdForPendingItem(itemId);
     if (sessionId == null) return false;
 
     try {
@@ -938,6 +1098,7 @@ class V2SessionProvider with ChangeNotifier {
         itemId: itemId,
       );
       _pendingKnowledgeItems.removeWhere((i) => i.id == itemId);
+      _pendingItemSessionMap.remove(itemId);
       notifyListeners();
       return true;
     } catch (e) {
@@ -947,23 +1108,61 @@ class V2SessionProvider with ChangeNotifier {
     }
   }
 
-  /// Trigger knowledge extraction for the current session.
-  Future<void> extractSessionKnowledge() async {
+  /// Trigger context extraction from this session into project context.
+  ///
+  /// Returns backend extraction payload when successful, otherwise null.
+  Future<Map<String, dynamic>?> extractSessionKnowledge({
+    bool refreshAfterExtraction = true,
+    bool showLoadingState = true,
+  }) async {
     final sessionId = _currentSession?.sessionId;
-    if (sessionId == null) return;
+    if (sessionId == null) return null;
 
-    _isPendingKnowledgeLoading = true;
-    notifyListeners();
-
-    try {
-      await _apiService.extractSessionKnowledge(sessionId);
-      await loadPendingKnowledge();
-    } catch (e) {
-      _pendingKnowledgeError = e.toString();
-    } finally {
-      _isPendingKnowledgeLoading = false;
+    if (showLoadingState) {
+      _isPendingKnowledgeLoading = true;
+    }
+    _shouldPromptSessionKnowledgeExtraction = false;
+    _pendingKnowledgeError = null;
+    if (showLoadingState) {
       notifyListeners();
     }
+
+    try {
+      final result = Map<String, dynamic>.from(
+        await _apiService.extractSessionKnowledge(sessionId),
+      );
+
+      if (refreshAfterExtraction) {
+        _currentSession = await _apiService.getSession(sessionId);
+        await loadPendingKnowledge(notify: false);
+        await loadProjectContext();
+        _refreshExtractionPromptFlag();
+      }
+      return result;
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+      return null;
+    } finally {
+      if (showLoadingState) {
+        _isPendingKnowledgeLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void _refreshExtractionPromptFlag() {
+    final session = _currentSession;
+    final hasSession = session != null;
+    final hasPending = _pendingKnowledgeItems.isNotEmpty;
+    final isPromptEligibleSession =
+        session != null && session.sessionId == _promptEligibleSessionId;
+    final unextractedTurns =
+        session == null ? 0 : session.turnCount - session.lastExtractionTurn;
+    final hasNewMessages =
+        unextractedTurns >= _knowledgeExtractionPromptTurnGap;
+
+    _shouldPromptSessionKnowledgeExtraction =
+        hasSession && isPromptEligibleSession && !hasPending && hasNewMessages;
   }
 
   /// Load project context entries (confirmed knowledge).
@@ -1008,8 +1207,8 @@ class V2SessionProvider with ChangeNotifier {
   }
 
   /// Edit a project context entry.
-  Future<bool> updateProjectContextEntry(
-      String entryId, {String? content, String? type}) async {
+  Future<bool> updateProjectContextEntry(String entryId,
+      {String? content, String? type}) async {
     try {
       final updated = await _apiService.updateProjectContextEntry(
         projectId: projectId,
