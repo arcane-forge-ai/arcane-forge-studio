@@ -16,6 +16,8 @@ class PendingKnowledgeItem {
   final String source;
   final String createdAt;
   final String updatedAt;
+  final int version;
+  final String etag;
 
   PendingKnowledgeItem({
     required this.id,
@@ -33,13 +35,22 @@ class PendingKnowledgeItem {
     required this.source,
     required this.createdAt,
     required this.updatedAt,
+    required this.version,
+    required this.etag,
   });
 
   factory PendingKnowledgeItem.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? json['item_id']) as String;
+    final projectIdRaw = json['project_id'];
+    final sessionIdRaw = json['session_id'];
+    final createdAtRaw = json['created_at'];
+    final updatedAtRaw = json['updated_at'];
     return PendingKnowledgeItem(
-      id: json['id'] as String,
-      projectId: json['project_id'] as int,
-      sessionId: json['session_id'] as String,
+      id: id,
+      projectId: projectIdRaw is int
+          ? projectIdRaw
+          : int.tryParse(projectIdRaw?.toString() ?? '') ?? 0,
+      sessionId: (sessionIdRaw as String?) ?? '',
       turnNumber: json['turn_number'] as int? ?? 0,
       type: json['type'] as String,
       content: json['content'] as String,
@@ -50,8 +61,10 @@ class PendingKnowledgeItem {
       status: json['status'] as String,
       isUserEdited: json['is_user_edited'] as bool? ?? false,
       source: json['source'] as String? ?? 'hook',
-      createdAt: json['created_at'] as String,
-      updatedAt: json['updated_at'] as String,
+      createdAt: (createdAtRaw as String?) ?? '',
+      updatedAt: (updatedAtRaw as String?) ?? '',
+      version: json['version'] as int? ?? 1,
+      etag: (json['item_etag'] ?? json['etag']) as String? ?? '',
     );
   }
 
@@ -72,6 +85,8 @@ class PendingKnowledgeItem {
       source: source,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      version: version,
+      etag: etag,
     );
   }
 
@@ -161,24 +176,80 @@ class ConfirmKnowledgeResult {
   final List<String> approved;
   final List<String> rejected;
   final List<Map<String, String>> errors;
+  final List<String> skipped;
+  final List<String> conflicts;
+  final String? latestBatchEtag;
+  final String? compactionStatus;
+  final bool idempotentReplay;
 
   ConfirmKnowledgeResult({
     required this.approved,
     required this.rejected,
     required this.errors,
+    this.skipped = const [],
+    this.conflicts = const [],
+    this.latestBatchEtag,
+    this.compactionStatus,
+    this.idempotentReplay = false,
   });
 
   factory ConfirmKnowledgeResult.fromJson(Map<String, dynamic> json) {
+    final applied = (json['approved'] as List?)?.cast<String>() ??
+        (json['applied_ids'] as List?)?.cast<String>() ??
+        <String>[];
+    final rejected = (json['rejected'] as List?)?.cast<String>() ?? <String>[];
     return ConfirmKnowledgeResult(
-      approved: (json['approved'] as List?)?.cast<String>() ?? [],
-      rejected: (json['rejected'] as List?)?.cast<String>() ?? [],
+      approved: applied,
+      rejected: rejected,
       errors: (json['errors'] as List?)
               ?.map((e) => Map<String, String>.from(e as Map))
               .toList() ??
           [],
+      skipped: (json['skipped_ids'] as List?)?.cast<String>() ?? [],
+      conflicts: (json['conflict_ids'] as List?)?.cast<String>() ?? [],
+      latestBatchEtag: json['latest_batch_etag'] as String?,
+      compactionStatus: json['compaction_status'] as String?,
+      idempotentReplay: json['idempotent_replay'] as bool? ?? false,
     );
   }
 
   int get totalProcessed => approved.length + rejected.length;
   bool get hasErrors => errors.isNotEmpty;
+}
+
+class PendingKnowledgeListResponse {
+  final List<PendingKnowledgeItem> items;
+  final int batchVersion;
+  final String batchEtag;
+  final String readMode;
+  final String migrationState;
+  final Map<String, dynamic> migrationCoverage;
+  final Map<String, dynamic> writeGate;
+
+  PendingKnowledgeListResponse({
+    required this.items,
+    required this.batchVersion,
+    required this.batchEtag,
+    required this.readMode,
+    required this.migrationState,
+    required this.migrationCoverage,
+    required this.writeGate,
+  });
+
+  factory PendingKnowledgeListResponse.fromJson(Map<String, dynamic> json) {
+    final items = (json['items'] as List? ?? [])
+        .map((e) => PendingKnowledgeItem.fromJson(
+            Map<String, dynamic>.from(e as Map)))
+        .toList();
+    return PendingKnowledgeListResponse(
+      items: items,
+      batchVersion: json['batch_version'] as int? ?? 0,
+      batchEtag: json['batch_etag'] as String? ?? '',
+      readMode: json['read_mode'] as String? ?? 'dual',
+      migrationState: json['migration_state'] as String? ?? 'started',
+      migrationCoverage:
+          Map<String, dynamic>.from(json['migration_coverage'] as Map? ?? {}),
+      writeGate: Map<String, dynamic>.from(json['write_gate'] as Map? ?? {}),
+    );
+  }
 }

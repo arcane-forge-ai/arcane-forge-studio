@@ -29,20 +29,57 @@ class _ProjectContextPanelState extends State<ProjectContextPanel> {
     final result = await provider.extractSessionKnowledge();
     if (!mounted) return;
 
-    final error = provider.pendingKnowledgeError;
     final messenger = ScaffoldMessenger.of(context);
-    if (error != null) {
+    if (result == null) {
+      final error = provider.pendingKnowledgeError ?? 'Unknown error';
       messenger.showSnackBar(
         SnackBar(content: Text('Extraction failed: $error')),
       );
       return;
     }
 
-    final pendingCount = (result?['pending_count'] as num?)?.toInt() ?? 0;
-    final message = pendingCount > 0
-        ? 'Extracted $pendingCount context item(s) to Pending Context Items.'
-        : 'No new context found to extract.';
-    messenger.showSnackBar(SnackBar(content: Text(message)));
+    final pendingCount = (result['pending_count'] as num?)?.toInt() ?? 0;
+    if (pendingCount > 0) {
+      final pendingLoaded =
+          (result['pending_loaded'] as bool?) ?? provider.hasPendingKnowledge;
+      if (pendingLoaded || provider.hasPendingKnowledge) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Extracted $pendingCount item(s). Review and approve in Pending Context Items.',
+            ),
+            action: SnackBarAction(
+              label: 'Review',
+              onPressed: () {
+                provider.loadPendingKnowledge();
+              },
+            ),
+          ),
+        );
+      } else {
+        final pendingLoadError = result['pending_load_error']?.toString();
+        final message = pendingLoadError != null &&
+                pendingLoadError.trim().isNotEmpty
+            ? 'Extracted $pendingCount item(s), but pending queue failed to load: $pendingLoadError'
+            : 'Extracted $pendingCount item(s). Pending queue is still syncing, please refresh.';
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(message),
+            action: SnackBarAction(
+              label: 'Refresh',
+              onPressed: () {
+                provider.loadPendingKnowledge();
+              },
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    messenger.showSnackBar(
+      const SnackBar(content: Text('No new context found to extract.')),
+    );
   }
 
   @override

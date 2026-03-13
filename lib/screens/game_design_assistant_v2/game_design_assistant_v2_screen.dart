@@ -374,15 +374,16 @@ class _GameDesignAssistantV2ScreenState
                             ),
                           ),
                         ],
-                        IconButton(
-                          tooltip: 'Save to Knowledge Base',
-                          onPressed: (provider.gddContent?.trim().isNotEmpty ??
-                                      false) &&
-                                  !_isSavingToKb
-                              ? _saveDocumentToKnowledgeBase
-                              : null,
-                          icon: const Icon(Icons.save_alt_rounded),
-                        ),
+	                        IconButton(
+	                          tooltip: 'Save to Knowledge Base',
+	                          onPressed: (provider.gddContent?.trim().isNotEmpty ??
+	                                      false) &&
+	                                  !_isSavingToKb &&
+	                                  !provider.isWritePaused
+	                              ? _saveDocumentToKnowledgeBase
+	                              : null,
+	                          icon: const Icon(Icons.save_alt_rounded),
+	                        ),
                         IconButton(
                           tooltip: 'New Chat',
                           onPressed: () async {
@@ -403,11 +404,31 @@ class _GameDesignAssistantV2ScreenState
                           },
                           icon: const Icon(Icons.refresh),
                         ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Row(
+	                      ],
+	                    ),
+	                  ),
+	                  if (provider.isWritePaused)
+	                    Padding(
+	                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+	                      child: Container(
+	                        width: double.infinity,
+	                        padding: const EdgeInsets.symmetric(
+	                            horizontal: 12, vertical: 10),
+	                        decoration: BoxDecoration(
+	                          color: Colors.amber.withOpacity(0.14),
+	                          borderRadius: BorderRadius.circular(8),
+	                          border:
+	                              Border.all(color: Colors.amber.withOpacity(0.4)),
+	                        ),
+	                        child: Text(
+	                          'Write operations are temporarily paused for migration safety. '
+	                          'Unsaved edits are kept locally. Retry in ${provider.writePausedRetrySeconds}s.',
+	                          style: const TextStyle(fontSize: 12),
+	                        ),
+	                      ),
+	                    ),
+	                  Expanded(
+	                    child: Row(
                       children: [
                         if (_showChatHistory) const V2ChatHistorySidebar(),
                         if (_showChatHistory) const VerticalDivider(width: 1),

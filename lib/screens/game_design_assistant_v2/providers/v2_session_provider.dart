@@ -14,6 +14,7 @@ import '../models/session.dart';
 import '../models/write_summary.dart';
 import '../services/v2_api_service.dart';
 import '../services/v2_sse_service.dart';
+import '../utils/pending_etag_contract.dart';
 
 class V2SessionProvider with ChangeNotifier {
   static const int _knowledgeExtractionPromptTurnGap = 1;
@@ -75,7 +76,13 @@ class V2SessionProvider with ChangeNotifier {
   String? _projectContextError;
   bool _shouldPromptSessionKnowledgeExtraction = false;
   String? _promptEligibleSessionId;
-  Map<String, String> _pendingItemSessionMap = {};
+  String _pendingBatchEtag = '';
+  int _pendingBatchVersion = 0;
+  String _pendingReadMode = 'dual';
+  String _pendingMigrationState = 'started';
+  bool _isWritePaused = false;
+  int _writePausedRetrySeconds = 0;
+  final Map<String, String> _localPendingDrafts = {};
 
   List<SessionInfo> get sessions => _sessions;
   SessionInfo? get currentSession => _currentSession;
@@ -109,6 +116,12 @@ class V2SessionProvider with ChangeNotifier {
   String? get pendingKnowledgeError => _pendingKnowledgeError;
   String? get projectContextError => _projectContextError;
   bool get hasPendingKnowledge => _pendingKnowledgeItems.isNotEmpty;
+  String get pendingBatchEtag => _pendingBatchEtag;
+  int get pendingBatchVersion => _pendingBatchVersion;
+  String get pendingReadMode => _pendingReadMode;
+  String get pendingMigrationState => _pendingMigrationState;
+  bool get isWritePaused => _isWritePaused;
+  int get writePausedRetrySeconds => _writePausedRetrySeconds;
   bool get shouldPromptSessionKnowledgeExtraction =>
       _shouldPromptSessionKnowledgeExtraction;
 
@@ -116,50 +129,54 @@ class V2SessionProvider with ChangeNotifier {
   bool get hasSelectedDocument =>
       _selectedDocPath != null && _selectedDocPath!.trim().isNotEmpty;
 
-  String? _pendingKnowledgeScopeSessionId() {
-    final current = _currentSession?.sessionId;
-    if (current != null && current.trim().isNotEmpty) {
-      return current;
-    }
-    for (final session in _sessions) {
-      final candidate = session.sessionId.trim();
-      if (candidate.isNotEmpty) {
-        return candidate;
-      }
+  String _newIdempotencyKey() {
+    final ts = DateTime.now().microsecondsSinceEpoch;
+    final salt = projectId.hashCode ^ ts.hashCode;
+    return 'gda2-$projectId-$ts-$salt';
+  }
+
+  PendingKnowledgeItem? _pendingItemById(String itemId) {
+    for (final item in _pendingKnowledgeItems) {
+      if (item.id == itemId) return item;
     }
     return null;
   }
 
-  List<String> _pendingKnowledgeScopeSessionIds() {
-    final seen = <String>{};
-    final ids = <String>[];
-
-    final current = _currentSession?.sessionId.trim();
-    if (current != null && current.isNotEmpty && seen.add(current)) {
-      ids.add(current);
-    }
-
-    for (final session in _sessions) {
-      final id = session.sessionId.trim();
-      if (id.isNotEmpty && seen.add(id)) {
-        ids.add(id);
-      }
-    }
-
-    return ids;
+  Map<String, dynamic> _pendingItemPayloadForEtag(PendingKnowledgeItem item) {
+    return <String, dynamic>{
+      'project_id': item.projectId,
+      'item_id': item.id,
+      'session_id': item.sessionId,
+      'turn_number': item.turnNumber,
+      'type': item.type,
+      'content': item.content,
+      'original_text': item.originalText,
+      'merge_action': item.mergeAction,
+      'target_entry_id': item.targetEntryId,
+      'conflict_meta': item.conflictMeta,
+      'status': item.status,
+      'version': item.version,
+    };
   }
 
-  String? _sessionIdForPendingItem(String itemId) {
-    var sessionId = _pendingItemSessionMap[itemId];
-    sessionId ??= _pendingKnowledgeItems
-        .where((i) => i.id == itemId)
-        .map((i) => i.sessionId)
-        .firstWhere((v) => v.trim().isNotEmpty, orElse: () => '');
-    if (sessionId.trim().isEmpty) {
-      sessionId = null;
-    }
-    sessionId ??= _pendingKnowledgeScopeSessionId();
-    return sessionId;
+  String _effectiveItemEtag(PendingKnowledgeItem item) {
+    final etag = item.etag.trim();
+    if (etag.isNotEmpty) return etag;
+    return buildPendingItemEtag(_pendingItemPayloadForEtag(item));
+  }
+
+  String _computeLocalBatchEtag() {
+    final pid = int.tryParse(projectId) ?? 0;
+    final items = _pendingKnowledgeItems
+        .map(_pendingItemPayloadForEtag)
+        .toList(growable: false);
+    return buildPendingBatchEtag(pid, _pendingBatchVersion, items);
+  }
+
+  void _ensurePendingBatchEtag() {
+    if (_pendingBatchEtag.trim().isNotEmpty) return;
+    if (_pendingKnowledgeItems.isEmpty) return;
+    _pendingBatchEtag = _computeLocalBatchEtag();
   }
 
   Future<void> loadSessions() async {
@@ -930,20 +947,33 @@ class V2SessionProvider with ChangeNotifier {
   // Project Context / Pending Knowledge Methods
   // ---------------------------------------------------------------------------
 
-  /// Load project-scoped pending knowledge items.
-  /// Uses active session id, or falls back to any session in the same project.
-  Future<void> loadPendingKnowledge({bool notify = true}) async {
-    final sessionIds = _pendingKnowledgeScopeSessionIds();
-    if (sessionIds.isEmpty) {
-      _pendingKnowledgeItems = [];
-      _pendingItemSessionMap = {};
-      _shouldPromptSessionKnowledgeExtraction = false;
-      if (notify) {
-        notifyListeners();
+  void _updateWriteGate(Map<String, dynamic> writeGate) {
+    final status = (writeGate['status'] as String? ?? 'open').toLowerCase();
+    _isWritePaused = status == 'frozen';
+    if (_isWritePaused) {
+      final freezeStartedAt = DateTime.tryParse(
+          writeGate['freeze_started_at']?.toString() ?? '');
+      final budget = writeGate['freeze_budget_seconds'] is int
+          ? writeGate['freeze_budget_seconds'] as int
+          : int.tryParse(writeGate['freeze_budget_seconds']?.toString() ?? '') ??
+              90;
+      if (freezeStartedAt != null) {
+        final elapsed = DateTime.now().toUtc().difference(freezeStartedAt.toUtc());
+        _writePausedRetrySeconds = (budget - elapsed.inSeconds).clamp(1, budget);
+      } else {
+        _writePausedRetrySeconds = budget;
       }
-      return;
+    } else {
+      _writePausedRetrySeconds = 0;
     }
+  }
 
+  /// Load project-scoped pending knowledge items via project API.
+  Future<void> loadPendingKnowledge({
+    bool notify = true,
+    int retryAttempt = 0,
+    bool captureError = true,
+  }) async {
     _isPendingKnowledgeLoading = true;
     _pendingKnowledgeError = null;
     if (notify) {
@@ -951,39 +981,28 @@ class V2SessionProvider with ChangeNotifier {
     }
 
     try {
-      final mergedItems = <PendingKnowledgeItem>[];
-      final itemSessionMap = <String, String>{};
-      Object? lastError;
-      var anySuccess = false;
-
-      for (final sessionId in sessionIds) {
-        try {
-          final items = await _apiService.listPendingKnowledge(sessionId);
-          anySuccess = true;
-          for (final item in items) {
-            if (itemSessionMap.containsKey(item.id)) {
-              continue;
-            }
-            mergedItems.add(item);
-            final sourceSession =
-                item.sessionId.trim().isNotEmpty ? item.sessionId : sessionId;
-            itemSessionMap[item.id] = sourceSession;
-          }
-        } catch (e) {
-          lastError = e;
-        }
-      }
-
-      _pendingKnowledgeItems = mergedItems;
-      _pendingItemSessionMap = itemSessionMap;
-      if (!anySuccess && lastError != null) {
-        _pendingKnowledgeError = lastError.toString();
-      } else {
-        _pendingKnowledgeError = null;
-      }
+      final result = await _apiService.listPendingKnowledge(projectId);
+      _pendingKnowledgeItems =
+          List<PendingKnowledgeItem>.of(result.items, growable: true);
+      _pendingBatchVersion = result.batchVersion;
+      _pendingBatchEtag = result.batchEtag;
+      _ensurePendingBatchEtag();
+      _pendingReadMode = result.readMode;
+      _pendingMigrationState = result.migrationState;
+      _updateWriteGate(result.writeGate);
+      _pendingKnowledgeError = null;
       _refreshExtractionPromptFlag();
     } catch (e) {
-      _pendingKnowledgeError = e.toString();
+      final text = e.toString();
+      if (text.contains('MIGRATION_IN_PROGRESS') && retryAttempt < 3) {
+        await Future<void>.delayed(
+            Duration(milliseconds: 500 * (retryAttempt + 1)));
+        return loadPendingKnowledge(
+            notify: notify, retryAttempt: retryAttempt + 1, captureError: captureError);
+      }
+      if (captureError) {
+        _pendingKnowledgeError = e.toString();
+      }
     } finally {
       _isPendingKnowledgeLoading = false;
       if (notify) {
@@ -996,59 +1015,46 @@ class V2SessionProvider with ChangeNotifier {
   Future<ConfirmKnowledgeResult?> confirmPendingKnowledge(
       List<Map<String, String>> decisions) async {
     if (decisions.isEmpty) return null;
+    if (_isWritePaused) {
+      _pendingKnowledgeError =
+          'Writes are temporarily paused. Retry in ${_writePausedRetrySeconds}s.';
+      notifyListeners();
+      return null;
+    }
+    if (_pendingBatchEtag.trim().isEmpty) {
+      await loadPendingKnowledge(notify: false);
+      _ensurePendingBatchEtag();
+      if (_pendingBatchEtag.trim().isEmpty) {
+        _pendingKnowledgeError =
+            'Pending queue metadata is unavailable. Please refresh and retry.';
+        notifyListeners();
+        return null;
+      }
+    }
 
     _isPendingKnowledgeSubmitting = true;
     _pendingKnowledgeError = null;
     notifyListeners();
 
     try {
-      final grouped = <String, List<Map<String, String>>>{};
-      final errors = <Map<String, String>>[];
       for (final decision in decisions) {
         final id = decision['id'];
-        final action = decision['action'];
-        if (id == null || action == null) continue;
-        final sessionId = _pendingItemSessionMap[id] ??
-            _pendingKnowledgeItems
-                .where((i) => i.id == id)
-                .map((i) => i.sessionId)
-                .firstWhere((v) => v.trim().isNotEmpty, orElse: () => '');
-        if (sessionId.isEmpty) {
-          errors.add({'id': id, 'error': 'Missing session scope'});
-          continue;
-        }
-        grouped.putIfAbsent(sessionId, () => []).add({
-          'id': id,
-          'action': action,
-        });
-      }
-
-      final approved = <String>[];
-      final rejected = <String>[];
-      for (final entry in grouped.entries) {
-        try {
-          final result = await _apiService.confirmPendingKnowledge(
-            sessionId: entry.key,
-            decisions: entry.value,
-          );
-          approved.addAll(result.approved);
-          rejected.addAll(result.rejected);
-          errors.addAll(result.errors);
-        } catch (e) {
-          for (final d in entry.value) {
-            final id = d['id'];
-            if (id == null) continue;
-            errors.add({'id': id, 'error': e.toString()});
-          }
+        if (id == null) continue;
+        final item = _pendingItemById(id);
+        if (item == null) {
+          decision['version'] = '0';
+        } else {
+          decision['version'] = item.version.toString();
         }
       }
 
-      final result = ConfirmKnowledgeResult(
-        approved: approved,
-        rejected: rejected,
-        errors: errors,
+      final result = await _apiService.confirmPendingKnowledge(
+        projectId: projectId,
+        decisions: decisions,
+        batchEtag: _pendingBatchEtag,
+        mode: 'atomic',
+        idempotencyKey: _newIdempotencyKey(),
       );
-      // Refresh pending list and project context after confirmation
       await loadPendingKnowledge();
       await loadProjectContext();
       return result;
@@ -1064,19 +1070,31 @@ class V2SessionProvider with ChangeNotifier {
   /// Edit a pending knowledge item.
   Future<bool> updatePendingItem(String itemId,
       {String? content, String? type}) async {
-    final sessionId = _sessionIdForPendingItem(itemId);
-    if (sessionId == null) return false;
+    final item = _pendingItemById(itemId);
+    if (item == null) return false;
+    if (_isWritePaused) {
+      if (content != null && content.trim().isNotEmpty) {
+        _localPendingDrafts[itemId] = content;
+      }
+      _pendingKnowledgeError =
+          'Writes are temporarily paused. Retry in ${_writePausedRetrySeconds}s. '
+          'Your latest edit has been kept locally.';
+      notifyListeners();
+      return false;
+    }
 
     try {
       final updated = await _apiService.updatePendingItem(
-        sessionId: sessionId,
+        projectId: projectId,
         itemId: itemId,
+        ifMatch: _effectiveItemEtag(item),
         content: content,
         type: type,
       );
       final idx = _pendingKnowledgeItems.indexWhere((i) => i.id == itemId);
       if (idx >= 0) {
         _pendingKnowledgeItems[idx] = updated;
+        _localPendingDrafts.remove(itemId);
         notifyListeners();
       }
       return true;
@@ -1089,16 +1107,22 @@ class V2SessionProvider with ChangeNotifier {
 
   /// Delete a pending knowledge item.
   Future<bool> deletePendingItem(String itemId) async {
-    final sessionId = _sessionIdForPendingItem(itemId);
-    if (sessionId == null) return false;
+    final item = _pendingItemById(itemId);
+    if (item == null) return false;
+    if (_isWritePaused) {
+      _pendingKnowledgeError =
+          'Writes are temporarily paused. Retry in ${_writePausedRetrySeconds}s.';
+      notifyListeners();
+      return false;
+    }
 
     try {
       await _apiService.deletePendingItem(
-        sessionId: sessionId,
+        projectId: projectId,
         itemId: itemId,
+        ifMatch: _effectiveItemEtag(item),
       );
       _pendingKnowledgeItems.removeWhere((i) => i.id == itemId);
-      _pendingItemSessionMap.remove(itemId);
       notifyListeners();
       return true;
     } catch (e) {
@@ -1133,10 +1157,38 @@ class V2SessionProvider with ChangeNotifier {
       );
 
       if (refreshAfterExtraction) {
-        _currentSession = await _apiService.getSession(sessionId);
-        await loadPendingKnowledge(notify: false);
+        try {
+          _currentSession = await _apiService.getSession(sessionId);
+        } catch (_) {}
+        final expectedPending =
+            (result['pending_count'] as num?)?.toInt() ?? 0;
+        bool pendingLoaded = true;
+        String? pendingLoadError;
+        if (expectedPending > 0) {
+          pendingLoaded = false;
+          for (var attempt = 0; attempt < 3; attempt++) {
+            await loadPendingKnowledge(notify: false, captureError: true);
+            if (_pendingKnowledgeItems.isNotEmpty) {
+              pendingLoaded = true;
+              break;
+            }
+            if (attempt < 2) {
+              await Future<void>.delayed(
+                  Duration(milliseconds: 350 * (attempt + 1)));
+            }
+          }
+          if (!pendingLoaded) {
+            pendingLoadError = _pendingKnowledgeError;
+          }
+        } else {
+          await loadPendingKnowledge(notify: false, captureError: false);
+        }
         await loadProjectContext();
         _refreshExtractionPromptFlag();
+        result['pending_loaded'] = pendingLoaded;
+        if (pendingLoadError != null && pendingLoadError.trim().isNotEmpty) {
+          result['pending_load_error'] = pendingLoadError;
+        }
       }
       return result;
     } catch (e) {
@@ -1172,11 +1224,13 @@ class V2SessionProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      _projectContextEntries = await _apiService.listProjectContext(
+      final loaded = await _apiService.listProjectContext(
         projectId: projectId,
         type: type,
         query: query,
       );
+      _projectContextEntries =
+          List<ProjectContextEntry>.of(loaded, growable: true);
     } catch (e) {
       _projectContextError = e.toString();
     } finally {

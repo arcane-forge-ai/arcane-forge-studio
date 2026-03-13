@@ -524,30 +524,44 @@ class V2ApiService {
   // Project Context / Pending Knowledge
   // ---------------------------------------------------------------------------
 
-  Future<List<PendingKnowledgeItem>> listPendingKnowledge(
-      String sessionId) async {
+  Future<PendingKnowledgeListResponse> listPendingKnowledge(
+      String projectId) async {
     try {
       final response = await _apiClient.dio
-          .get('$_designBaseUrl/sessions/$sessionId/knowledge/pending');
+          .get('$_designBaseUrl/projects/$projectId/knowledge/pending');
       final data = _asMap(response.data);
-      final items = data['items'] as List? ?? [];
-      return items
-          .map((e) => PendingKnowledgeItem.fromJson(
-              Map<String, dynamic>.from(e as Map)))
-          .toList(growable: false);
+      return PendingKnowledgeListResponse.fromJson(data);
     } catch (e) {
       throw Exception('Failed to list pending knowledge: ${_extractError(e)}');
     }
   }
 
   Future<ConfirmKnowledgeResult> confirmPendingKnowledge({
-    required String sessionId,
+    required String projectId,
     required List<Map<String, String>> decisions,
+    required String batchEtag,
+    required String mode,
+    required String idempotencyKey,
   }) async {
     try {
+      final headers = <String, String>{
+        if (batchEtag.trim().isNotEmpty) 'If-Match': batchEtag,
+        if (idempotencyKey.trim().isNotEmpty) 'Idempotency-Key': idempotencyKey,
+      };
+      final payloadDecisions = decisions
+          .map((d) => {
+                'id': d['id'],
+                'action': d['action'],
+                'version': int.tryParse(d['version'] ?? '') ?? 0,
+              })
+          .toList(growable: false);
       final response = await _apiClient.dio.post(
-        '$_designBaseUrl/sessions/$sessionId/knowledge/confirm',
-        data: {'decisions': decisions},
+        '$_designBaseUrl/projects/$projectId/knowledge/confirm',
+        data: {
+          'mode': mode,
+          'decisions': payloadDecisions,
+        },
+        options: Options(headers: headers),
       );
       return ConfirmKnowledgeResult.fromJson(_asMap(response.data));
     } catch (e) {
@@ -557,18 +571,23 @@ class V2ApiService {
   }
 
   Future<PendingKnowledgeItem> updatePendingItem({
-    required String sessionId,
+    required String projectId,
     required String itemId,
+    required String ifMatch,
     String? content,
     String? type,
   }) async {
     try {
+      final headers = <String, String>{
+        if (ifMatch.trim().isNotEmpty) 'If-Match': ifMatch,
+      };
       final response = await _apiClient.dio.patch(
-        '$_designBaseUrl/sessions/$sessionId/knowledge/pending/$itemId',
+        '$_designBaseUrl/projects/$projectId/knowledge/pending/$itemId',
         data: {
           if (content != null) 'content': content,
           if (type != null) 'type': type,
         },
+        options: Options(headers: headers),
       );
       return PendingKnowledgeItem.fromJson(_asMap(response.data));
     } catch (e) {
@@ -577,12 +596,21 @@ class V2ApiService {
   }
 
   Future<void> deletePendingItem({
-    required String sessionId,
+    required String projectId,
     required String itemId,
+    required String ifMatch,
+    String? reason,
   }) async {
     try {
+      final headers = <String, String>{
+        if (ifMatch.trim().isNotEmpty) 'If-Match': ifMatch,
+      };
       await _apiClient.dio.delete(
-        '$_designBaseUrl/sessions/$sessionId/knowledge/pending/$itemId',
+        '$_designBaseUrl/projects/$projectId/knowledge/pending/$itemId',
+        data: {
+          if (reason != null && reason.trim().isNotEmpty) 'reason': reason,
+        },
+        options: Options(headers: headers),
       );
     } catch (e) {
       throw Exception('Failed to delete pending item: ${_extractError(e)}');
@@ -624,7 +652,7 @@ class V2ApiService {
       return items
           .map((e) =>
               ProjectContextEntry.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList(growable: false);
+          .toList();
     } catch (e) {
       throw Exception('Failed to list project context: ${_extractError(e)}');
     }

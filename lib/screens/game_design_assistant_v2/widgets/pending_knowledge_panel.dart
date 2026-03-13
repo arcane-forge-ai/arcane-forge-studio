@@ -56,6 +56,8 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
     final items = provider.pendingKnowledgeItems;
     final isLoading = provider.isPendingKnowledgeLoading;
     final isSubmitting = provider.isPendingKnowledgeSubmitting;
+    final isWritePaused = provider.isWritePaused;
+    final retrySeconds = provider.writePausedRetrySeconds;
     final error = provider.pendingKnowledgeError;
     final theme = Theme.of(context);
 
@@ -82,7 +84,9 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
                 if (items.isNotEmpty) ...[
                   TextButton.icon(
                     onPressed:
-                        isSubmitting ? null : () => _toggleSelectAll(items),
+                        (isSubmitting || isWritePaused)
+                            ? null
+                            : () => _toggleSelectAll(items),
                     icon: Icon(
                       _selectAll ? Icons.deselect : Icons.select_all,
                       size: 16,
@@ -101,6 +105,25 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
               child: Text(error,
                   style:
                       TextStyle(color: theme.colorScheme.error, fontSize: 12)),
+            ),
+
+          if (isWritePaused)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.withOpacity(0.45)),
+                ),
+                child: Text(
+                  'Writes paused for migration safety. Retry in ${retrySeconds}s.',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
             ),
 
           if (isLoading)
@@ -151,7 +174,9 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
                 children: [
                   OutlinedButton.icon(
                     onPressed:
-                        isSubmitting ? null : () => _rejectSelected(provider),
+                        (isSubmitting || isWritePaused)
+                            ? null
+                            : () => _rejectSelected(provider),
                     icon: const Icon(Icons.close, size: 16),
                     label: Text('Reject (${_selectedIds.length})'),
                     style: OutlinedButton.styleFrom(
@@ -161,7 +186,9 @@ class _PendingKnowledgePanelState extends State<PendingKnowledgePanel> {
                   const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed:
-                        isSubmitting ? null : () => _approveSelected(provider),
+                        (isSubmitting || isWritePaused)
+                            ? null
+                            : () => _approveSelected(provider),
                     icon: isSubmitting
                         ? const SizedBox(
                             width: 14,
