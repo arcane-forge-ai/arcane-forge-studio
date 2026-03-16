@@ -73,12 +73,11 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
   String _streamingMessageId = '';
   bool _isGenerating = false;
   String? _lastAiResponse; // Store last AI response for document extraction
-  bool _lastResponseHasDocument =
-      false; // Track if last response has extractable markdown
   ChatSession? _selectedChatSession; // Currently selected chat session
   String? _currentSessionId; // Track session ID for current conversation
   bool _showChatHistory = true; // Toggle for chat history sidebar
   bool _showToolbar = false; // Toggle for toolbar visibility
+  bool _lastResponseHasDocument = false;
   Project? _projectDetails; // Cached project details from API
   SelectionInfo? _pendingSelection;
   final Set<String> _selectionDraftIds = <String>{};
@@ -449,18 +448,9 @@ Ask me anything about game design, or try one of the example questions below!
 
       // Store the final response and check for extractable documents
       _lastAiResponse = fullResponse;
-      final hasDocument =
-          DocumentExtractor.hasExtractableDocument(fullResponse);
-
-      // Update state to show/hide save button
+      final hasDocument = DocumentExtractor.hasExtractableDocument(fullResponse);
       setState(() {
         _lastResponseHasDocument = hasDocument;
-        _pendingSelection = response.selection;
-        _selectionDraftIds.clear();
-        _selectionPanelError = null;
-        _selectionPanelInfo = response.selection != null
-            ? 'Choose options or continue typing to skip.'
-            : null;
       });
 
       // Refresh the chat history sidebar to show any new sessions created by the API
@@ -594,18 +584,9 @@ Ask me anything about game design, or try one of the example questions below!
 
       // Store the final response and check for extractable documents
       _lastAiResponse = fullResponse;
-      final hasDocument =
-          DocumentExtractor.hasExtractableDocument(fullResponse);
-
-      // Update state to show/hide save button
+      final hasDocument = DocumentExtractor.hasExtractableDocument(fullResponse);
       setState(() {
         _lastResponseHasDocument = hasDocument;
-        _pendingSelection = response.selection;
-        _selectionDraftIds.clear();
-        _selectionPanelError = null;
-        _selectionPanelInfo = response.selection != null
-            ? 'Choose options or continue typing to skip.'
-            : null;
       });
 
       // Refresh the chat history sidebar to show any new sessions created by the API
@@ -629,7 +610,6 @@ Ask me anything about game design, or try one of the example questions below!
 
       // Reset document state on error
       setState(() {
-        _lastResponseHasDocument = false;
         _lastAiResponse = null;
       });
 
@@ -994,12 +974,8 @@ Ask me anything about game design, or try one of the example questions below!
     if (_lastAiResponse == null) return;
 
     try {
-      // Extract markdown content from AI response
       final markdownContent =
-          DocumentExtractor.extractMarkdownBlock(_lastAiResponse!);
-      if (markdownContent == null) {
-        throw Exception('No extractable markdown content found');
-      }
+          DocumentExtractor.extractContentForSave(_lastAiResponse!);
 
       final cleanFileName = _getFileNameFromMarkdown(markdownContent);
       final fileName = '$cleanFileName.md';
@@ -1061,7 +1037,7 @@ Ask me anything about game design, or try one of the example questions below!
 
         // Update state to hide save button
         setState(() {
-          _lastResponseHasDocument = false;
+          _lastAiResponse = null;
         });
 
         // Show success notification
@@ -1247,8 +1223,8 @@ Ask me anything about game design, or try one of the example questions below!
                 _buildInfoRow('Messages in Chat',
                     _chatController.messages.length.toString()),
                 _buildInfoRow('Is Generating', _isGenerating ? 'Yes' : 'No'),
-                _buildInfoRow('Last Response Has Doc',
-                    _lastResponseHasDocument ? 'Yes' : 'No'),
+                _buildInfoRow('Has AI Response',
+                    _lastAiResponse != null ? 'Yes' : 'No'),
               ],
             ),
           ),
@@ -1387,10 +1363,6 @@ Ask me anything about game design, or try one of the example questions below!
         _selectedChatSession = null;
         _lastAiResponse = null;
         _lastResponseHasDocument = false;
-        _pendingSelection = null;
-        _selectionDraftIds.clear();
-        _selectionPanelError = null;
-        _selectionPanelInfo = null;
       });
 
       // Clear current chat messages and add welcome message
@@ -1477,20 +1449,10 @@ Ask me anything about game design, or try one of the example questions below!
         ),
       );
 
-      if (lastAiMessage.content.isNotEmpty) {
-        final hasExtractableDoc =
-            DocumentExtractor.hasExtractableDocument(lastAiMessage.content);
-        setState(() {
-          _lastResponseHasDocument = hasExtractableDoc;
-          _lastAiResponse = hasExtractableDoc ? lastAiMessage.content : null;
-          // Note: Don't automatically show toolbar (_showToolbar remains unchanged)
-        });
-      } else {
-        setState(() {
-          _lastResponseHasDocument = false;
-          _lastAiResponse = null;
-        });
-      }
+      setState(() {
+        _lastAiResponse =
+            lastAiMessage.content.isNotEmpty ? lastAiMessage.content : null;
+      });
 
       // Show success notification
       if (mounted) {
@@ -1966,7 +1928,7 @@ Ask me anything about game design, or try one of the example questions below!
   }
 
   Widget _buildFloatingActionBar() {
-    final bool canSave = _lastResponseHasDocument && !_isGenerating;
+    final bool canSave = _lastAiResponse != null && !_isGenerating;
 
     return Align(
       alignment: Alignment.centerLeft,
