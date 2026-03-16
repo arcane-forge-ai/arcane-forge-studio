@@ -1,6 +1,99 @@
 // API Request/Response Models for FastAPI Backend
 
 // import 'chat_message.dart'; // Temporarily unused - may be needed for future enhancements
+import 'package:flutter/foundation.dart';
+
+class SelectionOption {
+  final String id;
+  final String label;
+  final String? description;
+
+  SelectionOption({
+    required this.id,
+    required this.label,
+    this.description,
+  });
+
+  factory SelectionOption.fromJson(Map<String, dynamic> json) {
+    return SelectionOption(
+      id: json['id']?.toString() ?? '',
+      label: json['label']?.toString() ?? '',
+      description: json['description']?.toString(),
+    );
+  }
+}
+
+class SelectionInfo {
+  final String questionId;
+  final String title;
+  final String? description;
+  final List<SelectionOption> options;
+  final bool allowMultiple;
+  final int minSelection;
+  final int maxSelection;
+  final DateTime expiresAt;
+
+  SelectionInfo({
+    required this.questionId,
+    required this.title,
+    this.description,
+    required this.options,
+    required this.allowMultiple,
+    required this.minSelection,
+    required this.maxSelection,
+    required this.expiresAt,
+  });
+
+  factory SelectionInfo.fromJson(Map<String, dynamic> json) {
+    final rawOptions = json['options'] as List? ?? const [];
+    final expiresRaw = json['expires_at']?.toString() ?? '';
+    final parsedExpiresAt = DateTime.tryParse(expiresRaw);
+    if (parsedExpiresAt == null) {
+      assert(() {
+        debugPrint('[SelectionInfo] Invalid expires_at: $expiresRaw');
+        return true;
+      }());
+    }
+    return SelectionInfo(
+      questionId: json['question_id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      description: json['description']?.toString(),
+      options: rawOptions
+          .map((e) =>
+              SelectionOption.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(growable: false),
+      allowMultiple: json['allow_multiple'] == true,
+      minSelection: (json['min_selection'] as num?)?.toInt() ?? 1,
+      maxSelection: (json['max_selection'] as num?)?.toInt() ?? 1,
+      expiresAt: parsedExpiresAt ??
+          DateTime.now().toUtc().add(const Duration(minutes: 10)),
+    );
+  }
+}
+
+class SelectionAnswer {
+  final String questionId;
+  final String action;
+  final List<String> selectedIds;
+  final String? freeText;
+
+  SelectionAnswer({
+    required this.questionId,
+    required this.action,
+    this.selectedIds = const [],
+    this.freeText,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'question_id': questionId,
+      'action': action,
+      'selected_ids': selectedIds,
+      if (freeText != null && freeText!.trim().isNotEmpty)
+        'free_text': freeText!.trim(),
+    };
+  }
+}
 
 class ChatRequest {
   final String message;
@@ -11,6 +104,7 @@ class ChatRequest {
   final String? title;
   final String? agentType;
   final Map<String, dynamic>? extraConfig;
+  final SelectionAnswer? selectionAnswer;
 
   ChatRequest({
     required this.message,
@@ -21,6 +115,7 @@ class ChatRequest {
     this.title,
     this.agentType,
     this.extraConfig,
+    this.selectionAnswer,
   });
 
   Map<String, dynamic> toJson() {
@@ -31,12 +126,16 @@ class ChatRequest {
     // Only include fields if they have values - let API handle defaults
     if (projectId != null) json['project_id'] = projectId;
     if (userId != null) json['user_id'] = userId;
-    if (knowledgeBaseName != null)
+    if (knowledgeBaseName != null) {
       json['knowledge_base_name'] = knowledgeBaseName;
+    }
     if (sessionId != null) json['session_id'] = sessionId;
     if (title != null) json['title'] = title;
     if (agentType != null) json['agent_type'] = agentType;
     if (extraConfig != null) json['extra_config'] = extraConfig;
+    if (selectionAnswer != null) {
+      json['selection_answer'] = selectionAnswer!.toJson();
+    }
 
     return json;
   }
@@ -47,12 +146,14 @@ class ChatResponse {
   final String input;
   final String sessionId;
   final DateTime? timestamp;
+  final SelectionInfo? selection;
 
   ChatResponse({
     required this.output,
     required this.input,
     required this.sessionId,
     this.timestamp,
+    this.selection,
   });
 
   factory ChatResponse.fromJson(Map<String, dynamic> json) {
@@ -62,6 +163,10 @@ class ChatResponse {
       sessionId: json['session_id'],
       timestamp:
           json['timestamp'] != null ? DateTime.parse(json['timestamp']) : null,
+      selection: json['selection'] != null
+          ? SelectionInfo.fromJson(
+              Map<String, dynamic>.from(json['selection'] as Map))
+          : null,
     );
   }
 
@@ -188,14 +293,14 @@ class KnowledgeBaseFile {
   final String fileType;
   final DateTime createdAt;
   final Map<String, dynamic>? metadata;
-  
+
   // Unified Knowledge Base fields
-  final String entryType;        // 'document', 'link', 'folder', 'contact', 'other'
-  final String visibility;       // 'vendor_visible', 'internal_only'
-  final String authorityLevel;   // 'source_of_truth', 'reference', 'deprecated'
-  final List<String> tags;       // Keywords for search
-  final String? description;     // Summary/context
-  final String? url;            // For link entries
+  final String entryType; // 'document', 'link', 'folder', 'contact', 'other'
+  final String visibility; // 'vendor_visible', 'internal_only'
+  final String authorityLevel; // 'source_of_truth', 'reference', 'deprecated'
+  final List<String> tags; // Keywords for search
+  final String? description; // Summary/context
+  final String? url; // For link entries
   final Map<String, String>? contactInfo; // For contact entries
 
   KnowledgeBaseFile({
@@ -227,10 +332,9 @@ class KnowledgeBaseFile {
       metadata: json['metadata'],
       entryType: json['entry_type'] ?? json['entryType'] ?? 'document',
       visibility: json['visibility'] ?? 'vendor_visible',
-      authorityLevel: json['authority_level'] ?? json['authorityLevel'] ?? 'reference',
-      tags: json['tags'] != null 
-          ? List<String>.from(json['tags'])
-          : [],
+      authorityLevel:
+          json['authority_level'] ?? json['authorityLevel'] ?? 'reference',
+      tags: json['tags'] != null ? List<String>.from(json['tags']) : [],
       description: json['description'],
       url: json['url'],
       contactInfo: json['contact_info'] != null

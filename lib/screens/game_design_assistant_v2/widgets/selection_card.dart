@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -18,9 +20,57 @@ class SelectionCard extends StatefulWidget {
 
 class _SelectionCardState extends State<SelectionCard> {
   final Set<String> _selectedIds = <String>{};
+  bool _completed = false;
+  String? _localError;
+  String? _localInfo;
+  Timer? _countdownTimer;
+
+  bool get _expired => DateTime.now().isAfter(widget.selection.expiresAt);
+  bool get _isSingle => !widget.selection.allowMultiple;
+  int get _selectedCount => _selectedIds.length;
+
+  @override
+  void initState() {
+    super.initState();
+    _startCountdownTicker();
+  }
+
+  @override
+  void didUpdateWidget(covariant SelectionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selection.questionId != widget.selection.questionId ||
+        oldWidget.selection.expiresAt != widget.selection.expiresAt) {
+      _startCountdownTicker();
+    }
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startCountdownTicker() {
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_expired || _completed) {
+        _countdownTimer?.cancel();
+      }
+      setState(() {});
+    });
+  }
+
+  bool get _withinRange {
+    if (_selectedCount < widget.selection.minSelection) return false;
+    if (_selectedCount > widget.selection.maxSelection) return false;
+    return true;
+  }
 
   void _toggleOption(String id) {
+    if (_expired || _completed) return;
     setState(() {
+      _localError = null;
       if (widget.selection.allowMultiple) {
         if (_selectedIds.contains(id)) {
           _selectedIds.remove(id);
@@ -35,22 +85,66 @@ class _SelectionCardState extends State<SelectionCard> {
     });
   }
 
-  void _submit() {
-    if (_selectedIds.isEmpty) return;
-    final selected = _selectedIds.first;
-    context
-        .read<V2SessionProvider>()
-        .sendMessage('Selected:$selected');
+  Future<void> _submit() async {
+    if (_expired) {
+      setState(() {
+        _localError = 'This selection has expired.';
+      });
+      return;
+    }
+    if (!_withinRange) {
+      setState(() {
+        _localError =
+            'Please select ${widget.selection.minSelection}-${widget.selection.maxSelection} option(s).';
+      });
+      return;
+    }
+
+    final result = await context.read<V2SessionProvider>().submitSelection(
+          selection: widget.selection,
+          selectedIds: _selectedIds.toList(growable: false),
+        );
+    if (!mounted) return;
+    setState(() {
+      _localError = null;
+      _localInfo = result.message;
+      _completed = result.status == 'success';
+      if (result.status == 'validation_error' || result.status == 'error') {
+        _localError = result.message;
+      }
+    });
   }
 
-  void _cancel() {
-    context.read<V2SessionProvider>().sendMessage('cancel');
+  Future<void> _cancel() async {
+    final result = await context
+        .read<V2SessionProvider>()
+        .cancelSelection(selection: widget.selection);
+    if (!mounted) return;
+    setState(() {
+      _localError = result.status == 'error' ? result.message : null;
+      _localInfo =
+          result.status == 'error' ? null : (result.message ?? 'Skipped');
+      _completed = result.status == 'success';
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final provider = context.watch<V2SessionProvider>();
+    final panelError = provider.selectionPanelError;
+    final panelInfo = provider.selectionPanelInfo;
+    final providerPending = provider.pendingSelection;
+    final isOutdated = providerPending != null &&
+        providerPending.questionId.isNotEmpty &&
+        providerPending.questionId != widget.selection.questionId;
+    final submitting = provider.isSubmittingSelection;
+    final timeLeft = widget.selection.expiresAt.difference(DateTime.now());
+    final secondsLeft = timeLeft.inSeconds.clamp(0, 999999);
+    final canSubmit = !_expired && !_completed && !isOutdated && _withinRange;
+    final min = widget.selection.minSelection;
+    final max = widget.selection.maxSelection;
 
     return Card(
       margin: const EdgeInsets.only(top: 8),
@@ -72,6 +166,16 @@ class _SelectionCardState extends State<SelectionCard> {
                     widget.selection.title,
                     style: theme.textTheme.titleMedium
                         ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(
+                  _expired
+                      ? 'Expired'
+                      : 'Expires in ${secondsLeft ~/ 60}:${(secondsLeft % 60).toString().padLeft(2, '0')}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: _expired
+                        ? colorScheme.error
+                        : colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -146,14 +250,72 @@ class _SelectionCardState extends State<SelectionCard> {
               );
             }),
             const SizedBox(height: 8),
+            Text(
+              _isSingle
+                  ? 'Choose 1 option'
+                  : 'Selected $_selectedCount ($min-$max required)',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (isOutdated)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'This question has been replaced by a newer one.',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: colorScheme.error),
+                ),
+              ),
+            if ((_localError ?? panelError ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _localError ?? panelError!,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: colorScheme.error),
+                ),
+              ),
+            if ((_localInfo ?? panelInfo ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  _localInfo ?? panelInfo!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
+            if (_completed)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Selection submitted.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(onPressed: _cancel, child: const Text('Cancel')),
+                TextButton(
+                  onPressed:
+                      (_completed || submitting || isOutdated) ? null : _cancel,
+                  child: const Text('Skip'),
+                ),
                 const SizedBox(width: 8),
                 FilledButton(
-                  onPressed: _selectedIds.isEmpty ? null : _submit,
-                  child: const Text('Submit'),
+                  onPressed: (submitting || !canSubmit) ? null : _submit,
+                  child: submitting
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Submit'),
                 ),
               ],
             ),

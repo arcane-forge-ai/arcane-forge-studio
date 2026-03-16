@@ -3,17 +3,21 @@ import 'selection.dart';
 import 'write_summary.dart';
 
 class SendMessageRequest {
-  final String content;
+  final String? content;
+  final SelectionAnswer? selectionAnswer;
   final Map<String, dynamic> metadata;
 
   SendMessageRequest({
-    required this.content,
+    this.content,
+    this.selectionAnswer,
     this.metadata = const {},
   });
 
   Map<String, dynamic> toJson() {
     return {
-      'content': content,
+      if (content != null && content!.trim().isNotEmpty) 'content': content,
+      if (selectionAnswer != null)
+        'selection_answer': selectionAnswer!.toJson(),
       'metadata': metadata,
     };
   }
@@ -23,6 +27,7 @@ class ChatMessage {
   final String role;
   final String content;
   final DateTime timestamp;
+  final bool isPartial;
   final String? thinking;
   final Confirmation? confirmation;
   final SelectionInfo? selection;
@@ -32,6 +37,7 @@ class ChatMessage {
     required this.role,
     required this.content,
     required this.timestamp,
+    this.isPartial = false,
     this.thinking,
     this.confirmation,
     this.selection,
@@ -45,6 +51,7 @@ class ChatMessage {
       timestamp: json['timestamp'] != null
           ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
           : DateTime.now(),
+      isPartial: json['partial'] == true,
       thinking: json['thinking']?.toString(),
       confirmation: json['confirmation'] != null
           ? Confirmation.fromJson(

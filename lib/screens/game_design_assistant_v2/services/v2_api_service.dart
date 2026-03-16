@@ -10,6 +10,7 @@ import '../models/context.dart';
 import '../models/message.dart';
 import '../models/progress.dart';
 import '../models/project_context.dart';
+import '../models/selection.dart';
 import '../models/session.dart';
 
 class ConflictException implements Exception {
@@ -187,6 +188,43 @@ class V2ApiService {
       return GetContextResponse.fromJson(_asMap(response.data));
     } catch (e) {
       throw Exception('Failed to get context: ${_extractError(e)}');
+    }
+  }
+
+  Future<ChatMessage> sendMessage({
+    required String sessionId,
+    String? content,
+    String? documentPath,
+    SelectionAnswer? selectionAnswer,
+  }) async {
+    try {
+      final request = SendMessageRequest(
+        content: content?.trim(),
+        selectionAnswer: selectionAnswer,
+      );
+      final payload = request.toJson();
+      if (documentPath != null && documentPath.trim().isNotEmpty) {
+        payload['document_path'] = documentPath.trim();
+      }
+      final response = await _apiClient.dio.post(
+        '$_designBaseUrl/sessions/$sessionId/message',
+        data: payload,
+      );
+      final data = _asMap(response.data);
+      return ChatMessage.fromJson({
+        'role': 'assistant',
+        'content': data['message']?.toString() ?? '',
+        'timestamp': DateTime.now().toIso8601String(),
+        if (data['thinking'] != null) 'thinking': data['thinking'],
+        if (data['confirmation'] != null) 'confirmation': data['confirmation'],
+        if (data['selection'] != null) 'selection': data['selection'],
+        if (data['write_summary'] != null)
+          'write_summary': data['write_summary'],
+      });
+    } on DioException {
+      rethrow;
+    } catch (e) {
+      throw Exception('Failed to send message: ${_extractError(e)}');
     }
   }
 

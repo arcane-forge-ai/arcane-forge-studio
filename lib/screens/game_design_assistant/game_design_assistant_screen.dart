@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -79,6 +80,12 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
   bool _showChatHistory = true; // Toggle for chat history sidebar
   bool _showToolbar = false; // Toggle for toolbar visibility
   Project? _projectDetails; // Cached project details from API
+  SelectionInfo? _pendingSelection;
+  final Set<String> _selectionDraftIds = <String>{};
+  bool _selectionSubmitting = false;
+  String? _selectionPanelError;
+  String? _selectionPanelInfo;
+  Timer? _selectionCountdownTimer;
 
   // Scroll controller
   final ScrollController _scrollController = ScrollController();
@@ -124,6 +131,11 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
 
     // Check for pending feedback discussion data
     _checkForFeedbackDiscussionData();
+
+    _selectionCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _pendingSelection == null) return;
+      setState(() {});
+    });
   }
 
   @override
@@ -131,6 +143,7 @@ class _GameDesignAssistantScreenState extends State<GameDesignAssistantScreen> {
     _chatController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    _selectionCountdownTimer?.cancel();
     _chatApiService.dispose();
     super.dispose();
   }
@@ -305,7 +318,7 @@ Ask me anything about game design, or try one of the example questions below!
 
     // Use minimal RAG for all auto-initiated design assistant messages
     await _sendMessageWithTitle(
-      userMessage, 
+      userMessage,
       title,
       agentType: 'minimal_rag',
     );
@@ -442,6 +455,12 @@ Ask me anything about game design, or try one of the example questions below!
       // Update state to show/hide save button
       setState(() {
         _lastResponseHasDocument = hasDocument;
+        _pendingSelection = response.selection;
+        _selectionDraftIds.clear();
+        _selectionPanelError = null;
+        _selectionPanelInfo = response.selection != null
+            ? 'Choose options or continue typing to skip.'
+            : null;
       });
 
       // Refresh the chat history sidebar to show any new sessions created by the API
@@ -581,6 +600,12 @@ Ask me anything about game design, or try one of the example questions below!
       // Update state to show/hide save button
       setState(() {
         _lastResponseHasDocument = hasDocument;
+        _pendingSelection = response.selection;
+        _selectionDraftIds.clear();
+        _selectionPanelError = null;
+        _selectionPanelInfo = response.selection != null
+            ? 'Choose options or continue typing to skip.'
+            : null;
       });
 
       // Refresh the chat history sidebar to show any new sessions created by the API
@@ -628,6 +653,341 @@ Ask me anything about game design, or try one of the example questions below!
         });
       }
     }
+  }
+
+  bool get _selectionExpired {
+    final pending = _pendingSelection;
+    if (pending == null) return false;
+    return DateTime.now().isAfter(pending.expiresAt);
+  }
+
+  Map<String, dynamic>? _selectionErrorPayload(Object error) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map && data['detail'] is Map) {
+        return Map<String, dynamic>.from(data['detail'] as Map);
+      }
+      if (data is Map && data['error_code'] != null) {
+        return Map<String, dynamic>.from(data);
+      }
+    }
+    return null;
+  }
+
+  void _toggleSelectionDraft(String id) {
+    if (_selectionSubmitting ||
+        _selectionExpired ||
+        _pendingSelection == null) {
+      return;
+    }
+    setState(() {
+      _selectionPanelError = null;
+      if (_pendingSelection!.allowMultiple) {
+        if (_selectionDraftIds.contains(id)) {
+          _selectionDraftIds.remove(id);
+        } else if (_selectionDraftIds.length <
+            _pendingSelection!.maxSelection) {
+          _selectionDraftIds.add(id);
+        }
+      } else {
+        _selectionDraftIds
+          ..clear()
+          ..add(id);
+      }
+    });
+  }
+
+  Future<void> _submitSelection() async {
+    final pending = _pendingSelection;
+    if (pending == null) return;
+    if (_selectionExpired) {
+      setState(() {
+        _selectionPanelError = 'Selection expired. Please ask for a new one.';
+      });
+      return;
+    }
+    if (_selectionDraftIds.length < pending.minSelection ||
+        _selectionDraftIds.length > pending.maxSelection) {
+      setState(() {
+        _selectionPanelError =
+            'Please select ${pending.minSelection}-${pending.maxSelection} option(s).';
+      });
+      return;
+    }
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final summary = '[Selection] ${_selectionDraftIds.join(', ')}';
+    _chatController.addMessage(
+      ChatMessage(
+        text: summary,
+        user: _currentUser,
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    setState(() {
+      _selectionSubmitting = true;
+      _selectionPanelError = null;
+      _selectionPanelInfo = null;
+    });
+
+    try {
+      final request = ChatRequest(
+        message: summary,
+        projectId: int.tryParse(widget.projectId),
+        userId: authProvider.userId.isNotEmpty ? authProvider.userId : null,
+        knowledgeBaseName: _projectDetails?.knowledgeBaseName,
+        sessionId: _currentSessionId,
+        agentType: 'rag',
+        selectionAnswer: SelectionAnswer(
+          questionId: pending.questionId,
+          action: 'submit',
+          selectedIds: _selectionDraftIds.toList(growable: false),
+        ),
+      );
+      final response = await _chatApiService.sendChatMessage(request);
+      if (response.sessionId.isNotEmpty) {
+        _currentSessionId = response.sessionId;
+      }
+      _chatController.addMessage(
+        ChatMessage(
+          text: response.content,
+          user: _aiUser,
+          createdAt: DateTime.now(),
+          isMarkdown: true,
+        ),
+      );
+      setState(() {
+        _pendingSelection = response.selection;
+        _selectionDraftIds.clear();
+        _selectionPanelInfo = 'Selection submitted.';
+      });
+      _refreshChatHistory?.call();
+    } catch (e) {
+      final payload = _selectionErrorPayload(e);
+      final errorCode = payload?['error_code']?.toString() ?? '';
+      final message =
+          payload?['message']?.toString() ?? ErrorHandler.getErrorMessage(e);
+      if (errorCode == 'stale_selection') {
+        final latest = payload?['latest_selection'];
+        if (latest is Map) {
+          setState(() {
+            _pendingSelection =
+                SelectionInfo.fromJson(Map<String, dynamic>.from(latest));
+            _selectionDraftIds.clear();
+            _selectionPanelInfo = 'Selection updated to latest.';
+          });
+        } else {
+          setState(() {
+            _selectionPanelInfo = message;
+          });
+        }
+      } else if (errorCode == 'selection_expired') {
+        setState(() {
+          _pendingSelection = null;
+          _selectionDraftIds.clear();
+          _selectionPanelInfo = message;
+        });
+      } else {
+        setState(() {
+          _selectionPanelError = message;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _selectionSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _skipSelection() async {
+    final pending = _pendingSelection;
+    if (pending == null) return;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    setState(() {
+      _selectionSubmitting = true;
+      _selectionPanelError = null;
+      _selectionPanelInfo = null;
+    });
+    try {
+      final request = ChatRequest(
+        message: '[Selection] skipped',
+        projectId: int.tryParse(widget.projectId),
+        userId: authProvider.userId.isNotEmpty ? authProvider.userId : null,
+        knowledgeBaseName: _projectDetails?.knowledgeBaseName,
+        sessionId: _currentSessionId,
+        agentType: 'rag',
+        selectionAnswer: SelectionAnswer(
+          questionId: pending.questionId,
+          action: 'cancel',
+        ),
+      );
+      final response = await _chatApiService.sendChatMessage(request);
+      if (response.sessionId.isNotEmpty) {
+        _currentSessionId = response.sessionId;
+      }
+      _chatController.addMessage(
+        ChatMessage(
+          text: response.content,
+          user: _aiUser,
+          createdAt: DateTime.now(),
+          isMarkdown: true,
+        ),
+      );
+      setState(() {
+        _pendingSelection = response.selection;
+        _selectionDraftIds.clear();
+        _selectionPanelInfo = 'Selection skipped.';
+      });
+      _refreshChatHistory?.call();
+    } catch (e) {
+      setState(() {
+        _selectionPanelError = ErrorHandler.getErrorMessage(e);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _selectionSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildSelectionPanel() {
+    final selection = _pendingSelection;
+    if (selection == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final isExpired = _selectionExpired;
+    final selectedCount = _selectionDraftIds.length;
+    final canSubmit = !isExpired &&
+        !_selectionSubmitting &&
+        selectedCount >= selection.minSelection &&
+        selectedCount <= selection.maxSelection;
+    final expiresIn = selection.expiresAt.difference(DateTime.now());
+    final seconds = expiresIn.inSeconds.clamp(0, 99999);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  selection.title,
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                isExpired
+                    ? 'Expired'
+                    : 'Expires in ${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: isExpired
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          if ((selection.description ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(selection.description!),
+            ),
+          const SizedBox(height: 8),
+          ...selection.options.map((option) {
+            final selected = _selectionDraftIds.contains(option.id);
+            return InkWell(
+              onTap: () => _toggleSelectionDraft(option.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    if (selection.allowMultiple)
+                      Checkbox(
+                        value: selected,
+                        onChanged: (_) => _toggleSelectionDraft(option.id),
+                      )
+                    else
+                      Radio<String>(
+                        value: option.id,
+                        groupValue: _selectionDraftIds.isEmpty
+                            ? null
+                            : _selectionDraftIds.first,
+                        onChanged: (_) => _toggleSelectionDraft(option.id),
+                      ),
+                    Expanded(child: Text(option.label)),
+                  ],
+                ),
+              ),
+            );
+          }),
+          Text(
+            'Selected $selectedCount (${selection.minSelection}-${selection.maxSelection})',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          if ((_selectionPanelError ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                _selectionPanelError!,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.error),
+              ),
+            ),
+          if ((_selectionPanelInfo ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                _selectionPanelInfo!,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.primary),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: _selectionSubmitting ? null : _skipSelection,
+                child: const Text('Skip'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: canSubmit ? _submitSelection : null,
+                child: _selectionSubmitting
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Submit'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _saveDocumentToKnowledgeBase() async {
@@ -1027,6 +1387,10 @@ Ask me anything about game design, or try one of the example questions below!
         _selectedChatSession = null;
         _lastAiResponse = null;
         _lastResponseHasDocument = false;
+        _pendingSelection = null;
+        _selectionDraftIds.clear();
+        _selectionPanelError = null;
+        _selectionPanelInfo = null;
       });
 
       // Clear current chat messages and add welcome message
@@ -1061,6 +1425,10 @@ Ask me anything about game design, or try one of the example questions below!
     setState(() {
       _selectedChatSession = session;
       _currentSessionId = session.sessionId; // Set current session ID
+      _pendingSelection = null;
+      _selectionDraftIds.clear();
+      _selectionPanelError = null;
+      _selectionPanelInfo = null;
     });
 
     // Show loading indicator
@@ -1481,6 +1849,14 @@ Ask me anything about game design, or try one of the example questions below!
                                       loadingIndicatorOffset: 100,
                                     ),
                                   ),
+
+                                  if (_pendingSelection != null)
+                                    Positioned(
+                                      left: 0,
+                                      right: 0,
+                                      bottom: _showToolbar ? 154 : 74,
+                                      child: _buildSelectionPanel(),
+                                    ),
 
                                   // Floating Action Bar (shows when toolbar is enabled)
                                   if (_showToolbar)

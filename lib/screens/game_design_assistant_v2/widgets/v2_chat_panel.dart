@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../models/confirmation.dart';
 import '../models/message.dart';
 import '../providers/v2_session_provider.dart';
+import '../utils/stream_locale.dart';
 import 'confirmation_card.dart';
 import 'selection_card.dart';
 
@@ -103,7 +104,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                         filteredMessages.length + (provider.isSending ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index >= filteredMessages.length) {
-                        return _buildMessageBubble(
+                        final bubble = _buildMessageBubble(
                           context,
                           ChatMessage(
                             role: 'assistant',
@@ -113,6 +114,17 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                           ),
                           isStreaming: true,
                           isLastMessage: true,
+                        );
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeOut,
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(opacity: animation, child: child),
+                          child: KeyedSubtree(
+                            key: ValueKey<int>(provider.streamRenderVersion),
+                            child: bubble,
+                          ),
                         );
                       }
                       final msg = filteredMessages[index];
@@ -225,6 +237,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
     final hasPending = provider.pendingConfirmation != null;
     Confirmation? confirmation = hasPending ? msg.confirmation : null;
     var displayContent = msg.content;
+    final streamStatusTip = isStreaming ? provider.streamStatusTip : null;
 
     if (isStreaming && displayContent.isEmpty && (msg.thinking ?? '').isEmpty) {
       return Align(
@@ -299,6 +312,39 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (streamStatusTip != null && streamStatusTip.trim().isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color:
+                        theme.colorScheme.secondaryContainer.withOpacity(0.65),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    streamStatusTip,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSecondaryContainer,
+                    ),
+                  ),
+                ),
+              if (msg.isPartial)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer.withOpacity(0.65),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    localizedPartialHint(displayContent),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
               if ((msg.thinking ?? '').isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(bottom: 8),

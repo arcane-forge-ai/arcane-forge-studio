@@ -15,6 +15,19 @@ import '../models/write_summary.dart';
 import '../services/v2_api_service.dart';
 import '../services/v2_sse_service.dart';
 import '../utils/pending_etag_contract.dart';
+import '../utils/stream_locale.dart';
+
+class SelectionSubmitResult {
+  final String status; // success | stale | expired | validation_error | error
+  final String? message;
+  final SelectionInfo? latestSelection;
+
+  const SelectionSubmitResult({
+    required this.status,
+    this.message,
+    this.latestSelection,
+  });
+}
 
 class V2SessionProvider with ChangeNotifier {
   static const int _knowledgeExtractionPromptTurnGap = 1;
@@ -57,14 +70,22 @@ class V2SessionProvider with ChangeNotifier {
   bool _isSessionsLoading = false;
   bool _isSending = false;
   bool _isConfirming = false;
+  bool _isSubmittingSelection = false;
   bool _hasDraftConversation = false;
 
   String _streamingContent = '';
   String? _thinkingContent;
   DocumentWriteSummary? _pendingWriteSummary;
+  String? _streamStatusTip;
+  int _streamRenderVersion = 0;
+  String _pendingDeltaBuffer = '';
+  Timer? _deltaFlushTimer;
+  Timer? _streamStatusTipTimer;
 
   String? _sessionsError;
   String? _chatError;
+  String? _selectionPanelError;
+  String? _selectionPanelInfo;
 
   // -- Project Context / Pending Knowledge state --
   List<PendingKnowledgeItem> _pendingKnowledgeItems = [];
@@ -83,6 +104,8 @@ class V2SessionProvider with ChangeNotifier {
   bool _isWritePaused = false;
   int _writePausedRetrySeconds = 0;
   final Map<String, String> _localPendingDrafts = {};
+  int _activeStreamEpoch = 0;
+  String? _activeStreamSessionId;
 
   List<SessionInfo> get sessions => _sessions;
   SessionInfo? get currentSession => _currentSession;
@@ -100,11 +123,16 @@ class V2SessionProvider with ChangeNotifier {
   bool get isSessionsLoading => _isSessionsLoading;
   bool get isSending => _isSending;
   bool get isConfirming => _isConfirming;
+  bool get isSubmittingSelection => _isSubmittingSelection;
   bool get hasDraftConversation => _hasDraftConversation;
   String get streamingContent => _streamingContent;
   String? get thinkingContent => _thinkingContent;
+  String? get streamStatusTip => _streamStatusTip;
+  int get streamRenderVersion => _streamRenderVersion;
   String? get sessionsError => _sessionsError;
   String? get chatError => _chatError;
+  String? get selectionPanelError => _selectionPanelError;
+  String? get selectionPanelInfo => _selectionPanelInfo;
 
   // -- Project Context / Pending Knowledge getters --
   List<PendingKnowledgeItem> get pendingKnowledgeItems =>
@@ -165,6 +193,66 @@ class V2SessionProvider with ChangeNotifier {
     return buildPendingItemEtag(_pendingItemPayloadForEtag(item));
   }
 
+  int _beginStreamBinding(String sessionId) {
+    _activeStreamEpoch += 1;
+    _activeStreamSessionId = sessionId;
+    return _activeStreamEpoch;
+  }
+
+  bool _ownsStreamBinding(int epoch, String sessionId) {
+    return _activeStreamEpoch == epoch && _activeStreamSessionId == sessionId;
+  }
+
+  void _invalidateStreamBinding({bool clearUiState = false}) {
+    _activeStreamEpoch += 1;
+    _activeStreamSessionId = null;
+    _sseService.cancelActiveStream();
+    _deltaFlushTimer?.cancel();
+    _deltaFlushTimer = null;
+    _pendingDeltaBuffer = '';
+    _streamStatusTipTimer?.cancel();
+    _streamStatusTipTimer = null;
+    _streamStatusTip = null;
+    if (clearUiState) {
+      _isSending = false;
+      _streamingContent = '';
+      _thinkingContent = null;
+      _pendingWriteSummary = null;
+    }
+  }
+
+  void _showStreamStatusTip(String tip) {
+    _streamStatusTip = tip;
+    _streamStatusTipTimer?.cancel();
+    _streamStatusTipTimer = Timer(const Duration(milliseconds: 1800), () {
+      _streamStatusTip = null;
+      notifyListeners();
+    });
+  }
+
+  void _flushPendingDelta({bool notify = true}) {
+    if (_pendingDeltaBuffer.isEmpty) {
+      return;
+    }
+    _streamingContent += _pendingDeltaBuffer;
+    _pendingDeltaBuffer = '';
+    _deltaFlushTimer?.cancel();
+    _deltaFlushTimer = null;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  void _queueDeltaContent(String deltaText) {
+    if (deltaText.isEmpty) {
+      return;
+    }
+    _pendingDeltaBuffer += deltaText;
+    _deltaFlushTimer ??= Timer(const Duration(milliseconds: 50), () {
+      _flushPendingDelta();
+    });
+  }
+
   String _computeLocalBatchEtag() {
     final pid = int.tryParse(projectId) ?? 0;
     final items = _pendingKnowledgeItems
@@ -210,12 +298,15 @@ class V2SessionProvider with ChangeNotifier {
   }
 
   void startNewChat() {
+    _invalidateStreamBinding(clearUiState: true);
     _currentSession = null;
     _messages = [];
     _contextData = null;
     _clearSelectedDocument();
     _pendingConfirmation = null;
     _pendingSelection = null;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
     _streamingContent = '';
     _thinkingContent = null;
     _pendingWriteSummary = null;
@@ -233,6 +324,7 @@ class V2SessionProvider with ChangeNotifier {
   }
 
   Future<void> selectSession(String sessionId) async {
+    _invalidateStreamBinding(clearUiState: true);
     _isLoading = true;
     _chatError = null;
     _promptEligibleSessionId = null;
@@ -274,6 +366,8 @@ class V2SessionProvider with ChangeNotifier {
 
     _pendingConfirmation = null;
     _pendingSelection = null;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
     _streamingContent = '';
     _thinkingContent = null;
     _refreshExtractionPromptFlag();
@@ -319,7 +413,9 @@ class V2SessionProvider with ChangeNotifier {
 
     final session = _currentSession;
     if (session == null) return;
-    _promptEligibleSessionId = session.sessionId;
+    final streamSessionId = session.sessionId;
+    _promptEligibleSessionId = streamSessionId;
+    final streamEpoch = _beginStreamBinding(streamSessionId);
 
     final userMsg = ChatMessage(
       role: 'user',
@@ -331,28 +427,84 @@ class V2SessionProvider with ChangeNotifier {
     _isSending = true;
     _chatError = null;
     _streamingContent = '';
+    _pendingDeltaBuffer = '';
+    _deltaFlushTimer?.cancel();
+    _deltaFlushTimer = null;
+    _streamStatusTipTimer?.cancel();
+    _streamStatusTipTimer = null;
+    _streamStatusTip = null;
     _thinkingContent = null;
     _pendingWriteSummary = null;
     _pendingConfirmation = null;
     _pendingSelection = null;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
     notifyListeners();
 
+    var streamCancelled = false;
+    var receivedDone = false;
     try {
       await for (final event in _sseService.streamMessage(
-        sessionId: session.sessionId,
+        sessionId: streamSessionId,
         content: trimmed,
         documentPath: _selectedDocPath,
+        shouldCancel: () => !_ownsStreamBinding(streamEpoch, streamSessionId),
       )) {
+        if (!_ownsStreamBinding(streamEpoch, streamSessionId)) {
+          streamCancelled = true;
+          break;
+        }
+        final eventSessionId = event.sessionId?.trim();
+        if (eventSessionId != null &&
+            eventSessionId.isNotEmpty &&
+            eventSessionId != streamSessionId) {
+          _chatError =
+              'Stream session mismatch detected. The response stream was dropped for safety.';
+          _invalidateStreamBinding(clearUiState: true);
+          notifyListeners();
+          streamCancelled = true;
+          break;
+        }
         switch (event.type) {
           case 'thinking':
             _thinkingContent = (_thinkingContent ?? '') + (event.content ?? '');
             notifyListeners();
             break;
           case 'content':
-            _streamingContent += (event.content ?? '');
-            notifyListeners();
+            final content = event.content ?? '';
+            final mode = (event.contentMode ?? '').trim().toLowerCase();
+            if (mode == 'replace') {
+              _flushPendingDelta(notify: false);
+              if (content != _streamingContent) {
+                _streamingContent = content;
+                _streamRenderVersion += 1;
+                _showStreamStatusTip(
+                  localizedStreamHint(
+                    refined: true,
+                    seedText: _streamingContent,
+                  ),
+                );
+              }
+              notifyListeners();
+              break;
+            }
+
+            if (mode == 'delta') {
+              _queueDeltaContent(content);
+              break;
+            }
+
+            // Legacy compatibility: content_mode missing -> append semantics.
+            _queueDeltaContent(content);
             break;
           case 'done':
+            receivedDone = true;
+            _flushPendingDelta(notify: false);
+            final doneFinal = (event.finalContent ?? '').trim();
+            if (doneFinal.isNotEmpty && doneFinal != _streamingContent) {
+              _streamingContent = doneFinal;
+              _streamRenderVersion += 1;
+            }
             // Canvas mode guard: only suppress file_merge_section confirmation
             // when canvas_document is present (backend canvas mode is active).
             // Without canvas_document, show all confirmations normally.
@@ -383,40 +535,251 @@ class V2SessionProvider with ChangeNotifier {
         }
       }
     } catch (e) {
-      _chatError = 'Failed to get response: $e';
-      if (kDebugMode) {
-        print('Error sending v2 message: $e');
+      if (_ownsStreamBinding(streamEpoch, streamSessionId) &&
+          !streamCancelled) {
+        _chatError = 'Failed to get response: $e';
+        if (kDebugMode) {
+          print('Error sending v2 message: $e');
+        }
       }
     } finally {
-      final shouldAppendAssistantMessage = _streamingContent.isNotEmpty ||
-          (_thinkingContent?.isNotEmpty ?? false) ||
-          _pendingConfirmation != null ||
-          _pendingSelection != null ||
-          _pendingWriteSummary != null;
-      if (shouldAppendAssistantMessage) {
-        _messages = [
-          ..._messages,
-          ChatMessage(
-            role: 'assistant',
-            content: _streamingContent,
-            timestamp: DateTime.now(),
-            thinking: _thinkingContent,
-            confirmation: _pendingConfirmation,
-            selection: _pendingSelection,
-            writeSummary: _pendingWriteSummary,
-          ),
-        ];
+      _flushPendingDelta(notify: false);
+      _deltaFlushTimer?.cancel();
+      _deltaFlushTimer = null;
+      final stillOwnsStream = _ownsStreamBinding(streamEpoch, streamSessionId);
+      if (stillOwnsStream && !streamCancelled) {
+        final isPartialResponse = !receivedDone;
+        if (isPartialResponse && _streamingContent.isNotEmpty) {
+          _showStreamStatusTip(
+            localizedStreamHint(
+              refined: false,
+              seedText: _streamingContent,
+            ),
+          );
+        }
+        final shouldAppendAssistantMessage = _streamingContent.isNotEmpty ||
+            (_thinkingContent?.isNotEmpty ?? false) ||
+            _pendingConfirmation != null ||
+            _pendingSelection != null ||
+            _pendingWriteSummary != null;
+        if (shouldAppendAssistantMessage) {
+          _messages = [
+            ..._messages,
+            ChatMessage(
+              role: 'assistant',
+              content: _streamingContent,
+              timestamp: DateTime.now(),
+              isPartial: isPartialResponse,
+              thinking: _thinkingContent,
+              confirmation: _pendingConfirmation,
+              selection: _pendingSelection,
+              writeSummary: _pendingWriteSummary,
+            ),
+          ];
+        }
+
+        _isSending = false;
+        _streamingContent = '';
+        _thinkingContent = null;
+        _pendingWriteSummary = null;
+        _streamStatusTip = null;
+        _streamStatusTipTimer?.cancel();
+        _streamStatusTipTimer = null;
+        _activeStreamSessionId = null;
+        notifyListeners();
+
+        await Future.delayed(const Duration(milliseconds: 300));
+        await refreshData();
+        await loadSessions();
+      }
+    }
+  }
+
+  Map<String, dynamic>? _selectionErrorPayloadFromDio(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      if (data['detail'] is Map) {
+        return Map<String, dynamic>.from(data['detail'] as Map);
+      }
+      if (data.containsKey('error_code')) {
+        return Map<String, dynamic>.from(data);
+      }
+      return null;
+    }
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      if (map['detail'] is Map) {
+        return Map<String, dynamic>.from(map['detail'] as Map);
+      }
+      if (map.containsKey('error_code')) {
+        return map;
+      }
+    }
+    return null;
+  }
+
+  Future<SelectionSubmitResult> submitSelection({
+    required SelectionInfo selection,
+    required List<String> selectedIds,
+  }) async {
+    final session = _currentSession;
+    if (session == null) {
+      return const SelectionSubmitResult(
+        status: 'error',
+        message: 'No active session.',
+      );
+    }
+    final normalizedIds = selectedIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (normalizedIds.isEmpty) {
+      return const SelectionSubmitResult(
+        status: 'validation_error',
+        message: 'Please choose at least one option.',
+      );
+    }
+
+    _isSubmittingSelection = true;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
+    notifyListeners();
+
+    try {
+      final selectedSummary = normalizedIds.join(', ');
+      _messages = [
+        ..._messages,
+        ChatMessage(
+          role: 'user',
+          content: '[Selection] $selectedSummary',
+          timestamp: DateTime.now(),
+        ),
+      ];
+
+      final assistantMessage = await _apiService.sendMessage(
+        sessionId: session.sessionId,
+        documentPath: _selectedDocPath,
+        selectionAnswer: SelectionAnswer(
+          questionId: selection.questionId,
+          action: 'submit',
+          selectedIds: normalizedIds,
+        ),
+      );
+      _messages = [..._messages, assistantMessage];
+      _pendingSelection = assistantMessage.selection;
+      _selectionPanelInfo = 'Selection submitted.';
+      _chatError = null;
+
+      await Future.delayed(const Duration(milliseconds: 200));
+      await refreshData(reloadHistory: false);
+      await loadSessions();
+      return const SelectionSubmitResult(status: 'success');
+    } on DioException catch (e) {
+      final payload = _selectionErrorPayloadFromDio(e);
+      final errorCode = payload?['error_code']?.toString() ?? '';
+      final message =
+          payload?['message']?.toString() ?? 'Selection submit failed.';
+      final latestRaw = payload?['latest_selection'];
+      final latestSelection = latestRaw is Map
+          ? SelectionInfo.fromJson(Map<String, dynamic>.from(latestRaw))
+          : null;
+
+      if (errorCode == 'stale_selection') {
+        if (latestSelection != null) {
+          _pendingSelection = latestSelection;
+          _messages = [
+            ..._messages,
+            ChatMessage(
+              role: 'assistant',
+              content: 'Selection updated. Switched to the latest question.',
+              timestamp: DateTime.now(),
+              selection: latestSelection,
+            ),
+          ];
+        }
+        _selectionPanelInfo = message;
+        return SelectionSubmitResult(
+          status: 'stale',
+          message: message,
+          latestSelection: latestSelection,
+        );
       }
 
-      _isSending = false;
-      _streamingContent = '';
-      _thinkingContent = null;
-      _pendingWriteSummary = null;
-      notifyListeners();
+      if (errorCode == 'selection_expired') {
+        _pendingSelection = null;
+        _selectionPanelInfo = message;
+        return SelectionSubmitResult(
+          status: 'expired',
+          message: message,
+        );
+      }
 
-      await Future.delayed(const Duration(milliseconds: 300));
-      await refreshData();
+      if (errorCode == 'selection_validation_failed') {
+        _selectionPanelError = message;
+        return SelectionSubmitResult(
+          status: 'validation_error',
+          message: message,
+          latestSelection: latestSelection,
+        );
+      }
+
+      _selectionPanelError = message;
+      return SelectionSubmitResult(status: 'error', message: message);
+    } catch (e) {
+      final message = 'Selection submit failed: $e';
+      _selectionPanelError = message;
+      return SelectionSubmitResult(status: 'error', message: message);
+    } finally {
+      _isSubmittingSelection = false;
+      notifyListeners();
+    }
+  }
+
+  Future<SelectionSubmitResult> cancelSelection({
+    required SelectionInfo selection,
+  }) async {
+    final session = _currentSession;
+    if (session == null) {
+      return const SelectionSubmitResult(
+        status: 'error',
+        message: 'No active session.',
+      );
+    }
+
+    _isSubmittingSelection = true;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
+    notifyListeners();
+    try {
+      final assistantMessage = await _apiService.sendMessage(
+        sessionId: session.sessionId,
+        documentPath: _selectedDocPath,
+        selectionAnswer: SelectionAnswer(
+          questionId: selection.questionId,
+          action: 'cancel',
+        ),
+      );
+      _messages = [..._messages, assistantMessage];
+      _pendingSelection = null;
+      _selectionPanelInfo = 'Selection skipped.';
+      await Future.delayed(const Duration(milliseconds: 200));
+      await refreshData(reloadHistory: false);
       await loadSessions();
+      return const SelectionSubmitResult(status: 'success');
+    } on DioException catch (e) {
+      final payload = _selectionErrorPayloadFromDio(e);
+      final message =
+          payload?['message']?.toString() ?? 'Selection cancel failed.';
+      _selectionPanelError = message;
+      return SelectionSubmitResult(status: 'error', message: message);
+    } catch (e) {
+      final message = 'Selection cancel failed: $e';
+      _selectionPanelError = message;
+      return SelectionSubmitResult(status: 'error', message: message);
+    } finally {
+      _isSubmittingSelection = false;
+      notifyListeners();
     }
   }
 
@@ -824,6 +1187,8 @@ class V2SessionProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _invalidateStreamBinding(clearUiState: true);
+    _sseService.dispose();
     _apiService.dispose();
     super.dispose();
   }
@@ -951,15 +1316,18 @@ class V2SessionProvider with ChangeNotifier {
     final status = (writeGate['status'] as String? ?? 'open').toLowerCase();
     _isWritePaused = status == 'frozen';
     if (_isWritePaused) {
-      final freezeStartedAt = DateTime.tryParse(
-          writeGate['freeze_started_at']?.toString() ?? '');
+      final freezeStartedAt =
+          DateTime.tryParse(writeGate['freeze_started_at']?.toString() ?? '');
       final budget = writeGate['freeze_budget_seconds'] is int
           ? writeGate['freeze_budget_seconds'] as int
-          : int.tryParse(writeGate['freeze_budget_seconds']?.toString() ?? '') ??
+          : int.tryParse(
+                  writeGate['freeze_budget_seconds']?.toString() ?? '') ??
               90;
       if (freezeStartedAt != null) {
-        final elapsed = DateTime.now().toUtc().difference(freezeStartedAt.toUtc());
-        _writePausedRetrySeconds = (budget - elapsed.inSeconds).clamp(1, budget);
+        final elapsed =
+            DateTime.now().toUtc().difference(freezeStartedAt.toUtc());
+        _writePausedRetrySeconds =
+            (budget - elapsed.inSeconds).clamp(1, budget);
       } else {
         _writePausedRetrySeconds = budget;
       }
@@ -998,7 +1366,9 @@ class V2SessionProvider with ChangeNotifier {
         await Future<void>.delayed(
             Duration(milliseconds: 500 * (retryAttempt + 1)));
         return loadPendingKnowledge(
-            notify: notify, retryAttempt: retryAttempt + 1, captureError: captureError);
+            notify: notify,
+            retryAttempt: retryAttempt + 1,
+            captureError: captureError);
       }
       if (captureError) {
         _pendingKnowledgeError = e.toString();
@@ -1160,8 +1530,7 @@ class V2SessionProvider with ChangeNotifier {
         try {
           _currentSession = await _apiService.getSession(sessionId);
         } catch (_) {}
-        final expectedPending =
-            (result['pending_count'] as num?)?.toInt() ?? 0;
+        final expectedPending = (result['pending_count'] as num?)?.toInt() ?? 0;
         bool pendingLoaded = true;
         String? pendingLoadError;
         if (expectedPending > 0) {
