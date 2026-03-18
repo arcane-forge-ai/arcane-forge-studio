@@ -46,6 +46,8 @@ class SSEEvent {
   final Map<String, dynamic>? toolCall;
   final Confirmation? confirmation;
   final SelectionInfo? selection;
+  final String? stage;
+  final String? pillar;
   final bool? isFinal;
   final CanvasDocument? canvasDocument;
   final DocumentWriteSummary? writeSummary;
@@ -60,6 +62,8 @@ class SSEEvent {
     this.toolCall,
     this.confirmation,
     this.selection,
+    this.stage,
+    this.pillar,
     this.isFinal,
     this.canvasDocument,
     this.writeSummary,
@@ -84,6 +88,8 @@ class SSEEvent {
           ? null
           : SelectionInfo.fromJson(
               Map<String, dynamic>.from(json['selection'] as Map)),
+      stage: json['stage']?.toString(),
+      pillar: json['pillar']?.toString(),
       isFinal: json['is_final'] as bool?,
       canvasDocument: json['canvas_document'] != null
           ? CanvasDocument.fromJson(

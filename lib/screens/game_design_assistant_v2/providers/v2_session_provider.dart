@@ -119,6 +119,12 @@ class V2SessionProvider with ChangeNotifier {
   int? get gddVersionNumber => _gddVersionNumber;
   Confirmation? get pendingConfirmation => _pendingConfirmation;
   SelectionInfo? get pendingSelection => _pendingSelection;
+  bool get hasExpiredPendingSelection {
+    final pending = _pendingSelection;
+    if (pending == null) return false;
+    return DateTime.now().isAfter(pending.expiresAt);
+  }
+
   bool get isLoading => _isLoading;
   bool get isSessionsLoading => _isSessionsLoading;
   bool get isSending => _isSending;
@@ -241,6 +247,56 @@ class V2SessionProvider with ChangeNotifier {
     if (notify) {
       notifyListeners();
     }
+  }
+
+  SelectionInfo? _selectionFromTextFallback(String text) {
+    final lines = text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (lines.isEmpty) return null;
+
+    const markers = ['展开', '优先', '选择', '先回答', '哪个方向', '先聊'];
+    final hasIntentMarker = lines.any(
+      (line) => markers.any((marker) => line.contains(marker)),
+    );
+    if (!hasIntentMarker) return null;
+
+    final optionPattern = RegExp(r'^(\d+)[\.\)、]\s*(.+\S)$');
+    final options = <SelectionOption>[];
+    final seenIds = <String>{};
+    for (final line in lines) {
+      final match = optionPattern.firstMatch(line);
+      if (match == null) continue;
+      final id = match.group(1)?.trim() ?? '';
+      final label = match.group(2)?.trim() ?? '';
+      if (id.isEmpty || label.isEmpty || seenIds.contains(id)) {
+        continue;
+      }
+      seenIds.add(id);
+      options.add(SelectionOption(id: id, label: label));
+    }
+
+    if (options.length < 2 || options.length > 8) {
+      return null;
+    }
+
+    String title = '请选择想先展开的方向';
+    for (final line in lines.reversed) {
+      if (markers.any((marker) => line.contains(marker))) {
+        title = line.replaceAll(RegExp(r'[：:。]+$'), '');
+        break;
+      }
+    }
+
+    return SelectionInfo(
+      questionId: 'local_sel_${DateTime.now().microsecondsSinceEpoch}',
+      title: title,
+      description: '也可以直接在输入框里说别的方向。',
+      options: options,
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+    );
   }
 
   void _queueDeltaContent(String deltaText) {
@@ -537,7 +593,13 @@ class V2SessionProvider with ChangeNotifier {
     } catch (e) {
       if (_ownsStreamBinding(streamEpoch, streamSessionId) &&
           !streamCancelled) {
-        _chatError = 'Failed to get response: $e';
+        final hasPartialResponse = _streamingContent.trim().isNotEmpty ||
+            (_thinkingContent?.trim().isNotEmpty ?? false);
+        if (hasPartialResponse) {
+          _chatError = null;
+        } else {
+          _chatError = 'Failed to get response: $e';
+        }
         if (kDebugMode) {
           print('Error sending v2 message: $e');
         }
@@ -550,6 +612,7 @@ class V2SessionProvider with ChangeNotifier {
       if (stillOwnsStream && !streamCancelled) {
         final isPartialResponse = !receivedDone;
         if (isPartialResponse && _streamingContent.isNotEmpty) {
+          _pendingSelection ??= _selectionFromTextFallback(_streamingContent);
           _showStreamStatusTip(
             localizedStreamHint(
               refined: false,
@@ -647,7 +710,11 @@ class V2SessionProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final selectedSummary = normalizedIds.join(', ');
+      final optionLabels = {
+        for (final option in selection.options) option.id.trim(): option.label
+      };
+      final selectedSummary =
+          normalizedIds.map((id) => optionLabels[id] ?? id).join(', ');
       _messages = [
         ..._messages,
         ChatMessage(
