@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -30,26 +32,33 @@ import 'widgets/tags_chips.dart';
 class KnowledgeBaseScreen extends StatefulWidget {
   final String projectId;
   final String projectName;
-  
+
   const KnowledgeBaseScreen({
     Key? key,
     required this.projectId,
     required this.projectName,
   }) : super(key: key);
-  
+
   @override
   _KnowledgeBaseScreenState createState() => _KnowledgeBaseScreenState();
 }
 
 enum SortField { name, date, type }
+
 enum SortDirection { ascending, descending }
 
 class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
+  static const Duration _statusPollInterval = Duration(seconds: 3);
+  static const int _maxStatusPollAttempts = 100;
+
   late final ChatApiService _chatApiService;
   List<FileVersionGroup> _fileGroups = [];
   Set<String> _expandedGroups = {};
   bool _isLoading = false;
   bool _isUploading = false;
+  Timer? _statusPollTimer;
+  int _statusPollAttempts = 0;
+  bool _statusPollTimedOut = false;
   KBEntryFilter _filter = const KBEntryFilter();
   SortField _sortField = SortField.date;
   SortDirection _sortDirection = SortDirection.descending;
@@ -58,7 +67,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   void initState() {
     super.initState();
     // Initialize chat API service with settings and auth providers
-    final settingsProvider = Provider.of<SettingsProvider>(context, listen: false);
+    final settingsProvider =
+        Provider.of<SettingsProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _chatApiService = ChatApiService(
       settingsProvider: settingsProvider,
@@ -67,28 +77,88 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     _loadFiles();
   }
 
-  Future<void> _loadFiles() async {
-    if (!mounted) return;
-    
-    setState(() {
-      _isLoading = true;
+  @override
+  void dispose() {
+    _stopStatusPolling();
+    super.dispose();
+  }
+
+  void _syncStatusPolling(List<KnowledgeBaseFile> files) {
+    final hasInFlightDocuments = files.any(
+      (file) =>
+          file.entryType == 'document' &&
+          (file.status == 'pending' || file.status == 'processing'),
+    );
+
+    if (hasInFlightDocuments) {
+      _startStatusPolling();
+    } else {
+      _stopStatusPolling();
+    }
+  }
+
+  void _startStatusPolling() {
+    if (_statusPollTimer != null) return;
+    _statusPollTimedOut = false;
+    _statusPollTimer = Timer.periodic(_statusPollInterval, (_) async {
+      if (!mounted) {
+        _stopStatusPolling();
+        return;
+      }
+      if (_statusPollAttempts >= _maxStatusPollAttempts) {
+        _stopStatusPolling();
+        if (!_statusPollTimedOut) {
+          _statusPollTimedOut = true;
+          _showErrorSnackBar(
+            'Document processing is taking longer than expected. Please refresh manually.',
+          );
+        }
+        return;
+      }
+      _statusPollAttempts += 1;
+      await _loadFiles(showLoading: false, showErrorSnackBar: false);
     });
+  }
+
+  void _stopStatusPolling() {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = null;
+    _statusPollAttempts = 0;
+  }
+
+  Future<void> _loadFiles({
+    bool showLoading = true,
+    bool showErrorSnackBar = true,
+  }) async {
+    if (!mounted) return;
+
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
-      final files = await _chatApiService.getKnowledgeBaseFiles(widget.projectId);
-      
+      final files =
+          await _chatApiService.getKnowledgeBaseFiles(widget.projectId);
+
       if (!mounted) return;
-      
+
       setState(() {
         _fileGroups = _groupFilesByName(_applyFilters(files));
         _isLoading = false;
       });
+      _syncStatusPolling(files);
     } catch (e) {
       if (!mounted) return;
-      
+
       setState(() {
         _isLoading = false;
       });
+      if (!showErrorSnackBar) {
+        _stopStatusPolling();
+        return;
+      }
       _showErrorSnackBar('Error loading files: $e');
     }
   }
@@ -104,9 +174,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     }
 
     if (_filter.visibility != null) {
-      filtered = filtered
-          .where((f) => f.visibility == _filter.visibility)
-          .toList();
+      filtered =
+          filtered.where((f) => f.visibility == _filter.visibility).toList();
     }
 
     if (_filter.authorityLevels.isNotEmpty) {
@@ -127,20 +196,21 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   /// Group files by name and sort versions by date
   List<FileVersionGroup> _groupFilesByName(List<KnowledgeBaseFile> files) {
     final grouped = <String, List<KnowledgeBaseFile>>{};
-    
+
     for (final file in files) {
       grouped.putIfAbsent(file.documentName, () => []).add(file);
     }
-    
+
     var groups = grouped.entries.map((entry) {
       // Sort versions by date descending (newest first)
-      final sortedVersions = entry.value..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      final sortedVersions = entry.value
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return FileVersionGroup(
         fileName: entry.key,
         versions: sortedVersions,
       );
     }).toList();
-    
+
     // Apply sorting
     return _sortFileGroups(groups);
   }
@@ -148,25 +218,30 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   /// Sort file groups based on current sort field and direction
   List<FileVersionGroup> _sortFileGroups(List<FileVersionGroup> groups) {
     final sortedGroups = List<FileVersionGroup>.from(groups);
-    
+
     sortedGroups.sort((a, b) {
       int comparison;
-      
+
       switch (_sortField) {
         case SortField.name:
-          comparison = a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase());
+          comparison =
+              a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase());
           break;
         case SortField.date:
-          comparison = a.latestVersion.createdAt.compareTo(b.latestVersion.createdAt);
+          comparison =
+              a.latestVersion.createdAt.compareTo(b.latestVersion.createdAt);
           break;
         case SortField.type:
-          comparison = a.latestVersion.entryType.compareTo(b.latestVersion.entryType);
+          comparison =
+              a.latestVersion.entryType.compareTo(b.latestVersion.entryType);
           break;
       }
-      
-      return _sortDirection == SortDirection.ascending ? comparison : -comparison;
+
+      return _sortDirection == SortDirection.ascending
+          ? comparison
+          : -comparison;
     });
-    
+
     return sortedGroups;
   }
 
@@ -175,15 +250,15 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     setState(() {
       if (_sortField == field) {
         // Toggle direction if clicking same field
-        _sortDirection = _sortDirection == SortDirection.ascending 
-            ? SortDirection.descending 
+        _sortDirection = _sortDirection == SortDirection.ascending
+            ? SortDirection.descending
             : SortDirection.ascending;
       } else {
         // Change field and use default direction
         _sortField = field;
-        _sortDirection = field == SortField.date 
-            ? SortDirection.descending  // Newest first by default
-            : SortDirection.ascending;  // A-Z by default for name/type
+        _sortDirection = field == SortField.date
+            ? SortDirection.descending // Newest first by default
+            : SortDirection.ascending; // A-Z by default for name/type
       }
       // Re-sort existing groups
       _fileGroups = _sortFileGroups(_fileGroups);
@@ -205,15 +280,18 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
+        allowedExtensions: ['pdf', 'txt', 'md'],
         allowMultiple: true,
         withData: true,
       );
 
       List<PlatformFile>? files = result?.files;
-      if (kIsWeb && (files == null || files.isEmpty || files.any((f) => f.bytes == null))) {
+      if (kIsWeb &&
+          (files == null ||
+              files.isEmpty ||
+              files.any((f) => f.bytes == null))) {
         files = await pickFilesWithWebFallback(
-          allowedExtensions: const ['pdf', 'txt', 'md', 'doc', 'docx'],
+          allowedExtensions: const ['pdf', 'txt', 'md'],
           allowMultiple: true,
         );
       }
@@ -233,7 +311,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         setState(() {
           _isUploading = true;
         });
-        
+
         int successCount = 0;
         for (var i = 0; i < files.length; i++) {
           final file = files[i];
@@ -255,7 +333,9 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         });
 
         if (successCount > 0) {
-          _showSuccessSnackBar('Uploaded $successCount file(s) successfully');
+          _showSuccessSnackBar(
+            'Uploaded $successCount file(s). Processing in background.',
+          );
           await _loadFiles(); // Refresh the file list
         }
 
@@ -273,7 +353,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Future<void> _addEntryOfType(String entryType) async {
     KnowledgeBaseFile? entry;
-    
+
     switch (entryType) {
       case 'link':
         entry = await showDialog<KnowledgeBaseFile>(
@@ -308,7 +388,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Future<void> _editEntryMetadata(KnowledgeBaseFile entry) async {
     KnowledgeBaseFile? updatedEntry;
-    
+
     // Route to the appropriate dialog based on entry type
     switch (entry.entryType) {
       case 'link':
@@ -357,14 +437,14 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     }
   }
 
-
   Future<void> _deleteFile(KnowledgeBaseFile file) async {
     final confirm = await _showDeleteConfirmDialog(file.documentName);
     if (!confirm) return;
 
     try {
-      final success = await _chatApiService.deleteFile(widget.projectId, file.id);
-      
+      final success =
+          await _chatApiService.deleteFile(widget.projectId, file.id);
+
       if (success) {
         _showSuccessSnackBar('File deleted successfully');
         await _loadFiles(); // Refresh the file list
@@ -378,23 +458,24 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Future<bool> _showDeleteConfirmDialog(String fileName) async {
     return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete File'),
-        content: Text('Are you sure you want to delete "$fileName"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text('Cancel'),
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Delete File'),
+            content: Text('Are you sure you want to delete "$fileName"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: Text('Delete'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text('Delete'),
-          ),
-        ],
-      ),
-    ) ?? false;
+        ) ??
+        false;
   }
 
   void _showSuccessSnackBar(String message) {
@@ -435,17 +516,25 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                         children: [
                           Text(
                             'Knowledge Base',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
+                                ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Manage your project\'s knowledge base entries',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyLarge
+                                ?.copyWith(
+                                  color:
+                                      Theme.of(context).colorScheme.onSurface,
+                                ),
                           ),
                         ],
                       ),
@@ -465,14 +554,16 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                           if (_filter.hasActiveFilters)
                             Container(
                               margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                               decoration: BoxDecoration(
                                 color: Colors.blue.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.filter_alt, size: 16, color: Colors.blue),
+                                  const Icon(Icons.filter_alt,
+                                      size: 16, color: Colors.blue),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Filtered',
@@ -490,7 +581,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                                       });
                                       _loadFiles();
                                     },
-                                    child: const Icon(Icons.close, size: 16, color: Colors.blue),
+                                    child: const Icon(Icons.close,
+                                        size: 16, color: Colors.blue),
                                   ),
                                 ],
                               ),
@@ -510,7 +602,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 12),
                                 ),
                               );
                             },
@@ -541,16 +634,16 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 32),
-                  
+
                   // Files list
                   Expanded(
-                    child: _isLoading 
-                      ? Center(child: CircularProgressIndicator())
-                      : _fileGroups.isEmpty
-                        ? _buildEmptyState()
-                        : _buildFilesList(),
+                    child: _isLoading
+                        ? Center(child: CircularProgressIndicator())
+                        : _fileGroups.isEmpty
+                            ? _buildEmptyState()
+                            : _buildFilesList(),
                   ),
                 ],
               ),
@@ -575,30 +668,32 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           Text(
             'No files in knowledge base',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-            ),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                ),
           ),
           const SizedBox(height: 8),
           Text(
             'Upload files to start building your project\'s knowledge base',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey[500],
-            ),
+                  color: Colors.grey[500],
+                ),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: _isUploading ? null : _uploadFiles,
-            icon: _isUploading 
-              ? SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-              : Icon(Icons.upload_file),
-            label: Text(_isUploading ? 'Uploading...' : 'Upload Your First File'),
+            icon: _isUploading
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Icon(Icons.upload_file),
+            label:
+                Text(_isUploading ? 'Uploading...' : 'Upload Your First File'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               foregroundColor: Colors.white,
@@ -618,7 +713,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(8)),
               color: Theme.of(context).brightness == Brightness.dark
                   ? Colors.grey[850]
                   : Colors.grey[100],
@@ -634,7 +730,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 // Type & Metadata column header
                 SizedBox(
                   width: 250,
-                  child: _buildSortableHeader('Type & Metadata', SortField.type),
+                  child:
+                      _buildSortableHeader('Type & Metadata', SortField.type),
                 ),
                 // Date column header
                 SizedBox(
@@ -645,7 +742,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
               ],
             ),
           ),
-          
+
           // Files list
           Expanded(
             child: ListView.builder(
@@ -664,7 +761,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   Widget _buildSortableHeader(String label, SortField field) {
     final isActive = _sortField == field;
     final color = isActive ? Colors.blue : null;
-    
+
     return InkWell(
       onTap: () => _changeSorting(field),
       child: Row(
@@ -703,13 +800,14 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           isLatest: true,
           showVersionBadge: true,
         ),
-        
+
         // Version count and expansion control
         if (group.hasMultipleVersions)
           Container(
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(
+              border: Border(
+                  bottom: BorderSide(
                 color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
               )),
             ),
@@ -721,7 +819,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: isDark 
+                      color: isDark
                           ? Colors.blue.withOpacity(0.15)
                           : Colors.blue.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -739,7 +837,9 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                         ),
                         SizedBox(width: 4),
                         Icon(
-                          isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                          isExpanded
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
                           size: 16,
                           color: isDark ? Colors.blue[300] : Colors.blue[700],
                         ),
@@ -750,15 +850,15 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
               ],
             ),
           ),
-        
+
         // Older versions (shown when expanded)
         if (group.hasMultipleVersions && isExpanded)
           ...group.olderVersions.map((file) => _buildFileItem(
-            file,
-            isLatest: false,
-            showVersionBadge: true,
-            isIndented: true,
-          )),
+                file,
+                isLatest: false,
+                showVersionBadge: true,
+                isIndented: true,
+              )),
       ],
     );
   }
@@ -772,12 +872,12 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     final opacity = isLatest ? 1.0 : 0.85;
     final leftPadding = isIndented ? 52.0 : 16.0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     // Theme-aware background color for older versions
-    final backgroundColor = isLatest 
-        ? null 
-        : (isDark 
-            ? Colors.white.withOpacity(0.03) 
+    final backgroundColor = isLatest
+        ? null
+        : (isDark
+            ? Colors.white.withOpacity(0.03)
             : Colors.black.withOpacity(0.02));
 
     return Container(
@@ -788,7 +888,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         bottom: 16,
       ),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(
+        border: Border(
+            bottom: BorderSide(
           color: isDark ? Colors.grey[800]! : Colors.grey[200]!,
         )),
         color: backgroundColor,
@@ -807,11 +908,11 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   color: isDark ? Colors.grey[600] : Colors.grey[400],
                 ),
               ),
-            
+
             // Entry type icon
             EntryTypeIcon(entryType: file.entryType),
             const SizedBox(width: 12),
-            
+
             // File name with version badge, link/email, and description
             SizedBox(
               width: 350,
@@ -824,28 +925,40 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                         child: Text(
                           file.documentName,
                           style: TextStyle(
-                            fontWeight: isLatest ? FontWeight.w600 : FontWeight.w500,
+                            fontWeight:
+                                isLatest ? FontWeight.w600 : FontWeight.w500,
                           ),
                         ),
                       ),
                       if (showVersionBadge) ...[
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: isLatest 
-                                ? (isDark ? Colors.green.withOpacity(0.2) : Colors.green.withOpacity(0.1))
-                                : (isDark ? Colors.grey.withOpacity(0.2) : Colors.grey.withOpacity(0.1)),
+                            color: isLatest
+                                ? (isDark
+                                    ? Colors.green.withOpacity(0.2)
+                                    : Colors.green.withOpacity(0.1))
+                                : (isDark
+                                    ? Colors.grey.withOpacity(0.2)
+                                    : Colors.grey.withOpacity(0.1)),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            isLatest ? 'Latest' : _getRelativeDate(file.createdAt),
+                            isLatest
+                                ? 'Latest'
+                                : _getRelativeDate(file.createdAt),
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
-                              color: isLatest 
-                                  ? (isDark ? Colors.green[300] : Colors.green[700])
-                                  : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                              color: isLatest
+                                  ? (isDark
+                                      ? Colors.green[300]
+                                      : Colors.green[700])
+                                  : (isDark
+                                      ? Colors.grey[400]
+                                      : Colors.grey[600]),
                             ),
                           ),
                         ),
@@ -854,7 +967,9 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   ),
                   // Email for contact entries or URL for link entries
                   // Email for contact entries (backend auto-creates mailto: url from contact_info.email)
-                  if (file.entryType == 'contact' && file.url != null && file.url!.isNotEmpty) ...[
+                  if (file.entryType == 'contact' &&
+                      file.url != null &&
+                      file.url!.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     SelectableText(
                       file.url!.replaceFirst('mailto:', '').trim(),
@@ -867,7 +982,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     ),
                   ],
                   // Description below entry name
-                  if (file.description != null && file.description!.isNotEmpty) ...[
+                  if (file.description != null &&
+                      file.description!.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(
                       file.description!,
@@ -879,10 +995,24 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
+                  if (file.errorMessage != null &&
+                      file.errorMessage!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      file.errorMessage!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.red[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),
-            
+
             // Type & Metadata column
             SizedBox(
               width: 250,
@@ -891,9 +1021,15 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 children: [
                   Row(
                     children: [
-                      VisibilityBadge(visibility: file.visibility, compact: true),
+                      if (file.entryType == 'document') ...[
+                        _buildDocumentStatusBadge(file, compact: true),
+                        const SizedBox(width: 8),
+                      ],
+                      VisibilityBadge(
+                          visibility: file.visibility, compact: true),
                       const SizedBox(width: 8),
-                      AuthorityBadge(authorityLevel: file.authorityLevel, compact: true),
+                      AuthorityBadge(
+                          authorityLevel: file.authorityLevel, compact: true),
                     ],
                   ),
                   if (file.tags.isNotEmpty) ...[
@@ -903,7 +1039,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 ],
               ),
             ),
-            
+
             // Date
             SizedBox(
               width: 280,
@@ -912,7 +1048,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 style: TextStyle(color: Colors.grey[600]),
               ),
             ),
-            
+
             // Action buttons
             Row(
               children: [
@@ -924,14 +1060,17 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     tooltip: 'View details',
                   ),
                 // Open link button for links and contacts (both use url field)
-                if ((file.entryType == 'link' || file.entryType == 'contact') && file.url != null)
+                if ((file.entryType == 'link' || file.entryType == 'contact') &&
+                    file.url != null)
                   IconButton(
                     onPressed: () => _openLink(file),
                     icon: const Icon(Icons.open_in_new, color: Colors.green),
-                    tooltip: file.entryType == 'link' ? 'Open link' : 'Send email',
+                    tooltip:
+                        file.entryType == 'link' ? 'Open link' : 'Send email',
                   ),
                 // Copy link/email button
-                if ((file.entryType == 'link' || file.entryType == 'contact') && file.url != null)
+                if ((file.entryType == 'link' || file.entryType == 'contact') &&
+                    file.url != null)
                   IconButton(
                     onPressed: () => _copyLink(file),
                     icon: const Icon(Icons.copy, color: Colors.purple),
@@ -944,25 +1083,33 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   tooltip: 'Edit metadata',
                 ),
                 // View button for markdown files
-                if (file.fileType.toLowerCase() == 'md')
+                if (file.fileType.toLowerCase() == 'md' &&
+                    _isDocumentReady(file))
                   IconButton(
                     onPressed: () => _viewMarkdownFile(file),
                     icon: const Icon(Icons.visibility, color: Colors.blue),
                     tooltip: 'View markdown',
                   ),
                 // View button for PDF files
-                if (file.fileType.toLowerCase() == 'pdf')
+                if (file.fileType.toLowerCase() == 'pdf' &&
+                    _isDocumentReady(file))
                   IconButton(
                     onPressed: () => _viewPdfFile(file),
                     icon: const Icon(Icons.visibility, color: Colors.red),
                     tooltip: 'View PDF',
                   ),
                 // Download button for document entries
-                if (file.entryType == 'document')
+                if (file.entryType == 'document' && _isDocumentReady(file))
                   IconButton(
                     onPressed: () => _downloadFile(file),
                     icon: const Icon(Icons.download, color: Colors.green),
                     tooltip: 'Download file',
+                  ),
+                if (file.entryType == 'document' && file.status == 'failed')
+                  IconButton(
+                    onPressed: () => _retryFile(file),
+                    icon: const Icon(Icons.refresh, color: Colors.deepOrange),
+                    tooltip: 'Retry processing',
                   ),
                 IconButton(
                   onPressed: () => _deleteFile(file),
@@ -981,7 +1128,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   String _getRelativeDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
-    
+
     if (difference.inDays == 0) {
       return 'Today';
     } else if (difference.inDays == 1) {
@@ -1005,7 +1152,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     final localDate = date.toLocal();
     final now = DateTime.now();
     final difference = now.difference(localDate);
-    
+
     String relativeTime;
     if (difference.inDays == 0) {
       relativeTime = 'Today';
@@ -1016,7 +1163,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     } else {
       relativeTime = '${difference.inDays} days ago';
     }
-    
+
     // Format absolute time as YYYY-MM-DD HH:mm:ss in local time
     final year = localDate.year.toString().padLeft(4, '0');
     final month = localDate.month.toString().padLeft(2, '0');
@@ -1025,13 +1172,92 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     final minute = localDate.minute.toString().padLeft(2, '0');
     final second = localDate.second.toString().padLeft(2, '0');
     final absoluteTime = '$year-$month-$day $hour:$minute:$second';
-    
+
     return '$relativeTime ($absoluteTime)';
   }
 
-  Future<void> _downloadFile(KnowledgeBaseFile file) async {
+  bool _isDocumentReady(KnowledgeBaseFile file) {
+    return file.entryType != 'document' || file.status == 'completed';
+  }
+
+  Widget _buildDocumentStatusBadge(KnowledgeBaseFile file,
+      {bool compact = false}) {
+    if (file.entryType != 'document') {
+      return const SizedBox.shrink();
+    }
+
+    late final Color foreground;
+    late final Color background;
+    late final String label;
+
+    switch (file.status) {
+      case 'pending':
+        foreground = Colors.orange[800]!;
+        background = Colors.orange.withOpacity(0.12);
+        label = compact ? 'Pending' : 'Pending Upload';
+        break;
+      case 'processing':
+        foreground = Colors.blue[800]!;
+        background = Colors.blue.withOpacity(0.12);
+        label = 'Processing';
+        break;
+      case 'failed':
+        foreground = Colors.red[800]!;
+        background = Colors.red.withOpacity(0.12);
+        label = 'Failed';
+        break;
+      default:
+        foreground = Colors.green[800]!;
+        background = Colors.green.withOpacity(0.12);
+        label = compact ? 'Ready' : 'Completed';
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: compact ? 11 : 12,
+          fontWeight: FontWeight.w600,
+          color: foreground,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _retryFile(KnowledgeBaseFile file) async {
     try {
-      final downloadResponse = await _chatApiService.getFileDownloadUrl(widget.projectId, file.id);
+      final success =
+          await _chatApiService.retryFile(widget.projectId, file.id);
+      if (success) {
+        _showSuccessSnackBar(
+            'Retry accepted. Processing has restarted in background.');
+        await _loadFiles(showLoading: false);
+      } else {
+        _showErrorSnackBar('Failed to retry file processing');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Error retrying file: $e');
+    }
+  }
+
+  Future<void> _downloadFile(KnowledgeBaseFile file) async {
+    if (!_isDocumentReady(file)) {
+      _showErrorSnackBar(
+        file.status == 'failed'
+            ? 'This file failed to process. Retry or re-upload it first.'
+            : 'This file is still processing. Please try again shortly.',
+      );
+      return;
+    }
+
+    try {
+      final downloadResponse =
+          await _chatApiService.getFileDownloadUrl(widget.projectId, file.id);
 
       if (downloadResponse == null) {
         _showErrorSnackBar('Failed to get download URL');
@@ -1051,7 +1277,6 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         context: context,
         mounted: () => mounted,
       );
-
     } catch (e) {
       String errorMessage = 'Error downloading file: ';
       if (e is DioException) {
@@ -1067,7 +1292,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
             errorMessage += e.message ?? 'Unknown network error';
         }
       } else if (e is FileSystemException) {
-        errorMessage += 'Could not save file. Check permissions and disk space.';
+        errorMessage +=
+            'Could not save file. Check permissions and disk space.';
       } else {
         errorMessage += e.toString();
       }
@@ -1079,9 +1305,10 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     // Find all versions of this file
     final group = _fileGroups.firstWhere(
       (g) => g.fileName == file.documentName,
-      orElse: () => FileVersionGroup(fileName: file.documentName, versions: [file]),
+      orElse: () =>
+          FileVersionGroup(fileName: file.documentName, versions: [file]),
     );
-    
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => MarkdownViewerScreen(
@@ -1098,9 +1325,10 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     // Find all versions of this file
     final group = _fileGroups.firstWhere(
       (g) => g.fileName == file.documentName,
-      orElse: () => FileVersionGroup(fileName: file.documentName, versions: [file]),
+      orElse: () =>
+          FileVersionGroup(fileName: file.documentName, versions: [file]),
     );
-    
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => PdfViewerScreen(
@@ -1127,31 +1355,32 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
               children: [
                 _buildMetadataRow('Entry Type', entry.entryType.toUpperCase()),
                 const SizedBox(height: 12),
-                
-                _buildMetadataRow('Visibility', entry.visibility == 'vendor_visible' ? 'Vendor Visible' : 'Internal Only'),
+                _buildMetadataRow(
+                    'Visibility',
+                    entry.visibility == 'vendor_visible'
+                        ? 'Vendor Visible'
+                        : 'Internal Only'),
                 const SizedBox(height: 12),
-                
-                _buildMetadataRow('Authority', entry.authorityLevel.replaceAll('_', ' ').toUpperCase()),
+                _buildMetadataRow('Authority',
+                    entry.authorityLevel.replaceAll('_', ' ').toUpperCase()),
                 const SizedBox(height: 12),
-                
                 if (entry.url != null && entry.url!.isNotEmpty) ...[
                   _buildMetadataRow('URL', entry.url!),
                   const SizedBox(height: 12),
                 ],
-                
-                if (entry.contactInfo != null && entry.contactInfo!.isNotEmpty) ...[
+                if (entry.contactInfo != null &&
+                    entry.contactInfo!.isNotEmpty) ...[
                   const SelectableText(
                     'Contact Information',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
                   ...entry.contactInfo!.entries.map((e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: _buildMetadataRow(e.key.toUpperCase(), e.value),
-                  )),
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: _buildMetadataRow(e.key.toUpperCase(), e.value),
+                      )),
                   const SizedBox(height: 12),
                 ],
-                
                 if (entry.tags.isNotEmpty) ...[
                   const SelectableText(
                     'Tags',
@@ -1161,8 +1390,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   TagsChips(tags: entry.tags, maxVisible: 100),
                   const SizedBox(height: 12),
                 ],
-                
-                if (entry.description != null && entry.description!.isNotEmpty) ...[
+                if (entry.description != null &&
+                    entry.description!.isNotEmpty) ...[
                   const SelectableText(
                     'Description',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
@@ -1210,13 +1439,14 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Future<void> _openLink(KnowledgeBaseFile file) async {
     String? urlString;
-    
+
     // Both link and contact entries use the url field
     // For contacts, backend auto-creates mailto: url from contact_info.email
-    if ((file.entryType == 'link' || file.entryType == 'contact') && file.url != null) {
+    if ((file.entryType == 'link' || file.entryType == 'contact') &&
+        file.url != null) {
       urlString = file.url;
     }
-    
+
     if (urlString != null) {
       try {
         final uri = Uri.parse(urlString);
@@ -1234,7 +1464,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   Future<void> _copyLink(KnowledgeBaseFile file) async {
     String? textToCopy;
     String? successMessage;
-    
+
     // Both link and contact entries use the url field
     // For contacts, backend auto-creates mailto: url from contact_info.email
     if (file.entryType == 'link' && file.url != null) {
@@ -1244,7 +1474,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
       textToCopy = file.url!.replaceFirst('mailto:', '').trim();
       successMessage = 'Email copied to clipboard';
     }
-    
+
     if (textToCopy != null) {
       try {
         await Clipboard.setData(ClipboardData(text: textToCopy));
@@ -1254,5 +1484,4 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
       }
     }
   }
-
-} 
+}

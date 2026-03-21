@@ -1090,7 +1090,7 @@ Ask me anything about game design, or try one of the example questions below!
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
+        allowedExtensions: ['pdf', 'txt', 'md'],
         allowMultiple: true,
         withData: true,
       );
@@ -1101,7 +1101,7 @@ Ask me anything about game design, or try one of the example questions below!
               files.isEmpty ||
               files.any((f) => f.bytes == null))) {
         files = await pickFilesWithWebFallback(
-          allowedExtensions: const ['pdf', 'txt', 'md', 'doc', 'docx'],
+          allowedExtensions: const ['pdf', 'txt', 'md'],
           allowMultiple: true,
         );
       }

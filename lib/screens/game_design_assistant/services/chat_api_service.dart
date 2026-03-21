@@ -12,20 +12,22 @@ import '../../../services/api_client.dart';
 
 class ChatApiService {
   static const String _apiVersion = 'v1';
-  static const bool _useStreamingByDefault = false; // MVP: Set to false for non-streaming
-  
+  static const bool _useStreamingByDefault =
+      false; // MVP: Set to false for non-streaming
+
   // Note: WebSocket streaming is currently disabled because the backend
   // doesn't have WebSocket endpoints implemented. The OpenAPI spec only
   // shows HTTP REST endpoints. To enable streaming in the future:
   // 1. Backend needs to implement WebSocket at /ws/chat
   // 2. Or implement Server-Sent Events (SSE) for streaming
   // 3. Update streamChatResponse method to use real WebSocket connection
-  
+
   final SettingsProvider? _settingsProvider;
   late final ApiClient _apiClient;
   WebSocketChannel? _wsChannel;
 
-  ChatApiService({SettingsProvider? settingsProvider, AuthProvider? authProvider})
+  ChatApiService(
+      {SettingsProvider? settingsProvider, AuthProvider? authProvider})
       : _settingsProvider = settingsProvider {
     _apiClient = ApiClient(
       settingsProvider: settingsProvider,
@@ -35,10 +37,10 @@ class ChatApiService {
 
   /// Get current mock mode setting
   bool get _useMockMode => _settingsProvider?.useMockMode ?? false;
-  
+
   /// Get API base URL from settings provider with fallback to default
   String get _baseUrl => _apiClient.baseUrl;
-  
+
   /// Get full API URL with version
   String get _apiUrl => _apiClient.apiUrl;
 
@@ -55,7 +57,8 @@ class ChatApiService {
 
     try {
       final response = await _apiClient.post('/chat', data: requestBody);
-      print('ChatApiService: API call successful, status: ${response.statusCode}');
+      print(
+          'ChatApiService: API call successful, status: ${response.statusCode}');
       return ChatResponse.fromJson(response.data);
     } catch (e) {
       print('Chat API Error: $e');
@@ -65,7 +68,7 @@ class ChatApiService {
 
   /// Send chat message with configurable streaming/non-streaming
   Future<ChatResponse?> sendChatMessageWithMode({
-    required ChatRequest request, 
+    required ChatRequest request,
     required bool useStreaming,
     Function(String)? onStreamChunk,
   }) async {
@@ -95,7 +98,7 @@ class ChatApiService {
     // TODO: Implement Server-Sent Events (SSE) or HTTP polling if backend supports it
     print('WebSocket streaming not available, using mock streaming');
     yield* _mockStreamResponse(request);
-    
+
     /* Original WebSocket implementation - disabled due to 404 error
     try {
       _wsChannel = IOWebSocketChannel.connect('ws://localhost:8000/ws/chat');
@@ -172,7 +175,7 @@ class ChatApiService {
 
     try {
       Response response;
-      
+
       if (bytes != null) {
         response = await _apiClient.uploadFileFromBytes(
           '/projects/$projectId/files',
@@ -208,17 +211,37 @@ class ChatApiService {
 
     try {
       // Try knowledge-base endpoint first (for non-file entries)
-      final response = await _apiClient.delete('/projects/$projectId/knowledge-base/$fileId');
+      final response = await _apiClient
+          .delete('/projects/$projectId/knowledge-base/$fileId');
       return response.data['success'] == true;
     } catch (e) {
       // If that fails, try the files endpoint (for document entries)
       try {
-        final response = await _apiClient.delete('/projects/$projectId/files/$fileId');
+        final response =
+            await _apiClient.delete('/projects/$projectId/files/$fileId');
         return response.data['success'] == true;
       } catch (fallbackError) {
         print('File Delete Error: $fallbackError');
         rethrow;
       }
+    }
+  }
+
+  /// Retry background processing for a failed document entry
+  Future<bool> retryFile(String projectId, int fileId) async {
+    if (_useMockMode) {
+      await Future.delayed(const Duration(seconds: 1));
+      return true;
+    }
+
+    try {
+      final response =
+          await _apiClient.post('/projects/$projectId/files/$fileId/retry');
+      final responseData = response.data;
+      return responseData['success'] == true || response.statusCode == 200;
+    } catch (e) {
+      print('File Retry Error: $e');
+      rethrow;
     }
   }
 
@@ -253,7 +276,8 @@ class ChatApiService {
         );
         return FileDownloadResponse.fromJson(response.data);
       } else {
-        final response = await _apiClient.get('/projects/$projectId/files/$fileId/download');
+        final response =
+            await _apiClient.get('/projects/$projectId/files/$fileId/download');
         return FileDownloadResponse.fromJson(response.data);
       }
     } catch (e) {
@@ -286,11 +310,11 @@ class ChatApiService {
       if (entry.description != null && entry.description!.isNotEmpty) {
         requestBody['description'] = entry.description;
       }
-      
+
       if (entry.url != null && entry.url!.isNotEmpty) {
         requestBody['url'] = entry.url;
       }
-      
+
       if (entry.contactInfo != null && entry.contactInfo!.isNotEmpty) {
         requestBody['contact_info'] = entry.contactInfo;
       }
@@ -319,7 +343,7 @@ class ChatApiService {
     try {
       // Prepare PATCH request body with only fields that should be updated
       final requestBody = <String, dynamic>{};
-      
+
       // Add fields to update
       if (entry.documentName.isNotEmpty) {
         requestBody['document_name'] = entry.documentName;
@@ -330,7 +354,7 @@ class ChatApiService {
       requestBody['tags'] = entry.tags;
       requestBody['visibility'] = entry.visibility;
       requestBody['authority_level'] = entry.authorityLevel;
-      
+
       if (entry.url != null) {
         requestBody['url'] = entry.url;
       }
@@ -383,7 +407,7 @@ class ChatApiService {
             },
           ),
         );
-        
+
         final List<dynamic> entries = response.data['entries'] ?? response.data;
         return entries.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
       } else {
@@ -391,7 +415,7 @@ class ChatApiService {
           '/projects/$projectId/knowledge-base',
           queryParameters: queryParams,
         );
-        
+
         final List<dynamic> entries = response.data['entries'] ?? response.data;
         return entries.map((item) => KnowledgeBaseFile.fromJson(item)).toList();
       }
@@ -408,7 +432,8 @@ class ChatApiService {
     }
 
     try {
-      final response = await _apiClient.get('/projects/$projectId/chat/sessions');
+      final response =
+          await _apiClient.get('/projects/$projectId/chat/sessions');
       final List<dynamic> sessions = response.data;
       return sessions.map((item) => ChatSession.fromJson(item)).toList();
     } catch (e) {
@@ -418,12 +443,15 @@ class ChatApiService {
   }
 
   /// Create a new chat session for a project
-  Future<ChatSessionCreateResponse?> createChatSession(int projectId, String userId, {String? sessionId}) async {
+  Future<ChatSessionCreateResponse?> createChatSession(
+      int projectId, String userId,
+      {String? sessionId}) async {
     if (_useMockMode) {
       return _mockCreateChatSession(projectId, userId, sessionId: sessionId);
     }
 
-    final request = ChatSessionCreateRequest(userId: userId, sessionId: sessionId);
+    final request =
+        ChatSessionCreateRequest(userId: userId, sessionId: sessionId);
     final requestBody = request.toJson();
 
     try {
@@ -445,7 +473,8 @@ class ChatApiService {
     }
 
     try {
-      final response = await _apiClient.get('/chat/sessions/$sessionId/messages');
+      final response =
+          await _apiClient.get('/chat/sessions/$sessionId/messages');
       return ChatHistoryResponse.fromJson(response.data);
     } catch (e) {
       print('Chat History API Error: $e');
@@ -464,8 +493,10 @@ class ChatApiService {
     final userMessage = request.message.toLowerCase();
     String response;
 
-    if (userMessage.contains('character') || userMessage.contains('progression')) {
-      response = '''I'll create a character progression system for your RPG. Here's a comprehensive design:
+    if (userMessage.contains('character') ||
+        userMessage.contains('progression')) {
+      response =
+          '''I'll create a character progression system for your RPG. Here's a comprehensive design:
 
 ```markdown
 # Character Progression System - RPG Game
@@ -502,7 +533,8 @@ Three main branches:
 ```
 
 This system provides balanced progression while allowing player choice in character development.''';
-    } else if (userMessage.contains('story') || userMessage.contains('narrative')) {
+    } else if (userMessage.contains('story') ||
+        userMessage.contains('narrative')) {
       response = '''Let me help you create a compelling narrative structure:
 
 ```markdown
@@ -548,7 +580,8 @@ This system provides balanced progression while allowing player choice in charac
 ```
 
 This structure ensures proper pacing and emotional engagement throughout your game.''';
-    } else if (userMessage.contains('mechanics') || userMessage.contains('system')) {
+    } else if (userMessage.contains('mechanics') ||
+        userMessage.contains('system')) {
       response = '''Here's a comprehensive game mechanics document:
 
 ```markdown
@@ -592,7 +625,8 @@ This structure ensures proper pacing and emotional engagement throughout your ga
 
 This framework provides clear, balanced mechanics for player progression and engagement.''';
     } else {
-      response = '''I'd be happy to help with your game design! Here are some key areas I can assist with:
+      response =
+          '''I'd be happy to help with your game design! Here are some key areas I can assist with:
 
 ## 🎮 Game Design Areas
 - **Core Mechanics**: Combat systems, player progression, resource management
@@ -626,7 +660,8 @@ What specific aspect of game design would you like to explore? I can create deta
     return ChatResponse(
       output: response,
       input: request.message,
-      sessionId: request.sessionId ?? 'mock_session_${DateTime.now().millisecondsSinceEpoch}',
+      sessionId: request.sessionId ??
+          'mock_session_${DateTime.now().millisecondsSinceEpoch}',
       timestamp: DateTime.now(),
     );
   }
@@ -635,14 +670,16 @@ What specific aspect of game design would you like to explore? I can create deta
   Stream<String> _mockStreamResponse(ChatRequest request) async* {
     final response = _mockChatResponse(request);
     final words = response.output.split(' ');
-    
+
     String currentText = '';
     for (int i = 0; i < words.length; i++) {
       currentText += (i == 0 ? '' : ' ') + words[i];
       yield currentText;
-      
+
       // Simulate typing delay - faster for words, slower for punctuation
-      if (words[i].endsWith('.') || words[i].endsWith('!') || words[i].endsWith('?')) {
+      if (words[i].endsWith('.') ||
+          words[i].endsWith('!') ||
+          words[i].endsWith('?')) {
         await Future.delayed(const Duration(milliseconds: 200));
       } else {
         await Future.delayed(const Duration(milliseconds: 50));
@@ -720,25 +757,26 @@ What specific aspect of game design would you like to explore? I can create deta
   }
 
   KnowledgeBaseFile _mockAddKnowledgeBaseEntry(KnowledgeBaseFile entry) {
-    final newId = _mockKBEntries.isEmpty 
-        ? 1 
+    final newId = _mockKBEntries.isEmpty
+        ? 1
         : _mockKBEntries.map((e) => e.id).reduce((a, b) => a > b ? a : b) + 1;
-    
+
     final newEntry = entry.copyWith(
       id: newId,
       createdAt: DateTime.now(),
     );
-    
+
     _mockKBEntries.add(newEntry);
     return newEntry;
   }
 
-  KnowledgeBaseFile _mockUpdateKnowledgeBaseEntry(int entryId, KnowledgeBaseFile entry) {
+  KnowledgeBaseFile _mockUpdateKnowledgeBaseEntry(
+      int entryId, KnowledgeBaseFile entry) {
     final index = _mockKBEntries.indexWhere((e) => e.id == entryId);
     if (index == -1) {
       throw Exception('Entry not found');
     }
-    
+
     final updatedEntry = entry.copyWith(id: entryId);
     _mockKBEntries[index] = updatedEntry;
     return updatedEntry;
@@ -750,27 +788,28 @@ What specific aspect of game design would you like to explore? I can create deta
     List<String>? tags,
   }) {
     var filtered = List<KnowledgeBaseFile>.from(_mockKBEntries);
-    
+
     if (entryType != null) {
       filtered = filtered.where((e) => e.entryType == entryType).toList();
     }
-    
+
     if (visibility != null) {
       filtered = filtered.where((e) => e.visibility == visibility).toList();
     }
-    
+
     if (tags != null && tags.isNotEmpty) {
       filtered = filtered.where((e) {
         return tags.any((tag) => e.tags.contains(tag));
       }).toList();
     }
-    
+
     return filtered;
   }
 
   List<ChatSession> _mockChatSessions(int projectId) {
     final now = DateTime.now();
-    const mockUserId = '00000000-0000-0000-0000-000000000000'; // Use proper UUID format
+    const mockUserId =
+        '00000000-0000-0000-0000-000000000000'; // Use proper UUID format
     return [
       ChatSession(
         id: 1,
@@ -832,75 +871,85 @@ What specific aspect of game design would you like to explore? I can create deta
   ChatHistoryResponse _mockChatHistory(String sessionId) {
     // Create mock messages in LangChain format based on session
     List<MessageResponse> messages = [];
-    
+
     switch (sessionId) {
       case 'session_001': // RPG Character System Discussion
         messages = [
           MessageResponse(
             id: 1,
             sessionId: sessionId,
-            message: '{"type": "human", "data": {"content": "I need help designing a character progression system for my RPG game. What are the key components I should consider?"}}',
+            message:
+                '{"type": "human", "data": {"content": "I need help designing a character progression system for my RPG game. What are the key components I should consider?"}}',
           ),
           MessageResponse(
             id: 2,
             sessionId: sessionId,
-            message: '{"type": "ai", "data": {"content": "Great question! For an RPG character progression system, you should consider these key components:\\n\\n## Core Mechanics\\n- **Experience Points (XP)**: How players earn progression currency\\n- **Leveling System**: Linear vs. milestone-based advancement\\n- **Attribute Distribution**: Strength, Dexterity, Intelligence, etc.\\n- **Skill Trees**: Branching paths for specialization\\n\\n## Balance Considerations\\n- **Progression Pacing**: Not too fast or slow\\n- **Player Choice**: Meaningful decisions at each level\\n- **End-game Viability**: Multiple viable builds\\n\\nWould you like me to elaborate on any of these areas?"}}',
+            message:
+                '{"type": "ai", "data": {"content": "Great question! For an RPG character progression system, you should consider these key components:\\n\\n## Core Mechanics\\n- **Experience Points (XP)**: How players earn progression currency\\n- **Leveling System**: Linear vs. milestone-based advancement\\n- **Attribute Distribution**: Strength, Dexterity, Intelligence, etc.\\n- **Skill Trees**: Branching paths for specialization\\n\\n## Balance Considerations\\n- **Progression Pacing**: Not too fast or slow\\n- **Player Choice**: Meaningful decisions at each level\\n- **End-game Viability**: Multiple viable builds\\n\\nWould you like me to elaborate on any of these areas?"}}',
           ),
           MessageResponse(
             id: 3,
             sessionId: sessionId,
-            message: '{"type": "human", "data": {"content": "Yes, could you elaborate on skill trees? I want to create something that offers meaningful choices without overwhelming new players."}}',
+            message:
+                '{"type": "human", "data": {"content": "Yes, could you elaborate on skill trees? I want to create something that offers meaningful choices without overwhelming new players."}}',
           ),
           MessageResponse(
             id: 4,
             sessionId: sessionId,
-            message: '{"type": "ai", "data": {"content": "Absolutely! Here\'s how to design player-friendly skill trees:\\n\\n## Tree Structure\\n- **3-4 Main Branches**: Combat, Magic, Utility\\n- **Clear Themes**: Each branch has distinct identity\\n- **Prerequisites**: Logical progression requirements\\n\\n## New Player Friendly Features\\n- **Visual Clarity**: Icons and clear descriptions\\n- **Recommended Builds**: Suggested paths for beginners\\n- **Respec Options**: Allow experimentation without penalty\\n- **Gradual Complexity**: Simple choices early, complex later\\n\\n## Example Structure\\n```\\nCombat Tree:\\n├── Weapon Mastery (Tier 1)\\n├── Critical Strikes (Tier 2)\\n└── Berserker Mode (Tier 3)\\n```\\n\\nThis gives depth while keeping initial choices simple."}}',
+            message:
+                '{"type": "ai", "data": {"content": "Absolutely! Here\'s how to design player-friendly skill trees:\\n\\n## Tree Structure\\n- **3-4 Main Branches**: Combat, Magic, Utility\\n- **Clear Themes**: Each branch has distinct identity\\n- **Prerequisites**: Logical progression requirements\\n\\n## New Player Friendly Features\\n- **Visual Clarity**: Icons and clear descriptions\\n- **Recommended Builds**: Suggested paths for beginners\\n- **Respec Options**: Allow experimentation without penalty\\n- **Gradual Complexity**: Simple choices early, complex later\\n\\n## Example Structure\\n```\\nCombat Tree:\\n├── Weapon Mastery (Tier 1)\\n├── Critical Strikes (Tier 2)\\n└── Berserker Mode (Tier 3)\\n```\\n\\nThis gives depth while keeping initial choices simple."}}',
           ),
         ];
         break;
-        
+
       case 'session_002': // Combat Mechanics Design
         messages = [
           MessageResponse(
             id: 5,
             sessionId: sessionId,
-            message: '{"type": "human", "data": {"content": "I\'m working on turn-based combat mechanics. How do I make them feel engaging and strategic?"}}',
+            message:
+                '{"type": "human", "data": {"content": "I\'m working on turn-based combat mechanics. How do I make them feel engaging and strategic?"}}',
           ),
           MessageResponse(
             id: 6,
             sessionId: sessionId,
-            message: '{"type": "ai", "data": {"content": "Turn-based combat can be incredibly engaging with the right design! Here are key strategies:\\n\\n## Action Economy\\n- **Action Points**: 2-3 points per turn for flexibility\\n- **Different Action Costs**: Move (1 AP), Attack (2 AP), Special (3 AP)\\n- **Bonus Actions**: Quick abilities that don\'t consume main actions\\n\\n## Strategic Depth\\n- **Positioning Matters**: Terrain advantages, flanking bonuses\\n- **Resource Management**: Mana, stamina, limited-use abilities\\n- **Status Effects**: Buffs, debuffs, DOT effects\\n- **Combo System**: Abilities that synergize\\n\\n## Pacing\\n- **Quick Animations**: Fast, impactful visual feedback\\n- **Auto-resolve Options**: For trivial encounters\\n- **Tension Building**: Escalating stakes within encounters\\n\\nWhat type of setting/theme are you working with?"}}',
+            message:
+                '{"type": "ai", "data": {"content": "Turn-based combat can be incredibly engaging with the right design! Here are key strategies:\\n\\n## Action Economy\\n- **Action Points**: 2-3 points per turn for flexibility\\n- **Different Action Costs**: Move (1 AP), Attack (2 AP), Special (3 AP)\\n- **Bonus Actions**: Quick abilities that don\'t consume main actions\\n\\n## Strategic Depth\\n- **Positioning Matters**: Terrain advantages, flanking bonuses\\n- **Resource Management**: Mana, stamina, limited-use abilities\\n- **Status Effects**: Buffs, debuffs, DOT effects\\n- **Combo System**: Abilities that synergize\\n\\n## Pacing\\n- **Quick Animations**: Fast, impactful visual feedback\\n- **Auto-resolve Options**: For trivial encounters\\n- **Tension Building**: Escalating stakes within encounters\\n\\nWhat type of setting/theme are you working with?"}}',
           ),
         ];
         break;
-        
+
       case 'session_003': // Level Design Principles
         messages = [
           MessageResponse(
             id: 7,
             sessionId: sessionId,
-            message: '{"type": "human", "data": {"content": "What are the fundamental principles of good level design for action games?"}}',
+            message:
+                '{"type": "human", "data": {"content": "What are the fundamental principles of good level design for action games?"}}',
           ),
           MessageResponse(
             id: 8,
             sessionId: sessionId,
-            message: '{"type": "ai", "data": {"content": "Excellent question! Here are the core principles of effective level design:\\n\\n## Player Flow\\n- **Clear Objective**: Players always know where to go\\n- **Breadcrumbing**: Visual cues guide the path\\n- **Landmark Navigation**: Memorable reference points\\n\\n## Pacing & Rhythm\\n- **Tension Curves**: Alternate high and low intensity\\n- **Rest Areas**: Safe spaces to recover and plan\\n- **Escalation**: Gradually increasing challenges\\n\\n## Spatial Design\\n- **Rule of Thirds**: Important elements at intersection points\\n- **Sightlines**: Control what players can see when\\n- **Multiple Paths**: Options for different playstyles\\n\\n## Challenge Progression\\n- **Introduce**: New mechanic in safe environment\\n- **Develop**: Combine with known elements\\n- **Twist**: Subvert expectations\\n- **Conclude**: Final test of mastery\\n\\nWhich aspect would you like to explore further?"}}',
+            message:
+                '{"type": "ai", "data": {"content": "Excellent question! Here are the core principles of effective level design:\\n\\n## Player Flow\\n- **Clear Objective**: Players always know where to go\\n- **Breadcrumbing**: Visual cues guide the path\\n- **Landmark Navigation**: Memorable reference points\\n\\n## Pacing & Rhythm\\n- **Tension Curves**: Alternate high and low intensity\\n- **Rest Areas**: Safe spaces to recover and plan\\n- **Escalation**: Gradually increasing challenges\\n\\n## Spatial Design\\n- **Rule of Thirds**: Important elements at intersection points\\n- **Sightlines**: Control what players can see when\\n- **Multiple Paths**: Options for different playstyles\\n\\n## Challenge Progression\\n- **Introduce**: New mechanic in safe environment\\n- **Develop**: Combine with known elements\\n- **Twist**: Subvert expectations\\n- **Conclude**: Final test of mastery\\n\\nWhich aspect would you like to explore further?"}}',
           ),
         ];
         break;
-        
+
       default:
         // Generic conversation for other sessions
         messages = [
           MessageResponse(
             id: 100,
             sessionId: sessionId,
-            message: '{"type": "human", "data": {"content": "Hello! I need help with game design."}}',
+            message:
+                '{"type": "human", "data": {"content": "Hello! I need help with game design."}}',
           ),
           MessageResponse(
             id: 101,
             sessionId: sessionId,
-            message: '{"type": "ai", "data": {"content": "Hello! I\'d be happy to help you with game design. What specific area are you working on?"}}',
+            message:
+                '{"type": "ai", "data": {"content": "Hello! I\'d be happy to help you with game design. What specific area are you working on?"}}',
           ),
         ];
     }
@@ -911,10 +960,11 @@ What specific aspect of game design would you like to explore? I can create deta
     );
   }
 
-  ChatSessionCreateResponse _mockCreateChatSession(int projectId, String userId, {String? sessionId}) {
+  ChatSessionCreateResponse _mockCreateChatSession(int projectId, String userId,
+      {String? sessionId}) {
     final now = DateTime.now();
     final finalSessionId = sessionId ?? 'session_${now.millisecondsSinceEpoch}';
-    
+
     // Generate a title based on the session if one exists, otherwise leave untitled
     String? title;
     if (sessionId != null) {
@@ -934,7 +984,7 @@ What specific aspect of game design would you like to explore? I can create deta
       ];
       title = titleOptions[DateTime.now().millisecond % titleOptions.length];
     }
-    
+
     return ChatSessionCreateResponse(
       id: now.millisecondsSinceEpoch,
       sessionId: finalSessionId,
@@ -945,4 +995,4 @@ What specific aspect of game design would you like to explore? I can create deta
       updatedAt: now,
     );
   }
-} 
+}

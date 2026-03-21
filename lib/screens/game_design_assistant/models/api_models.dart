@@ -293,6 +293,10 @@ class KnowledgeBaseFile {
   final String fileType;
   final DateTime createdAt;
   final Map<String, dynamic>? metadata;
+  final String status; // 'pending', 'processing', 'completed', 'failed'
+  final String? errorMessage;
+  final String? errorCode;
+  final String? displayStatus;
 
   // Unified Knowledge Base fields
   final String entryType; // 'document', 'link', 'folder', 'contact', 'other'
@@ -309,6 +313,10 @@ class KnowledgeBaseFile {
     required this.fileType,
     required this.createdAt,
     this.metadata,
+    this.status = 'completed',
+    this.errorMessage,
+    this.errorCode,
+    this.displayStatus,
     this.entryType = 'document',
     this.visibility = 'vendor_visible',
     this.authorityLevel = 'reference',
@@ -330,6 +338,10 @@ class KnowledgeBaseFile {
               ? DateTime.parse(json['createdAt'])
               : DateTime.now()),
       metadata: json['metadata'],
+      status: json['status'] ?? 'completed',
+      errorMessage: json['error_message'] ?? json['errorMessage'],
+      errorCode: json['error_code'] ?? json['errorCode'],
+      displayStatus: json['display_status'] ?? json['displayStatus'],
       entryType: json['entry_type'] ?? json['entryType'] ?? 'document',
       visibility: json['visibility'] ?? 'vendor_visible',
       authorityLevel:
@@ -350,6 +362,10 @@ class KnowledgeBaseFile {
       'file_type': fileType,
       'created_at': createdAt.toIso8601String(),
       if (metadata != null) 'metadata': metadata,
+      'status': status,
+      if (errorMessage != null) 'error_message': errorMessage,
+      if (errorCode != null) 'error_code': errorCode,
+      if (displayStatus != null) 'display_status': displayStatus,
       'entry_type': entryType,
       'visibility': visibility,
       'authority_level': authorityLevel,
@@ -366,6 +382,10 @@ class KnowledgeBaseFile {
     String? fileType,
     DateTime? createdAt,
     Map<String, dynamic>? metadata,
+    String? status,
+    String? errorMessage,
+    String? errorCode,
+    String? displayStatus,
     String? entryType,
     String? visibility,
     String? authorityLevel,
@@ -380,6 +400,10 @@ class KnowledgeBaseFile {
       fileType: fileType ?? this.fileType,
       createdAt: createdAt ?? this.createdAt,
       metadata: metadata ?? this.metadata,
+      status: status ?? this.status,
+      errorMessage: errorMessage ?? this.errorMessage,
+      errorCode: errorCode ?? this.errorCode,
+      displayStatus: displayStatus ?? this.displayStatus,
       entryType: entryType ?? this.entryType,
       visibility: visibility ?? this.visibility,
       authorityLevel: authorityLevel ?? this.authorityLevel,
