@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -7,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../models/confirmation.dart';
 import '../models/message.dart';
 import '../providers/v2_session_provider.dart';
+import '../utils/stream_locale.dart';
 import 'confirmation_card.dart';
 import 'selection_card.dart';
 
@@ -20,31 +22,94 @@ class V2ChatPanel extends StatefulWidget {
 class _V2ChatPanelState extends State<V2ChatPanel> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  Timer? _selectionExpiryTicker;
+  static const double _autoScrollThreshold = 72;
+  bool _isNearBottom = true;
+  bool _scrollScheduled = false;
+  bool _hasAutoScrollBaseline = false;
+  int _lastMessageCount = 0;
+  int _lastStreamRenderVersion = 0;
+  bool _lastIsSending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_handleScrollPosition);
+    _selectionExpiryTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
 
   @override
   void dispose() {
+    _selectionExpiryTicker?.cancel();
+    _scrollController.removeListener(_handleScrollPosition);
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _submit() {
+    final provider = context.read<V2SessionProvider>();
+    final canAttemptSend =
+        !provider.isSending && !provider.isLoading && provider.canUseV2;
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || !canAttemptSend) return;
+
     _controller.clear();
-    context.read<V2SessionProvider>().sendMessage(text);
+    _isNearBottom = true;
+    provider.sendMessage(text);
     _scrollToBottom();
   }
 
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+  void _handleScrollPosition() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final distanceToBottom = position.maxScrollExtent - position.pixels;
+    _isNearBottom = distanceToBottom <= _autoScrollThreshold;
+  }
+
+  void _scrollToBottom({bool animated = true}) {
+    if (_scrollScheduled) return;
+    _scrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _scrollScheduled = false;
       if (!_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+      final target = _scrollController.position.maxScrollExtent;
+      if (animated) {
+        await _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollController.jumpTo(target);
+      }
     });
+  }
+
+  void _syncAutoScrollState(
+    V2SessionProvider provider,
+    int messageCount,
+  ) {
+    final hasNewMessage = messageCount != _lastMessageCount;
+    final streamUpdated = provider.isSending &&
+        (provider.streamRenderVersion != _lastStreamRenderVersion ||
+            provider.isSending != _lastIsSending);
+    final sendingStateChanged = provider.isSending != _lastIsSending;
+    final shouldScroll = !_hasAutoScrollBaseline ||
+        ((hasNewMessage || streamUpdated || sendingStateChanged) &&
+            _isNearBottom);
+
+    if (shouldScroll) {
+      _scrollToBottom(animated: _hasAutoScrollBaseline);
+    }
+
+    _hasAutoScrollBaseline = true;
+    _lastMessageCount = messageCount;
+    _lastStreamRenderVersion = provider.streamRenderVersion;
+    _lastIsSending = provider.isSending;
   }
 
   @override
@@ -63,9 +128,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
       return true;
     }).toList(growable: false);
 
-    if (provider.isSending || filteredMessages.isNotEmpty) {
-      _scrollToBottom();
-    }
+    _syncAutoScrollState(provider, filteredMessages.length);
 
     return Column(
       children: [
@@ -99,7 +162,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                         filteredMessages.length + (provider.isSending ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index >= filteredMessages.length) {
-                        return _buildMessageBubble(
+                        final bubble = _buildMessageBubble(
                           context,
                           ChatMessage(
                             role: 'assistant',
@@ -109,6 +172,17 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                           ),
                           isStreaming: true,
                           isLastMessage: true,
+                        );
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeOut,
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(opacity: animation, child: child),
+                          child: KeyedSubtree(
+                            key: ValueKey<int>(provider.streamRenderVersion),
+                            child: bubble,
+                          ),
                         );
                       }
                       final msg = filteredMessages[index];
@@ -154,6 +228,13 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
   }
 
   Widget _buildInputBar(BuildContext context, V2SessionProvider provider) {
+    final inputEnabled = !provider.isLoading && provider.canUseV2;
+    final inputHint = !provider.canUseV2
+        ? 'Sign in to use Game Design Assistant v2'
+        : provider.hasExpiredPendingSelection
+            ? '旧选择已过期，直接输入即可继续'
+            : 'Ask about game design...';
+
     return SafeArea(
       top: false,
       child: Padding(
@@ -166,12 +247,10 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                 controller: _controller,
                 minLines: 1,
                 maxLines: 5,
-                enabled: !provider.isLoading && provider.canUseV2,
+                enabled: inputEnabled,
                 onSubmitted: (_) => _submit(),
                 decoration: InputDecoration(
-                  hintText: provider.canUseV2
-                      ? 'Ask about game design...'
-                      : 'Sign in to use Game Design Assistant v2',
+                  hintText: inputHint,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -218,6 +297,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
     final hasPending = provider.pendingConfirmation != null;
     Confirmation? confirmation = hasPending ? msg.confirmation : null;
     var displayContent = msg.content;
+    final streamStatusTip = isStreaming ? provider.streamStatusTip : null;
 
     if (isStreaming && displayContent.isEmpty && (msg.thinking ?? '').isEmpty) {
       return Align(
@@ -292,6 +372,39 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (streamStatusTip != null && streamStatusTip.trim().isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color:
+                        theme.colorScheme.secondaryContainer.withOpacity(0.65),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    streamStatusTip,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSecondaryContainer,
+                    ),
+                  ),
+                ),
+              if (msg.isPartial)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer.withOpacity(0.65),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    localizedPartialHint(displayContent),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
               if ((msg.thinking ?? '').isNotEmpty)
                 Container(
                   margin: const EdgeInsets.only(bottom: 8),
@@ -363,6 +476,9 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                     ? Map<String, dynamic>.from(step['args'] as Map)
                     : <String, dynamic>{};
                 var preview = '';
+                final targetPath = args['path']?.toString();
+                final sectionId =
+                    (args['section_id'] ?? args['section'])?.toString();
                 if (args['content'] is String) {
                   preview = args['content'] as String;
                 } else if (args.isNotEmpty) {
@@ -376,6 +492,8 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                     reason: plan['description']?.toString() ??
                         'Confirmation required',
                     preview: preview.isEmpty ? null : preview,
+                    targetPath: targetPath,
+                    sectionId: sectionId,
                     confirmText: 'Confirm',
                     cancelText: 'Cancel',
                   ),

@@ -23,7 +23,13 @@ class SideMenu extends BaseSideMenu {
     return ListTile(
       title: Row(
         children: [
-          Text(title),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           const SizedBox(width: 8),
           const MenuBadge(MenuBadgeType.comingSoon),
         ],
@@ -97,7 +103,13 @@ class SideMenu extends BaseSideMenu {
       ListTile(
         title: Row(
           children: [
-            const Text("Game Design Assistant v2"),
+            const Expanded(
+              child: Text(
+                "Game Design Assistant v2",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             const SizedBox(width: 8),
             const MenuBadge(MenuBadgeType.alpha),
           ],
@@ -121,11 +133,17 @@ class SideMenu extends BaseSideMenu {
       // Development - code editor, image generator, sound generator, music generator, web server
       buildSectionHeader(context, icon: Icons.code, title: "Development"),
       ExpansionTile(
-        title: const Row(
+        title: Row(
           children: [
-            Text("Image Generation"),
-            SizedBox(width: 8),
-            MenuBadge(MenuBadgeType.beta),
+            const Expanded(
+              child: Text(
+                "Image Generation",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const MenuBadge(MenuBadgeType.beta),
           ],
         ),
         leading: const Icon(Icons.image, color: iconColor),

@@ -45,9 +45,11 @@ class SessionInfo {
   final String? projectId;
   final String? projectName;
   final String? title;
+  final String? activeDocumentPath;
   final String? currentStage;
   final String? currentPillar;
   final int turnCount;
+  final int lastExtractionTurn;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -57,9 +59,11 @@ class SessionInfo {
     this.projectId,
     this.projectName,
     this.title,
+    this.activeDocumentPath,
     this.currentStage,
     this.currentPillar,
     this.turnCount = 0,
+    this.lastExtractionTurn = 0,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -71,9 +75,11 @@ class SessionInfo {
       projectId: json['project_id']?.toString(),
       projectName: json['project_name']?.toString(),
       title: json['title']?.toString(),
+      activeDocumentPath: json['active_document_path']?.toString(),
       currentStage: json['current_stage']?.toString(),
       currentPillar: json['current_pillar']?.toString(),
       turnCount: (json['turn_count'] as num?)?.toInt() ?? 0,
+      lastExtractionTurn: (json['last_extraction_turn'] as num?)?.toInt() ?? 0,
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ??
           DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? '') ??
