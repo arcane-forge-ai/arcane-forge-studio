@@ -21,6 +21,7 @@ class SelectionCard extends StatefulWidget {
 class _SelectionCardState extends State<SelectionCard> {
   final Set<String> _selectedIds = <String>{};
   bool _completed = false;
+  bool _invalidated = false;
   String? _localError;
   String? _localInfo;
   Timer? _countdownTimer;
@@ -43,6 +44,11 @@ class _SelectionCardState extends State<SelectionCard> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selection.questionId != widget.selection.questionId ||
         oldWidget.selection.expiresAt != widget.selection.expiresAt) {
+      _selectedIds.clear();
+      _completed = false;
+      _invalidated = false;
+      _localError = null;
+      _localInfo = null;
       _startCountdownTicker();
     }
   }
@@ -57,7 +63,7 @@ class _SelectionCardState extends State<SelectionCard> {
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      if (_expired || _completed) {
+      if (_expired || _completed || _invalidated) {
         _countdownTimer?.cancel();
       }
       setState(() {});
@@ -71,7 +77,7 @@ class _SelectionCardState extends State<SelectionCard> {
   }
 
   void _toggleOption(String id) {
-    if (_expired || _completed) return;
+    if (_expired || _completed || _invalidated) return;
     setState(() {
       _localError = null;
       if (widget.selection.allowMultiple) {
@@ -109,10 +115,18 @@ class _SelectionCardState extends State<SelectionCard> {
         );
     if (!mounted) return;
     setState(() {
+      final invalidated =
+          result.status == 'expired' || result.status == 'stale';
+      if (invalidated) {
+        _selectedIds.clear();
+      }
       _localError = null;
-      _localInfo = result.message;
+      _localInfo = invalidated ? null : result.message;
       _completed = result.status == 'success';
-      if (result.status == 'validation_error' || result.status == 'error') {
+      _invalidated = invalidated;
+      if (invalidated ||
+          result.status == 'validation_error' ||
+          result.status == 'error') {
         _localError = result.message;
       }
     });
@@ -124,10 +138,18 @@ class _SelectionCardState extends State<SelectionCard> {
         .cancelSelection(selection: widget.selection);
     if (!mounted) return;
     setState(() {
-      _localError = result.status == 'error' ? result.message : null;
-      _localInfo =
-          result.status == 'error' ? null : (result.message ?? 'Skipped');
+      final invalidated =
+          result.status == 'expired' || result.status == 'stale';
+      if (invalidated) {
+        _selectedIds.clear();
+      }
+      _localError =
+          result.status == 'error' || invalidated ? result.message : null;
+      _localInfo = result.status == 'error' || invalidated
+          ? null
+          : (result.message ?? 'Skipped');
       _completed = result.status == 'success';
+      _invalidated = invalidated;
     });
   }
 
@@ -145,8 +167,12 @@ class _SelectionCardState extends State<SelectionCard> {
     final submitting = provider.isSubmittingSelection;
     final timeLeft = widget.selection.expiresAt.difference(DateTime.now());
     final secondsLeft = timeLeft.inSeconds.clamp(0, 999999);
-    final canSubmit = !_expired && !_completed && !isOutdated && _withinRange;
-    final isDisabled = _expired || _completed || isOutdated;
+    final canSubmit = !_expired &&
+        !_completed &&
+        !_invalidated &&
+        !isOutdated &&
+        _withinRange;
+    final isDisabled = _expired || _completed || _invalidated || isOutdated;
     final infoText = _completed ? null : (_localInfo ?? panelInfo);
     final min = widget.selection.minSelection;
     final max = widget.selection.maxSelection;
@@ -214,7 +240,7 @@ class _SelectionCardState extends State<SelectionCard> {
                     ),
                   ),
                   child: Text(
-                    '这个选择已过期。直接在下方输入框里继续即可。',
+                    '该选择已过期，可直接在输入框继续，或让助手重新给一个选择题。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w600,
@@ -364,10 +390,13 @@ class _SelectionCardState extends State<SelectionCard> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed:
-                        (_completed || submitting || isOutdated || _expired)
-                            ? null
-                            : _cancel,
+                    onPressed: (_completed ||
+                            submitting ||
+                            isOutdated ||
+                            _expired ||
+                            _invalidated)
+                        ? null
+                        : _cancel,
                     child: const Text('Skip'),
                   ),
                   const SizedBox(width: 8),

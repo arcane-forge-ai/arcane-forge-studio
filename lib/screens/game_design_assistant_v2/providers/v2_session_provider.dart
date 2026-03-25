@@ -299,6 +299,18 @@ class V2SessionProvider with ChangeNotifier {
     );
   }
 
+  SelectionInfo? _restorePendingSelectionFromMessages() {
+    for (final message in _messages.reversed) {
+      final selection = message.selection;
+      if (message.role == 'assistant' &&
+          selection != null &&
+          DateTime.now().isBefore(selection.expiresAt)) {
+        return selection;
+      }
+    }
+    return null;
+  }
+
   void _queueDeltaContent(String deltaText) {
     if (deltaText.isEmpty) {
       return;
@@ -421,7 +433,8 @@ class V2SessionProvider with ChangeNotifier {
     await loadProjectContext();
 
     _pendingConfirmation = null;
-    _pendingSelection = null;
+    _pendingSelection =
+        reloadHistory ? _restorePendingSelectionFromMessages() : null;
     _selectionPanelError = null;
     _selectionPanelInfo = null;
     _streamingContent = '';
@@ -715,15 +728,6 @@ class V2SessionProvider with ChangeNotifier {
       };
       final selectedSummary =
           normalizedIds.map((id) => optionLabels[id] ?? id).join(', ');
-      _messages = [
-        ..._messages,
-        ChatMessage(
-          role: 'user',
-          content: '[Selection] $selectedSummary',
-          timestamp: DateTime.now(),
-        ),
-      ];
-
       final assistantMessage = await _apiService.sendMessage(
         sessionId: session.sessionId,
         documentPath: _selectedDocPath,
@@ -733,7 +737,15 @@ class V2SessionProvider with ChangeNotifier {
           selectedIds: normalizedIds,
         ),
       );
-      _messages = [..._messages, assistantMessage];
+      _messages = [
+        ..._messages,
+        ChatMessage(
+          role: 'user',
+          content: '[Selection] $selectedSummary',
+          timestamp: DateTime.now(),
+        ),
+        assistantMessage,
+      ];
       _pendingSelection = assistantMessage.selection;
       _selectionPanelInfo = 'Selection submitted.';
       _chatError = null;
@@ -755,17 +767,10 @@ class V2SessionProvider with ChangeNotifier {
       if (errorCode == 'stale_selection') {
         if (latestSelection != null) {
           _pendingSelection = latestSelection;
-          _messages = [
-            ..._messages,
-            ChatMessage(
-              role: 'assistant',
-              content: 'Selection updated. Switched to the latest question.',
-              timestamp: DateTime.now(),
-              selection: latestSelection,
-            ),
-          ];
         }
         _selectionPanelInfo = message;
+        await refreshData(reloadHistory: true);
+        await loadSessions();
         return SelectionSubmitResult(
           status: 'stale',
           message: message,
@@ -776,6 +781,8 @@ class V2SessionProvider with ChangeNotifier {
       if (errorCode == 'selection_expired') {
         _pendingSelection = null;
         _selectionPanelInfo = message;
+        await refreshData(reloadHistory: true);
+        await loadSessions();
         return SelectionSubmitResult(
           status: 'expired',
           message: message,
@@ -827,8 +834,16 @@ class V2SessionProvider with ChangeNotifier {
           action: 'cancel',
         ),
       );
-      _messages = [..._messages, assistantMessage];
-      _pendingSelection = null;
+      _messages = [
+        ..._messages,
+        ChatMessage(
+          role: 'user',
+          content: '[Selection] skipped',
+          timestamp: DateTime.now(),
+        ),
+        assistantMessage,
+      ];
+      _pendingSelection = assistantMessage.selection;
       _selectionPanelInfo = 'Selection skipped.';
       await Future.delayed(const Duration(milliseconds: 200));
       await refreshData(reloadHistory: false);
@@ -836,8 +851,39 @@ class V2SessionProvider with ChangeNotifier {
       return const SelectionSubmitResult(status: 'success');
     } on DioException catch (e) {
       final payload = _selectionErrorPayloadFromDio(e);
+      final errorCode = payload?['error_code']?.toString() ?? '';
       final message =
           payload?['message']?.toString() ?? 'Selection cancel failed.';
+      final latestRaw = payload?['latest_selection'];
+      final latestSelection = latestRaw is Map
+          ? SelectionInfo.fromJson(Map<String, dynamic>.from(latestRaw))
+          : null;
+
+      if (errorCode == 'stale_selection') {
+        if (latestSelection != null) {
+          _pendingSelection = latestSelection;
+        }
+        _selectionPanelInfo = message;
+        await refreshData(reloadHistory: true);
+        await loadSessions();
+        return SelectionSubmitResult(
+          status: 'stale',
+          message: message,
+          latestSelection: latestSelection,
+        );
+      }
+
+      if (errorCode == 'selection_expired') {
+        _pendingSelection = null;
+        _selectionPanelInfo = message;
+        await refreshData(reloadHistory: true);
+        await loadSessions();
+        return SelectionSubmitResult(
+          status: 'expired',
+          message: message,
+        );
+      }
+
       _selectionPanelError = message;
       return SelectionSubmitResult(status: 'error', message: message);
     } catch (e) {
@@ -1034,6 +1080,7 @@ class V2SessionProvider with ChangeNotifier {
 
       if (reloadHistory) {
         _messages = await _apiService.getHistory(sessionId);
+        _pendingSelection = _restorePendingSelectionFromMessages();
       }
 
       await loadPendingKnowledge(notify: false);
