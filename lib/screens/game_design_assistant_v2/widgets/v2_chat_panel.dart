@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../models/confirmation.dart';
 import '../models/message.dart';
 import '../providers/v2_session_provider.dart';
+import '../utils/chat_input_ui_state.dart';
 import '../utils/stream_locale.dart';
 import 'confirmation_card.dart';
 import 'selection_card.dart';
@@ -115,6 +116,13 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<V2SessionProvider>();
+    final isBlockingSessionSwitch = provider.isSessionSelectionLoading;
+    final inputState = resolveChatInputUiState(
+      canUseV2: provider.canUseV2,
+      isLoading: provider.isLoading,
+      isLoadingSessionSelection: isBlockingSessionSwitch,
+      hasExpiredPendingSelection: provider.hasExpiredPendingSelection,
+    );
     final filteredMessages = provider.messages.where((msg) {
       if (msg.role == 'system') return false;
       if (msg.role == 'tool') return false;
@@ -134,7 +142,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
       children: [
         if (provider.chatError != null)
           Material(
-            color: Colors.red.withOpacity(0.08),
+            color: Colors.red.withValues(alpha: 0.08),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
@@ -152,50 +160,108 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
             ),
           ),
         Expanded(
-          child: filteredMessages.isEmpty && !provider.isSending
-              ? _buildEmptyState(context, provider)
-              : SelectionArea(
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount:
-                        filteredMessages.length + (provider.isSending ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (index >= filteredMessages.length) {
-                        final bubble = _buildMessageBubble(
-                          context,
-                          ChatMessage(
-                            role: 'assistant',
-                            content: provider.streamingContent,
-                            timestamp: DateTime.now(),
-                            thinking: provider.thinkingContent,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: filteredMessages.isEmpty &&
+                        !provider.isSending &&
+                        !isBlockingSessionSwitch
+                    ? _buildEmptyState(context, provider)
+                    : SelectionArea(
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: filteredMessages.length +
+                              (provider.isSending ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index >= filteredMessages.length) {
+                              final bubble = _buildMessageBubble(
+                                context,
+                                ChatMessage(
+                                  role: 'assistant',
+                                  content: provider.streamingContent,
+                                  timestamp: DateTime.now(),
+                                  thinking: provider.thinkingContent,
+                                ),
+                                isStreaming: true,
+                                isLastMessage: true,
+                              );
+                              return AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 250),
+                                switchInCurve: Curves.easeOut,
+                                switchOutCurve: Curves.easeOut,
+                                transitionBuilder: (child, animation) =>
+                                    FadeTransition(
+                                        opacity: animation, child: child),
+                                child: KeyedSubtree(
+                                  key: ValueKey<int>(
+                                      provider.streamRenderVersion),
+                                  child: bubble,
+                                ),
+                              );
+                            }
+                            final msg = filteredMessages[index];
+                            return _buildMessageBubble(
+                              context,
+                              msg,
+                              isLastMessage:
+                                  index == filteredMessages.length - 1,
+                            );
+                          },
+                        ),
+                      ),
+              ),
+              if (isBlockingSessionSwitch)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Container(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surface
+                          .withValues(alpha: 0.74),
+                      alignment: Alignment.center,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outline
+                                .withValues(alpha: 0.16),
                           ),
-                          isStreaming: true,
-                          isLastMessage: true,
-                        );
-                        return AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 250),
-                          switchInCurve: Curves.easeOut,
-                          switchOutCurve: Curves.easeOut,
-                          transitionBuilder: (child, animation) =>
-                              FadeTransition(opacity: animation, child: child),
-                          child: KeyedSubtree(
-                            key: ValueKey<int>(provider.streamRenderVersion),
-                            child: bubble,
-                          ),
-                        );
-                      }
-                      final msg = filteredMessages[index];
-                      return _buildMessageBubble(
-                        context,
-                        msg,
-                        isLastMessage: index == filteredMessages.length - 1,
-                      );
-                    },
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 12),
+                            Text('Loading chat session...'),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
+            ],
+          ),
         ),
-        _buildInputBar(context, provider),
+        _buildInputBar(context, provider, inputState),
       ],
     );
   }
@@ -227,57 +293,97 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
     );
   }
 
-  Widget _buildInputBar(BuildContext context, V2SessionProvider provider) {
-    final inputEnabled = !provider.isLoading && provider.canUseV2;
-    final inputHint = !provider.canUseV2
-        ? 'Sign in to use Game Design Assistant v2'
-        : provider.hasExpiredPendingSelection
-            ? '旧选择已过期，直接输入即可继续'
-            : 'Ask about game design...';
-
+  Widget _buildInputBar(
+    BuildContext context,
+    V2SessionProvider provider,
+    ChatInputUiState inputState,
+  ) {
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _controller,
-                minLines: 1,
-                maxLines: 5,
-                enabled: inputEnabled,
-                onSubmitted: (_) => _submit(),
-                decoration: InputDecoration(
-                  hintText: inputHint,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-              ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: inputState.loadingLabel == null
+                  ? const SizedBox.shrink()
+                  : Container(
+                      key: ValueKey<String>(inputState.loadingLabel!),
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outline
+                              .withValues(alpha: 0.14),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(inputState.loadingLabel!)),
+                        ],
+                      ),
+                    ),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: (provider.isSending ||
-                      provider.isLoading ||
-                      !provider.canUseV2)
-                  ? null
-                  : _submit,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(52, 48),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
-              child: provider.isSending
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send_rounded),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    minLines: 1,
+                    maxLines: 5,
+                    enabled: inputState.enabled,
+                    onSubmitted: (_) => _submit(),
+                    decoration: InputDecoration(
+                      hintText: inputState.hintText,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: (provider.isSending || !inputState.enabled)
+                      ? null
+                      : _submit,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(52, 48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: provider.isSending
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_rounded),
+                ),
+              ],
             ),
           ],
         ),
@@ -308,8 +414,8 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
-            border:
-                Border.all(color: theme.colorScheme.outline.withOpacity(0.12)),
+            border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.12)),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
@@ -361,13 +467,13 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: isUser
-                ? theme.colorScheme.primary.withOpacity(0.95)
+                ? theme.colorScheme.primary.withValues(alpha: 0.95)
                 : theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: isUser
                 ? null
                 : Border.all(
-                    color: theme.colorScheme.outline.withOpacity(0.12)),
+                    color: theme.colorScheme.outline.withValues(alpha: 0.12)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -378,8 +484,9 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color:
-                        theme.colorScheme.secondaryContainer.withOpacity(0.65),
+                    color: theme.colorScheme.secondaryContainer.withValues(
+                      alpha: 0.65,
+                    ),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -395,7 +502,9 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer.withOpacity(0.65),
+                    color: theme.colorScheme.errorContainer.withValues(
+                      alpha: 0.65,
+                    ),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -410,7 +519,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(

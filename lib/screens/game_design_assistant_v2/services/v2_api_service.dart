@@ -167,6 +167,16 @@ class V2ApiService {
     }
   }
 
+  Future<SessionBootstrapResponse> getSessionBootstrap(String sessionId) async {
+    try {
+      final response = await _apiClient.dio
+          .get('$_designBaseUrl/sessions/$sessionId/bootstrap');
+      return SessionBootstrapResponse.fromJson(_asMap(response.data));
+    } catch (e) {
+      throw Exception('Failed to bootstrap session: ${_extractError(e)}');
+    }
+  }
+
   Future<List<ChatMessage>> getHistory(String sessionId) async {
     try {
       final response = await _apiClient.dio
@@ -215,6 +225,8 @@ class V2ApiService {
         'role': 'assistant',
         'content': data['message']?.toString() ?? '',
         'timestamp': DateTime.now().toIso8601String(),
+        'pending_knowledge_may_update':
+            data['pending_knowledge_may_update'] == true,
         if (data['thinking'] != null) 'thinking': data['thinking'],
         if (data['confirmation'] != null) 'confirmation': data['confirmation'],
         if (data['selection'] != null) 'selection': data['selection'],

@@ -43,14 +43,18 @@ class V2SessionProvider with ChangeNotifier {
     required this.projectName,
     required SettingsProvider settingsProvider,
     required AuthProvider authProvider,
-  })  : _apiService = V2ApiService(
-          settingsProvider: settingsProvider,
-          authProvider: authProvider,
-        ),
-        _sseService = V2SSEService(
-          settingsProvider: settingsProvider,
-          authProvider: authProvider,
-        ),
+    V2ApiService? apiService,
+    V2SSEService? sseService,
+  })  : _apiService = apiService ??
+            V2ApiService(
+              settingsProvider: settingsProvider,
+              authProvider: authProvider,
+            ),
+        _sseService = sseService ??
+            V2SSEService(
+              settingsProvider: settingsProvider,
+              authProvider: authProvider,
+            ),
         _authProvider = authProvider;
 
   List<SessionInfo> _sessions = [];
@@ -72,6 +76,7 @@ class V2SessionProvider with ChangeNotifier {
   bool _isConfirming = false;
   bool _isSubmittingSelection = false;
   bool _hasDraftConversation = false;
+  String? _loadingSessionId;
 
   String _streamingContent = '';
   String? _thinkingContent;
@@ -106,6 +111,8 @@ class V2SessionProvider with ChangeNotifier {
   final Map<String, String> _localPendingDrafts = {};
   int _activeStreamEpoch = 0;
   String? _activeStreamSessionId;
+  int _pendingKnowledgeRefreshEpoch = 0;
+  int _sessionTitleRefreshEpoch = 0;
 
   List<SessionInfo> get sessions => _sessions;
   SessionInfo? get currentSession => _currentSession;
@@ -131,6 +138,9 @@ class V2SessionProvider with ChangeNotifier {
   bool get isConfirming => _isConfirming;
   bool get isSubmittingSelection => _isSubmittingSelection;
   bool get hasDraftConversation => _hasDraftConversation;
+  String? get loadingSessionId => _loadingSessionId;
+  bool get isSessionSelectionLoading =>
+      _loadingSessionId != null && _loadingSessionId!.trim().isNotEmpty;
   String get streamingContent => _streamingContent;
   String? get thinkingContent => _thinkingContent;
   String? get streamStatusTip => _streamStatusTip;
@@ -212,6 +222,8 @@ class V2SessionProvider with ChangeNotifier {
   void _invalidateStreamBinding({bool clearUiState = false}) {
     _activeStreamEpoch += 1;
     _activeStreamSessionId = null;
+    _pendingKnowledgeRefreshEpoch += 1;
+    _sessionTitleRefreshEpoch += 1;
     _sseService.cancelActiveStream();
     _deltaFlushTimer?.cancel();
     _deltaFlushTimer = null;
@@ -224,6 +236,110 @@ class V2SessionProvider with ChangeNotifier {
       _streamingContent = '';
       _thinkingContent = null;
       _pendingWriteSummary = null;
+    }
+  }
+
+  void _schedulePendingKnowledgeRefresh() {
+    final epoch = ++_pendingKnowledgeRefreshEpoch;
+    unawaited(_pollPendingKnowledgeRefresh(epoch));
+  }
+
+  Future<void> _pollPendingKnowledgeRefresh(int epoch) async {
+    const delays = <Duration>[
+      Duration(milliseconds: 200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1600),
+      Duration(milliseconds: 3200),
+    ];
+    final baselineEtag = _pendingBatchEtag;
+    final baselineCount = _pendingKnowledgeItems.length;
+
+    for (final delay in delays) {
+      await Future<void>.delayed(delay);
+      if (epoch != _pendingKnowledgeRefreshEpoch) {
+        return;
+      }
+
+      final previousEtag = _pendingBatchEtag;
+      final previousCount = _pendingKnowledgeItems.length;
+      await loadPendingKnowledge(notify: false, captureError: false);
+      if (epoch != _pendingKnowledgeRefreshEpoch) {
+        return;
+      }
+
+      final changedFromPrevious = _pendingBatchEtag != previousEtag ||
+          _pendingKnowledgeItems.length != previousCount;
+      final changedFromBaseline = _pendingBatchEtag != baselineEtag ||
+          _pendingKnowledgeItems.length != baselineCount;
+      if (changedFromPrevious || changedFromBaseline) {
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  SessionInfo? _sessionById(String sessionId) {
+    final normalized = sessionId.trim();
+    if (normalized.isEmpty) return null;
+    for (final session in _sessions) {
+      if (session.sessionId == normalized) return session;
+    }
+    return null;
+  }
+
+  bool _isFallbackSessionTitle(String? title, String sessionId) {
+    final normalizedTitle = title?.trim();
+    if (normalizedTitle == null || normalizedTitle.isEmpty) return true;
+    final shortId =
+        sessionId.length > 8 ? sessionId.substring(0, 8) : sessionId;
+    return normalizedTitle == 'Session $shortId';
+  }
+
+  bool _sessionNeedsTitleRefresh(String sessionId) {
+    final session = _sessionById(sessionId) ??
+        (_currentSession?.sessionId == sessionId ? _currentSession : null);
+    if (session == null) return false;
+    return _isFallbackSessionTitle(session.title, sessionId);
+  }
+
+  void _scheduleSessionTitleRefreshIfNeeded({String? sessionId}) {
+    final targetSessionId = (sessionId ?? _currentSession?.sessionId)?.trim();
+    if (targetSessionId == null || targetSessionId.isEmpty) {
+      return;
+    }
+    if (!_sessionNeedsTitleRefresh(targetSessionId)) {
+      return;
+    }
+    final epoch = ++_sessionTitleRefreshEpoch;
+    unawaited(_pollSessionTitleRefresh(epoch, targetSessionId));
+  }
+
+  Future<void> _pollSessionTitleRefresh(int epoch, String sessionId) async {
+    const delays = <Duration>[
+      Duration(milliseconds: 200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1600),
+      Duration(milliseconds: 3200),
+    ];
+
+    for (final delay in delays) {
+      await Future<void>.delayed(delay);
+      if (epoch != _sessionTitleRefreshEpoch) {
+        return;
+      }
+      if (_currentSession?.sessionId != sessionId) {
+        return;
+      }
+
+      await loadSessions();
+      if (epoch != _sessionTitleRefreshEpoch) {
+        return;
+      }
+      if (!_sessionNeedsTitleRefresh(sessionId)) {
+        return;
+      }
     }
   }
 
@@ -367,6 +483,7 @@ class V2SessionProvider with ChangeNotifier {
 
   void startNewChat() {
     _invalidateStreamBinding(clearUiState: true);
+    _loadingSessionId = null;
     _currentSession = null;
     _messages = [];
     _contextData = null;
@@ -393,53 +510,74 @@ class V2SessionProvider with ChangeNotifier {
 
   Future<void> selectSession(String sessionId) async {
     _invalidateStreamBinding(clearUiState: true);
+    _loadingSessionId = sessionId;
     _isLoading = true;
     _chatError = null;
     _promptEligibleSessionId = null;
     notifyListeners();
 
     try {
-      _currentSession = await _apiService.getSession(sessionId);
+      final bootstrap = await _apiService.getSessionBootstrap(sessionId);
+      _applySessionBootstrap(bootstrap);
       _hasDraftConversation = false;
-      await _loadSessionData(sessionId, reloadHistory: true);
+      _loadingSessionId = null;
+      _isLoading = false;
+      notifyListeners();
+      unawaited(_loadSessionPanels(sessionId));
     } catch (e) {
       _chatError = e.toString();
       rethrow;
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (_isLoading) {
+        _loadingSessionId = null;
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
-  Future<void> _loadSessionData(String sessionId,
-      {bool reloadHistory = true}) async {
+  void _applySessionBootstrap(SessionBootstrapResponse bootstrap) {
     _promptEligibleSessionId = null;
     _clearSelectedDocument();
+    _contextData = null;
     _documents = [];
-    await loadDocuments(notify: false);
-    _contextData = await _apiService.getContext(sessionId);
-
-    if (reloadHistory) {
-      _messages = await _apiService.getHistory(sessionId);
-    }
-
-    _currentSession = await _apiService.getSession(sessionId);
-    await _syncDocumentSelectionWithSession();
-
-    // Load session-scoped pending knowledge when switching sessions.
-    await loadPendingKnowledge(notify: false);
-
-    // Load project context when switching sessions
-    await loadProjectContext();
-
+    _currentSession = bootstrap.session;
+    _messages =
+        List<ChatMessage>.of(bootstrap.history.messages, growable: true);
     _pendingConfirmation = null;
-    _pendingSelection =
-        reloadHistory ? _restorePendingSelectionFromMessages() : null;
+    _pendingSelection = _restorePendingSelectionFromMessages();
     _selectionPanelError = null;
     _selectionPanelInfo = null;
     _streamingContent = '';
     _thinkingContent = null;
+    _pendingWriteSummary = null;
     _refreshExtractionPromptFlag();
+  }
+
+  Future<void> _loadSessionPanels(String sessionId) async {
+    unawaited(_loadSessionDocumentsPanel());
+    unawaited(_loadSessionContextPanel(sessionId));
+    unawaited(loadPendingKnowledge(notify: false));
+    unawaited(loadProjectContext());
+  }
+
+  Future<void> _loadSessionDocumentsPanel() async {
+    await loadDocuments(notify: false);
+    await _syncDocumentSelectionWithSession();
+    notifyListeners();
+  }
+
+  Future<void> _loadSessionContextPanel(String sessionId) async {
+    try {
+      _contextData = await _apiService.getContext(sessionId);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading session context: $e');
+      }
+      _contextData = _contextData ?? GetContextResponse();
+    } finally {
+      notifyListeners();
+    }
   }
 
   Future<void> _createAndSelectSession() async {
@@ -512,6 +650,7 @@ class V2SessionProvider with ChangeNotifier {
 
     var streamCancelled = false;
     var receivedDone = false;
+    var pendingKnowledgeMayUpdate = false;
     try {
       await for (final event in _sseService.streamMessage(
         sessionId: streamSessionId,
@@ -568,6 +707,8 @@ class V2SessionProvider with ChangeNotifier {
             break;
           case 'done':
             receivedDone = true;
+            pendingKnowledgeMayUpdate = pendingKnowledgeMayUpdate ||
+                event.pendingKnowledgeMayUpdate == true;
             _flushPendingDelta(notify: false);
             final doneFinal = (event.finalContent ?? '').trim();
             if (doneFinal.isNotEmpty && doneFinal != _streamingContent) {
@@ -646,6 +787,7 @@ class V2SessionProvider with ChangeNotifier {
               content: _streamingContent,
               timestamp: DateTime.now(),
               isPartial: isPartialResponse,
+              pendingKnowledgeMayUpdate: pendingKnowledgeMayUpdate,
               thinking: _thinkingContent,
               confirmation: _pendingConfirmation,
               selection: _pendingSelection,
@@ -667,6 +809,10 @@ class V2SessionProvider with ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 300));
         await refreshData();
         await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: streamSessionId);
+        if (pendingKnowledgeMayUpdate) {
+          _schedulePendingKnowledgeRefresh();
+        }
       }
     }
   }
@@ -753,6 +899,10 @@ class V2SessionProvider with ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 200));
       await refreshData(reloadHistory: false);
       await loadSessions();
+      _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
+      if (assistantMessage.pendingKnowledgeMayUpdate) {
+        _schedulePendingKnowledgeRefresh();
+      }
       return const SelectionSubmitResult(status: 'success');
     } on DioException catch (e) {
       final payload = _selectionErrorPayloadFromDio(e);
@@ -771,6 +921,7 @@ class V2SessionProvider with ChangeNotifier {
         _selectionPanelInfo = message;
         await refreshData(reloadHistory: true);
         await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
         return SelectionSubmitResult(
           status: 'stale',
           message: message,
@@ -783,6 +934,7 @@ class V2SessionProvider with ChangeNotifier {
         _selectionPanelInfo = message;
         await refreshData(reloadHistory: true);
         await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
         return SelectionSubmitResult(
           status: 'expired',
           message: message,
@@ -848,6 +1000,10 @@ class V2SessionProvider with ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 200));
       await refreshData(reloadHistory: false);
       await loadSessions();
+      _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
+      if (assistantMessage.pendingKnowledgeMayUpdate) {
+        _schedulePendingKnowledgeRefresh();
+      }
       return const SelectionSubmitResult(status: 'success');
     } on DioException catch (e) {
       final payload = _selectionErrorPayloadFromDio(e);
@@ -866,6 +1022,7 @@ class V2SessionProvider with ChangeNotifier {
         _selectionPanelInfo = message;
         await refreshData(reloadHistory: true);
         await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
         return SelectionSubmitResult(
           status: 'stale',
           message: message,
@@ -878,6 +1035,7 @@ class V2SessionProvider with ChangeNotifier {
         _selectionPanelInfo = message;
         await refreshData(reloadHistory: true);
         await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
         return SelectionSubmitResult(
           status: 'expired',
           message: message,
@@ -938,11 +1096,19 @@ class V2SessionProvider with ChangeNotifier {
         await Future.delayed(const Duration(milliseconds: 300));
         await refreshData(reloadHistory: false);
         await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: sessionId);
+        if (result['pending_knowledge_may_update'] == true) {
+          _schedulePendingKnowledgeRefresh();
+        }
       } else {
         // Normal completion or failure: reload history (TurnManager wrote the completion message)
         await Future.delayed(const Duration(milliseconds: 300));
         await refreshData(reloadHistory: true);
         await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: sessionId);
+        if (result['pending_knowledge_may_update'] == true) {
+          _schedulePendingKnowledgeRefresh();
+        }
       }
     } on DioException catch (e) {
       // Handle 409 conflict with automatic retry
@@ -1046,6 +1212,7 @@ class V2SessionProvider with ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 300));
       await refreshData(reloadHistory: true);
       await loadSessions();
+      _scheduleSessionTitleRefreshIfNeeded(sessionId: sessionId);
     } on ConfirmFlowDisabledException {
       _pendingConfirmation = null;
       _chatError = null;

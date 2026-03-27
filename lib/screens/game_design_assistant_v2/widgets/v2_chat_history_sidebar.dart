@@ -260,19 +260,24 @@ class V2ChatHistorySidebar extends StatelessWidget {
                   itemCount: provider.sessions.length,
                   itemBuilder: (context, index) {
                     final session = provider.sessions[index];
+                    final isLoadingTarget =
+                        provider.loadingSessionId == session.sessionId;
                     final isSelected =
                         provider.currentSession?.sessionId == session.sessionId;
+                    final isActive = isLoadingTarget ||
+                        (!provider.isSessionSelectionLoading && isSelected);
                     return Container(
                       margin: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? colorScheme.primary.withOpacity(0.08)
+                        color: isActive
+                            ? colorScheme.primary.withValues(alpha: 0.08)
                             : null,
                         borderRadius: BorderRadius.circular(8),
-                        border: isSelected
+                        border: isActive
                             ? Border.all(
-                                color: colorScheme.primary.withOpacity(0.3))
+                                color:
+                                    colorScheme.primary.withValues(alpha: 0.3))
                             : null,
                       ),
                       child: InkWell(
@@ -313,16 +318,28 @@ class V2ChatHistorySidebar extends StatelessWidget {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        fontWeight: isSelected
+                                        fontWeight: isActive
                                             ? FontWeight.w700
                                             : FontWeight.w500,
-                                        color: isSelected
+                                        color: isActive
                                             ? colorScheme.primary
                                             : null,
                                       ),
                                     ),
                                   ),
-                                  if (isSelected)
+                                  if (isLoadingTarget)
+                                    SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                          colorScheme.primary,
+                                        ),
+                                      ),
+                                    )
+                                  else if (isActive)
                                     Container(
                                       width: 8,
                                       height: 8,
