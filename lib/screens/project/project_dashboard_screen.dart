@@ -18,8 +18,10 @@ import '../music_generation/music_overview_screen.dart';
 import '../feedback/feedback_screen.dart';
 import 'release_info_screen.dart';
 import '../shared/coming_soon_screen.dart';
-import '../development/code_screen.dart';
+import '../development/coding_agent_screen.dart';
+import '../development/developer_toolkit_screen.dart';
 import '../evaluate/evaluate_screen.dart';
+import '../shared/components/base_side_menu.dart';
 
 class ProjectDashboardScreen extends StatelessWidget {
   final String projectId;
@@ -27,10 +29,10 @@ class ProjectDashboardScreen extends StatelessWidget {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   ProjectDashboardScreen({
-    Key? key,
+    super.key,
     required this.projectId,
     required this.projectName,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -46,109 +48,150 @@ class ProjectDashboardScreen extends StatelessWidget {
       key: _scaffoldKey,
       drawer: SideMenu(projectName: projectName),
       body: SafeArea(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // We want this side menu only for large screen
-            if (Responsive.isDesktop(context))
-              Expanded(
-                // default flex = 1
-                // and it takes 1/6 part of the screen
-                child: SideMenu(projectName: projectName),
-              ),
-            Expanded(
-              // It takes 5/6 part of the screen
-              flex: 5,
-              child: Consumer<MenuAppController>(
-                builder: (context, controller, child) {
-                  switch (controller.currentScreen) {
-                    case ScreenType.projectHome:
-                      return ProjectHomeScreen(
-                        key: ValueKey('project_home_$projectId'),
-                        projectId: projectId,
-                      );
-                    case ScreenType.knowledgeBase:
-                      return KnowledgeBaseScreen(
-                        projectId: projectId,
-                        projectName: projectName,
-                      );
-                    case ScreenType.gameDesignAssistant:
-                      return GameDesignAssistantScreen(
-                        projectId: projectId,
-                        projectName: projectName,
-                      );
-                    case ScreenType.gameDesignAssistantV2:
-                      return GameDesignAssistantV2Screen(
-                        projectId: projectId,
-                        projectName: projectName,
-                      );
-                    case ScreenType.knowledgeBaseQA:
-                      return KnowledgeBaseQAScreen(
-                        projectId: projectId,
-                        projectName: projectName,
-                      );
-                    case ScreenType.codeEditor:
-                      return CodeScreen(
-                        projectId: projectId,
-                        projectName: projectName,
-                      );
-                    case ScreenType.imageGenerationOverview:
-                      return ImageOverviewScreen(
-                          projectId: projectId, projectName: projectName);
-                    case ScreenType.imageGenerationGeneration:
-                      // Get pre-selected asset from controller
-                      final preSelectedAsset = controller.preSelectedAsset;
-                      // Clear it after the frame is built to avoid setState during build
-                      if (preSelectedAsset != null) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          controller.clearPreSelectedAsset();
-                        });
-                      }
-                      return SelectTargetScreen(
-                          projectId: projectId,
-                          projectName: projectName,
-                          preSelectedAsset: preSelectedAsset);
-                    case ScreenType.soundGenerator:
-                    case ScreenType.sfxGenerationGeneration:
-                      return SfxGenerationScreen(
-                          projectId: projectId, projectName: projectName);
-                    case ScreenType.sfxGenerationOverview:
-                      return SfxOverviewScreen(
-                          projectId: projectId, projectName: projectName);
-                    case ScreenType.musicGenerator:
-                    case ScreenType.musicGenerationGeneration:
-                      return MusicGenerationScreen(
-                          projectId: projectId, projectName: projectName);
-                    case ScreenType.musicGenerationOverview:
-                      return MusicOverviewScreen(
-                          projectId: projectId, projectName: projectName);
-                    case ScreenType.feedbacks:
-                      return FeedbackScreen(
-                          projectId: projectId, projectName: projectName);
-                    case ScreenType.evaluate:
-                      return EvaluateScreen(
-                          projectId: projectId, projectName: projectName);
-                    case ScreenType.versions:
-                      return ReleaseInfoScreen(
-                        projectId: projectId,
-                        projectName: projectName,
-                      );
-                    case ScreenType.stats:
-                      return const ComingSoonScreen(
-                        featureName: 'Analytics & Stats',
-                        icon: Icons.analytics_outlined,
-                        description:
-                            'Comprehensive analytics and statistics for your game project will be available soon. Track performance, user engagement, and more.',
-                      );
-                    default:
-                      return DashboardScreen();
-                  }
-                },
-              ),
-            ),
-          ],
+        child: Consumer<MenuAppController>(
+          builder: (context, controller, child) {
+            final isDesktop = Responsive.isDesktop(context);
+            final sidebarWidth =
+                isDesktop && controller.isDesktopSidebarCollapsed
+                    ? BaseSideMenu.desktopRailWidth
+                    : BaseSideMenu.desktopWidth;
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isDesktop)
+                  AnimatedContainer(
+                    duration: BaseSideMenu.desktopAnimationDuration,
+                    curve: Curves.easeInOut,
+                    width: sidebarWidth,
+                    child: ClipRect(
+                      child: SizedBox(
+                        width: sidebarWidth,
+                        child: controller.isDesktopSidebarCollapsed
+                            ? SideMenu(projectName: projectName)
+                                .buildDesktopRail(
+                                context,
+                                onExpand: controller.expandDesktopSidebar,
+                              )
+                            : SideMenu(projectName: projectName)
+                                .buildDesktopPanel(
+                                context,
+                                onCollapse: controller.toggleDesktopSidebar,
+                              ),
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  child: _buildContent(controller),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
+  }
+
+  Widget _buildContent(MenuAppController controller) {
+    switch (controller.currentScreen) {
+      case ScreenType.projectHome:
+        return ProjectHomeScreen(
+          key: ValueKey('project_home_$projectId'),
+          projectId: projectId,
+        );
+      case ScreenType.knowledgeBase:
+        return KnowledgeBaseScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.gameDesignAssistant:
+        return GameDesignAssistantScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.gameDesignAssistantV2:
+        return GameDesignAssistantV2Screen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.knowledgeBaseQA:
+        return KnowledgeBaseQAScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.codingAgent:
+        return CodingAgentScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.developerToolkit:
+        return DeveloperToolkitScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.imageGenerationOverview:
+        return ImageOverviewScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.imageGenerationGeneration:
+        final preSelectedAsset = controller.preSelectedAsset;
+        if (preSelectedAsset != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            controller.clearPreSelectedAsset();
+          });
+        }
+        return SelectTargetScreen(
+          projectId: projectId,
+          projectName: projectName,
+          preSelectedAsset: preSelectedAsset,
+        );
+      case ScreenType.soundGenerator:
+      case ScreenType.sfxGenerationGeneration:
+        return SfxGenerationScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.sfxGenerationOverview:
+        return SfxOverviewScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.musicGenerator:
+      case ScreenType.musicGenerationGeneration:
+        return MusicGenerationScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.musicGenerationOverview:
+        return MusicOverviewScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.feedbacks:
+        return FeedbackScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.evaluate:
+        return EvaluateScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.versions:
+        return ReleaseInfoScreen(
+          projectId: projectId,
+          projectName: projectName,
+        );
+      case ScreenType.stats:
+        return const ComingSoonScreen(
+          featureName: 'Analytics & Stats',
+          icon: Icons.analytics_outlined,
+          description:
+              'Comprehensive analytics and statistics for your game project will be available soon. Track performance, user engagement, and more.',
+        );
+      default:
+        return DashboardScreen();
+    }
   }
 }

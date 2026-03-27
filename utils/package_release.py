@@ -4,6 +4,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from opencode_sidecar import stage_sidecar, verify_staged_sidecar
+
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBSPEC = ROOT / "pubspec.yaml"
@@ -14,6 +16,7 @@ UPDATE_SCRIPT_PY = ROOT / "utils" / "update.py"
 RELEASE_DEPENDENCIES_DIR = ROOT / "utils" / "release_dependencies"
 VERSION_FILE_NAME = "version.txt"
 ASSET_NAME_TEMPLATE = "arcane-forge-studio-windows-v{version}"
+WINDOWS_SIDECAR_PLATFORM = "windows-x64"
 
 
 def read_version() -> str:
@@ -61,6 +64,16 @@ def copy_release_dependencies(build_dir: Path) -> None:
             print(f"Copied dependency: {file_path.name}")
 
 
+def copy_opencode_sidecar(build_dir: Path) -> None:
+    sidecar_dir = build_dir / "opencode_sidecar"
+    if sidecar_dir.exists():
+        shutil.rmtree(sidecar_dir)
+    sidecar_dir.mkdir(parents=True, exist_ok=True)
+    binary = stage_sidecar(WINDOWS_SIDECAR_PLATFORM, sidecar_dir)
+    verify_staged_sidecar(sidecar_dir)
+    print(f"Bundled OpenCode sidecar: {binary.name}")
+
+
 def create_archive(build_dir: Path, version: str) -> Path:
     RELEASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     archive_base = RELEASE_OUTPUT_DIR / ASSET_NAME_TEMPLATE.format(version=version)
@@ -73,6 +86,7 @@ def main() -> int:
     build_dir = ensure_build_directory()
     copy_update_assets(build_dir, version)
     copy_release_dependencies(build_dir)
+    copy_opencode_sidecar(build_dir)
     archive = create_archive(build_dir, version)
     print(f"Release archive created: {archive}")
     return 0

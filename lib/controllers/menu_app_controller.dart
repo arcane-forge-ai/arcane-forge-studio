@@ -8,7 +8,8 @@ enum ScreenType {
   gameDesignAssistant,
   gameDesignAssistantV2,
   knowledgeBaseQA,
-  codeEditor,
+  codingAgent,
+  developerToolkit,
   imageGenerator,
   imageGenerationOverview,
   imageGenerationGeneration,
@@ -33,9 +34,11 @@ enum ScreenType {
 class MenuAppController extends ChangeNotifier {
   ScreenType _currentScreen = ScreenType.dashboard;
   ImageAsset? _preSelectedAsset;
+  bool _isDesktopSidebarCollapsed = false;
 
   ScreenType get currentScreen => _currentScreen;
   ImageAsset? get preSelectedAsset => _preSelectedAsset;
+  bool get isDesktopSidebarCollapsed => _isDesktopSidebarCollapsed;
 
   void changeScreen(ScreenType screenType, {ImageAsset? preSelectedAsset}) {
     _currentScreen = screenType;
@@ -46,5 +49,22 @@ class MenuAppController extends ChangeNotifier {
   void clearPreSelectedAsset() {
     _preSelectedAsset = null;
     // No need to notify listeners - clearing doesn't need to trigger rebuild
+  }
+
+  void toggleDesktopSidebar() {
+    _isDesktopSidebarCollapsed = !_isDesktopSidebarCollapsed;
+    notifyListeners();
+  }
+
+  void setDesktopSidebarCollapsed(bool collapsed) {
+    if (_isDesktopSidebarCollapsed == collapsed) {
+      return;
+    }
+    _isDesktopSidebarCollapsed = collapsed;
+    notifyListeners();
+  }
+
+  void expandDesktopSidebar() {
+    setDesktopSidebarCollapsed(false);
   }
 }

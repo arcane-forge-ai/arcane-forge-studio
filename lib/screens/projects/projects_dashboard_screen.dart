@@ -7,6 +7,7 @@ import '../user/user_screen.dart';
 import 'components/projects_side_menu.dart';
 import 'projects_screen.dart';
 import 'project_invites_screen.dart';
+import '../shared/components/base_side_menu.dart';
 
 class ProjectsDashboardScreen extends StatelessWidget {
   const ProjectsDashboardScreen({super.key});
@@ -16,39 +17,60 @@ class ProjectsDashboardScreen extends StatelessWidget {
     return Scaffold(
       drawer: const ProjectsSideMenu(),
       body: SafeArea(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // We want this side menu only for large screen  
-            if (Responsive.isDesktop(context))
-              const Expanded(
-                // default flex = 1
-                // and it takes 1/6 part of the screen
-                child: ProjectsSideMenu(),
-              ),
-            Expanded(
-              // It takes 5/6 part of the screen
-              flex: 5,
-              child: Consumer<MenuAppController>(
-                builder: (context, controller, child) {
-                  switch (controller.currentScreen) {
-                    case ScreenType.projects:
-                      return const ProjectsScreen();
-                    case ScreenType.invites:
-                      return const ProjectInvitesScreen();
-                    case ScreenType.settings:
-                      return const SettingsScreen();
-                    case ScreenType.user:
-                      return const UserScreen();
-                    default:
-                      return const ProjectsScreen();
-                  }
-                },
-              ),
-            ),
-          ],
+        child: Consumer<MenuAppController>(
+          builder: (context, controller, child) {
+            final isDesktop = Responsive.isDesktop(context);
+            final sidebarWidth =
+                isDesktop && controller.isDesktopSidebarCollapsed
+                    ? BaseSideMenu.desktopRailWidth
+                    : BaseSideMenu.desktopWidth;
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isDesktop)
+                  AnimatedContainer(
+                    duration: BaseSideMenu.desktopAnimationDuration,
+                    curve: Curves.easeInOut,
+                    width: sidebarWidth,
+                    child: ClipRect(
+                      child: SizedBox(
+                        width: sidebarWidth,
+                        child: controller.isDesktopSidebarCollapsed
+                            ? const ProjectsSideMenu().buildDesktopRail(
+                                context,
+                                onExpand: controller.expandDesktopSidebar,
+                              )
+                            : const ProjectsSideMenu().buildDesktopPanel(
+                                context,
+                                onCollapse: controller.toggleDesktopSidebar,
+                              ),
+                      ),
+                    ),
+                  ),
+                Expanded(
+                  child: _buildContent(controller),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
-} 
+
+  Widget _buildContent(MenuAppController controller) {
+    switch (controller.currentScreen) {
+      case ScreenType.projects:
+        return const ProjectsScreen();
+      case ScreenType.invites:
+        return const ProjectInvitesScreen();
+      case ScreenType.settings:
+        return const SettingsScreen();
+      case ScreenType.user:
+        return const UserScreen();
+      default:
+        return const ProjectsScreen();
+    }
+  }
+}

@@ -15,21 +15,21 @@ import '../../providers/auth_provider.dart';
 import '../../utils/web_file_picker_stub.dart'
     if (dart.library.html) '../../utils/web_file_picker.dart';
 
-class CodeScreen extends StatefulWidget {
+class DeveloperToolkitScreen extends StatefulWidget {
   final String projectId;
   final String projectName;
 
-  const CodeScreen({
+  const DeveloperToolkitScreen({
     Key? key,
     required this.projectId,
     required this.projectName,
   }) : super(key: key);
 
   @override
-  State<CodeScreen> createState() => _CodeScreenState();
+  State<DeveloperToolkitScreen> createState() => _DeveloperToolkitScreenState();
 }
 
-class _CodeScreenState extends State<CodeScreen> {
+class _DeveloperToolkitScreenState extends State<DeveloperToolkitScreen> {
   final TextEditingController _codeMapController = TextEditingController();
 
   bool _isEditingCodeMap = false;
@@ -245,7 +245,7 @@ class _CodeScreenState extends State<CodeScreen> {
                           const Icon(Icons.code, size: 28, color: primaryColor),
                           const SizedBox(width: 12),
                           Text(
-                            'Code',
+                            'Developer Toolkit',
                             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                               color: Theme.of(context).colorScheme.onSurface,
                             ),
@@ -802,5 +802,4 @@ class _CodeScreenState extends State<CodeScreen> {
     super.dispose();
   }
 }
-
 

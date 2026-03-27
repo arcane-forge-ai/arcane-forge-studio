@@ -9,10 +9,10 @@ class ProjectFlowChart extends StatefulWidget {
   final Function(ScreenType) onNodeTap;
 
   const ProjectFlowChart({
-    Key? key,
+    super.key,
     required this.overview,
     required this.onNodeTap,
-  }) : super(key: key);
+  });
 
   @override
   State<ProjectFlowChart> createState() => _ProjectFlowChartState();
@@ -28,11 +28,16 @@ class _ProjectFlowChartState extends State<ProjectFlowChart> {
       widget.overview.gameDesign,
       widget.overview.knowledgeBase,
     );
-    final codingStatus = ProjectFlowHelper.getCodingStatus(widget.overview.code);
-    final imageStatus = ProjectFlowHelper.getAssetStatus(widget.overview.imageAssets);
-    final sfxStatus = ProjectFlowHelper.getAssetStatus(widget.overview.sfxAssets);
-    final musicStatus = ProjectFlowHelper.getAssetStatus(widget.overview.musicAssets);
-    final releaseStatus = ProjectFlowHelper.getReleaseStatus(widget.overview.release);
+    final codingStatus =
+        ProjectFlowHelper.getCodingStatus(widget.overview.code);
+    final imageStatus =
+        ProjectFlowHelper.getAssetStatus(widget.overview.imageAssets);
+    final sfxStatus =
+        ProjectFlowHelper.getAssetStatus(widget.overview.sfxAssets);
+    final musicStatus =
+        ProjectFlowHelper.getAssetStatus(widget.overview.musicAssets);
+    final releaseStatus =
+        ProjectFlowHelper.getReleaseStatus(widget.overview.release);
     final analyticsStatus =
         ProjectFlowHelper.getAnalyticsStatus(widget.overview.analytics);
 
@@ -60,7 +65,7 @@ class _ProjectFlowChartState extends State<ProjectFlowChart> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final isNarrow = constraints.maxWidth < 800;
-                
+
                 if (isNarrow) {
                   return _buildNarrowLayout(
                     context,
@@ -166,7 +171,7 @@ class _ProjectFlowChartState extends State<ProjectFlowChart> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: Colors.grey.withOpacity(0.3),
+                  color: Colors.grey.withValues(alpha: 0.3),
                   width: 1,
                 ),
                 borderRadius: BorderRadius.circular(8),
@@ -191,34 +196,40 @@ class _ProjectFlowChartState extends State<ProjectFlowChart> {
                         subtitle: ProjectFlowHelper.getBooleanStatusText(
                             codingStatus),
                         status: codingStatus,
-                        onTap: () => widget.onNodeTap(ScreenType.codeEditor),
+                        onTap: () => widget.onNodeTap(ScreenType.codingAgent),
                         width: 110,
                         height: 70,
                       ),
                       // Image
                       ProjectFlowNode(
                         title: 'Image',
-                        subtitle: '(${widget.overview.imageAssets.assetsWithFavorite}/${widget.overview.imageAssets.totalAssets})',
+                        subtitle:
+                            '(${widget.overview.imageAssets.assetsWithFavorite}/${widget.overview.imageAssets.totalAssets})',
                         status: imageStatus,
-                        onTap: () => widget.onNodeTap(ScreenType.imageGenerationOverview),
+                        onTap: () => widget
+                            .onNodeTap(ScreenType.imageGenerationOverview),
                         width: 110,
                         height: 70,
                       ),
                       // Sound
                       ProjectFlowNode(
                         title: 'Sound',
-                        subtitle: '(${widget.overview.sfxAssets.assetsWithFavorite}/${widget.overview.sfxAssets.totalAssets})',
+                        subtitle:
+                            '(${widget.overview.sfxAssets.assetsWithFavorite}/${widget.overview.sfxAssets.totalAssets})',
                         status: sfxStatus,
-                        onTap: () => widget.onNodeTap(ScreenType.sfxGenerationOverview),
+                        onTap: () =>
+                            widget.onNodeTap(ScreenType.sfxGenerationOverview),
                         width: 110,
                         height: 70,
                       ),
                       // Music
                       ProjectFlowNode(
                         title: 'Music',
-                        subtitle: '(${widget.overview.musicAssets.assetsWithFavorite}/${widget.overview.musicAssets.totalAssets})',
+                        subtitle:
+                            '(${widget.overview.musicAssets.assetsWithFavorite}/${widget.overview.musicAssets.totalAssets})',
                         status: musicStatus,
-                        onTap: () => widget.onNodeTap(ScreenType.musicGenerationOverview),
+                        onTap: () => widget
+                            .onNodeTap(ScreenType.musicGenerationOverview),
                         width: 110,
                         height: 70,
                       ),
@@ -246,14 +257,14 @@ class _ProjectFlowChartState extends State<ProjectFlowChart> {
   ) {
     return Column(
       children: [
-            // Game Design
-            ProjectFlowNode(
-              title: 'Game Design',
-              subtitle: '${widget.overview.gameDesign.conversationCount} chats',
-              status: gameDesignStatus,
-              onTap: () => widget.onNodeTap(ScreenType.gameDesignAssistant),
-              width: double.infinity,
-            ),
+        // Game Design
+        ProjectFlowNode(
+          title: 'Game Design',
+          subtitle: '${widget.overview.gameDesign.conversationCount} chats',
+          status: gameDesignStatus,
+          onTap: () => widget.onNodeTap(ScreenType.gameDesignAssistant),
+          width: double.infinity,
+        ),
         _buildVerticalArrow(),
         // Development label
         Container(
@@ -267,62 +278,67 @@ class _ProjectFlowChartState extends State<ProjectFlowChart> {
             textAlign: TextAlign.center,
           ),
         ),
-          // Development substages
-          if (_showDevelopmentStages)
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              alignment: WrapAlignment.center,
-              children: [
-                ProjectFlowNode(
-                  title: 'Coding',
-                  subtitle: ProjectFlowHelper.getBooleanStatusText(codingStatus),
-                  status: codingStatus,
-                  onTap: () => widget.onNodeTap(ScreenType.codeEditor),
-                  width: 150,
-                ),
-                ProjectFlowNode(
-                  title: 'Image',
-                  subtitle: '(${widget.overview.imageAssets.assetsWithFavorite}/${widget.overview.imageAssets.totalAssets})',
-                  status: imageStatus,
-                  onTap: () => widget.onNodeTap(ScreenType.imageGenerationOverview),
-                  width: 150,
-                ),
-                ProjectFlowNode(
-                  title: 'Sound',
-                  subtitle: '(${widget.overview.sfxAssets.assetsWithFavorite}/${widget.overview.sfxAssets.totalAssets})',
-                  status: sfxStatus,
-                  onTap: () => widget.onNodeTap(ScreenType.sfxGenerationOverview),
-                  width: 150,
-                ),
-                ProjectFlowNode(
-                  title: 'Music',
-                  subtitle: '(${widget.overview.musicAssets.assetsWithFavorite}/${widget.overview.musicAssets.totalAssets})',
-                  status: musicStatus,
-                  onTap: () => widget.onNodeTap(ScreenType.musicGenerationOverview),
-                  width: 150,
-                ),
-              ],
-            ),
+        // Development substages
+        if (_showDevelopmentStages)
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.center,
+            children: [
+              ProjectFlowNode(
+                title: 'Coding',
+                subtitle: ProjectFlowHelper.getBooleanStatusText(codingStatus),
+                status: codingStatus,
+                onTap: () => widget.onNodeTap(ScreenType.codingAgent),
+                width: 150,
+              ),
+              ProjectFlowNode(
+                title: 'Image',
+                subtitle:
+                    '(${widget.overview.imageAssets.assetsWithFavorite}/${widget.overview.imageAssets.totalAssets})',
+                status: imageStatus,
+                onTap: () =>
+                    widget.onNodeTap(ScreenType.imageGenerationOverview),
+                width: 150,
+              ),
+              ProjectFlowNode(
+                title: 'Sound',
+                subtitle:
+                    '(${widget.overview.sfxAssets.assetsWithFavorite}/${widget.overview.sfxAssets.totalAssets})',
+                status: sfxStatus,
+                onTap: () => widget.onNodeTap(ScreenType.sfxGenerationOverview),
+                width: 150,
+              ),
+              ProjectFlowNode(
+                title: 'Music',
+                subtitle:
+                    '(${widget.overview.musicAssets.assetsWithFavorite}/${widget.overview.musicAssets.totalAssets})',
+                status: musicStatus,
+                onTap: () =>
+                    widget.onNodeTap(ScreenType.musicGenerationOverview),
+                width: 150,
+              ),
+            ],
+          ),
         _buildVerticalArrow(),
-          // Release
-          if (_showDevelopmentStages) _buildVerticalArrow(),
-          ProjectFlowNode(
-            title: 'Release',
-            subtitle: ProjectFlowHelper.getBooleanStatusText(releaseStatus),
-            status: releaseStatus,
-            onTap: () => widget.onNodeTap(ScreenType.versions),
-            width: double.infinity,
-          ),
-          _buildVerticalArrow(),
-          // Analytics
-          ProjectFlowNode(
-            title: 'Analytics',
-            subtitle: '${widget.overview.analytics.analysisRunsCount} runs',
-            status: analyticsStatus,
-            onTap: () => widget.onNodeTap(ScreenType.feedbacks),
-            width: double.infinity,
-          ),
+        // Release
+        if (_showDevelopmentStages) _buildVerticalArrow(),
+        ProjectFlowNode(
+          title: 'Release',
+          subtitle: ProjectFlowHelper.getBooleanStatusText(releaseStatus),
+          status: releaseStatus,
+          onTap: () => widget.onNodeTap(ScreenType.versions),
+          width: double.infinity,
+        ),
+        _buildVerticalArrow(),
+        // Analytics
+        ProjectFlowNode(
+          title: 'Analytics',
+          subtitle: '${widget.overview.analytics.analysisRunsCount} runs',
+          status: analyticsStatus,
+          onTap: () => widget.onNodeTap(ScreenType.feedbacks),
+          width: double.infinity,
+        ),
       ],
     );
   }
@@ -368,12 +384,11 @@ class _ProjectFlowChartState extends State<ProjectFlowChart> {
       return NodeStatus.completed;
     }
     // Development is in progress if ANY child is in progress OR completed
-    if (statuses.any((s) => s == NodeStatus.inProgress || s == NodeStatus.completed)) {
+    if (statuses
+        .any((s) => s == NodeStatus.inProgress || s == NodeStatus.completed)) {
       return NodeStatus.inProgress;
     }
     // Development is not started only if ALL children are not started
     return NodeStatus.notStarted;
   }
 }
-
-

@@ -39,6 +39,10 @@ the Windows binary with production Supabase configuration, copies
 `build/release/arcane-forge-studio-windows-v<version>.zip` using
 `utils/package_release.py`.
 
+For the full contributor workflow, including the bundled OpenCode sidecar,
+macOS packaging, sidecar pin updates, and publish checklist, see
+[`utils/RELEASING.md`](utils/RELEASING.md).
+
 ## Localization
 
 This project generates localized messages based on arb files found in
