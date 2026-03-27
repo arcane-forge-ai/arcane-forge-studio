@@ -142,7 +142,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
       children: [
         if (provider.chatError != null)
           Material(
-            color: Colors.red.withOpacity(0.08),
+            color: Colors.red.withValues(alpha: 0.08),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Row(
@@ -414,8 +414,8 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
-            border:
-                Border.all(color: theme.colorScheme.outline.withOpacity(0.12)),
+            border: Border.all(
+                color: theme.colorScheme.outline.withValues(alpha: 0.12)),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
@@ -467,13 +467,13 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: isUser
-                ? theme.colorScheme.primary.withOpacity(0.95)
+                ? theme.colorScheme.primary.withValues(alpha: 0.95)
                 : theme.colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: isUser
                 ? null
                 : Border.all(
-                    color: theme.colorScheme.outline.withOpacity(0.12)),
+                    color: theme.colorScheme.outline.withValues(alpha: 0.12)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -484,8 +484,9 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color:
-                        theme.colorScheme.secondaryContainer.withOpacity(0.65),
+                    color: theme.colorScheme.secondaryContainer.withValues(
+                      alpha: 0.65,
+                    ),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -501,7 +502,9 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer.withOpacity(0.65),
+                    color: theme.colorScheme.errorContainer.withValues(
+                      alpha: 0.65,
+                    ),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -516,7 +519,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(

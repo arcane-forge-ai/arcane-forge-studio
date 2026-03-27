@@ -1308,7 +1308,23 @@ class V2SessionProvider with ChangeNotifier {
       } else {
         final sessionDocuments =
             await _apiService.listSessionDocuments(sessionId);
-        _documents = List<Map<String, dynamic>>.from(sessionDocuments);
+        var mergedDocuments = List<Map<String, dynamic>>.from(sessionDocuments);
+        final activePath =
+            _asNonEmptyString(_currentSession?.activeDocumentPath);
+        final selectedPath = _asNonEmptyString(_selectedDocPath);
+
+        // Backward compatibility:
+        // when backend doesn't support session-scoped document filtering yet,
+        // session endpoint may return empty; fallback to project-level list
+        // only when we have an existing selection/active-path to recover.
+        final shouldFallbackToProject = mergedDocuments.isEmpty &&
+            (activePath != null || selectedPath != null);
+        if (shouldFallbackToProject) {
+          final projectDocuments = await _apiService.listDocuments(projectId);
+          mergedDocuments = _mergeDocumentsByPath([], projectDocuments);
+        }
+
+        _documents = mergedDocuments;
       }
       if (notify) {
         notifyListeners();
