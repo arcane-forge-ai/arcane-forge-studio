@@ -2,8 +2,7 @@ import 'package:arcane_forge/screens/game_design_assistant_v2/utils/chat_input_u
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('shows a visible loading state while switching to a selected session',
-      () {
+  test('keeps the input quiet while a selected session is loading', () {
     final state = resolveChatInputUiState(
       canUseV2: true,
       isLoading: true,
@@ -12,8 +11,8 @@ void main() {
     );
 
     expect(state.enabled, isFalse);
-    expect(state.hintText, 'Loading chat session...');
-    expect(state.loadingLabel, 'Loading chat session...');
+    expect(state.hintText, 'Ask about game design...');
+    expect(state.loadingLabel, isNull);
   });
 
   test('keeps the expired-selection hint when not loading', () {

@@ -116,10 +116,11 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<V2SessionProvider>();
+    final isBlockingSessionSwitch = provider.isSessionSelectionLoading;
     final inputState = resolveChatInputUiState(
       canUseV2: provider.canUseV2,
       isLoading: provider.isLoading,
-      isLoadingSessionSelection: provider.isSessionSelectionLoading,
+      isLoadingSessionSelection: isBlockingSessionSwitch,
       hasExpiredPendingSelection: provider.hasExpiredPendingSelection,
     );
     final filteredMessages = provider.messages.where((msg) {
@@ -162,7 +163,9 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
           child: Stack(
             children: [
               Positioned.fill(
-                child: filteredMessages.isEmpty && !provider.isSending
+                child: filteredMessages.isEmpty &&
+                        !provider.isSending &&
+                        !isBlockingSessionSwitch
                     ? _buildEmptyState(context, provider)
                     : SelectionArea(
                         child: ListView.builder(
@@ -208,7 +211,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                         ),
                       ),
               ),
-              if (provider.isSessionSelectionLoading)
+              if (isBlockingSessionSwitch)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Container(

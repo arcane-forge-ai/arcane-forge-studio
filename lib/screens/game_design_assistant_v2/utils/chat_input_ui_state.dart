@@ -26,15 +26,14 @@ ChatInputUiState resolveChatInputUiState({
   if (isLoadingSessionSelection) {
     return const ChatInputUiState(
       enabled: false,
-      hintText: 'Loading chat session...',
-      loadingLabel: 'Loading chat session...',
+      hintText: 'Ask about game design...',
     );
   }
 
   if (isLoading) {
     return const ChatInputUiState(
       enabled: false,
-      hintText: 'Preparing chat...',
+      hintText: 'Ask about game design...',
       loadingLabel: 'Preparing chat...',
     );
   }
