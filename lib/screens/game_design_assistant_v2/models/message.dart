@@ -28,6 +28,7 @@ class ChatMessage {
   final String content;
   final DateTime timestamp;
   final bool isPartial;
+  final bool pendingKnowledgeMayUpdate;
   final String? thinking;
   final Confirmation? confirmation;
   final SelectionInfo? selection;
@@ -38,6 +39,7 @@ class ChatMessage {
     required this.content,
     required this.timestamp,
     this.isPartial = false,
+    this.pendingKnowledgeMayUpdate = false,
     this.thinking,
     this.confirmation,
     this.selection,
@@ -52,6 +54,7 @@ class ChatMessage {
           ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
           : DateTime.now(),
       isPartial: json['partial'] == true,
+      pendingKnowledgeMayUpdate: json['pending_knowledge_may_update'] == true,
       thinking: json['thinking']?.toString(),
       confirmation: json['confirmation'] != null
           ? Confirmation.fromJson(

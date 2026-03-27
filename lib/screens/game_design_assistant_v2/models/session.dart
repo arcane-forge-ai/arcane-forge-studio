@@ -1,3 +1,5 @@
+import 'message.dart';
+
 class CreateSessionRequest {
   final String projectId;
   final String? title;
@@ -84,6 +86,56 @@ class SessionInfo {
           DateTime.now(),
       updatedAt: DateTime.tryParse(json['updated_at']?.toString() ?? '') ??
           DateTime.now(),
+    );
+  }
+}
+
+class SessionHistoryPayload {
+  final String sessionId;
+  final int total;
+  final int offset;
+  final int limit;
+  final List<ChatMessage> messages;
+
+  SessionHistoryPayload({
+    required this.sessionId,
+    required this.total,
+    required this.offset,
+    required this.limit,
+    required this.messages,
+  });
+
+  factory SessionHistoryPayload.fromJson(Map<String, dynamic> json) {
+    final messagesJson = json['messages'] as List? ?? const [];
+    return SessionHistoryPayload(
+      sessionId: json['session_id']?.toString() ?? '',
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      offset: (json['offset'] as num?)?.toInt() ?? 0,
+      limit: (json['limit'] as num?)?.toInt() ?? 0,
+      messages: messagesJson
+          .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList(growable: false),
+    );
+  }
+}
+
+class SessionBootstrapResponse {
+  final SessionInfo session;
+  final SessionHistoryPayload history;
+
+  SessionBootstrapResponse({
+    required this.session,
+    required this.history,
+  });
+
+  factory SessionBootstrapResponse.fromJson(Map<String, dynamic> json) {
+    return SessionBootstrapResponse(
+      session: SessionInfo.fromJson(
+        Map<String, dynamic>.from(json['session'] as Map? ?? const {}),
+      ),
+      history: SessionHistoryPayload.fromJson(
+        Map<String, dynamic>.from(json['history'] as Map? ?? const {}),
+      ),
     );
   }
 }

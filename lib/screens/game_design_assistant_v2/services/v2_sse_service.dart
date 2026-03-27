@@ -49,6 +49,7 @@ class SSEEvent {
   final String? stage;
   final String? pillar;
   final bool? isFinal;
+  final bool? pendingKnowledgeMayUpdate;
   final CanvasDocument? canvasDocument;
   final DocumentWriteSummary? writeSummary;
 
@@ -65,6 +66,7 @@ class SSEEvent {
     this.stage,
     this.pillar,
     this.isFinal,
+    this.pendingKnowledgeMayUpdate,
     this.canvasDocument,
     this.writeSummary,
   });
@@ -91,6 +93,7 @@ class SSEEvent {
       stage: json['stage']?.toString(),
       pillar: json['pillar']?.toString(),
       isFinal: json['is_final'] as bool?,
+      pendingKnowledgeMayUpdate: json['pending_knowledge_may_update'] as bool?,
       canvasDocument: json['canvas_document'] != null
           ? CanvasDocument.fromJson(
               Map<String, dynamic>.from(json['canvas_document'] as Map))
