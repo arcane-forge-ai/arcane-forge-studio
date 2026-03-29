@@ -114,7 +114,7 @@ class _CreateAssetsFromDocDialogState extends State<CreateAssetsFromDocDialog> {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
+        allowedExtensions: ['pdf', 'txt', 'md'],
         allowMultiple: false,
         withData: true,
       );
@@ -122,7 +122,7 @@ class _CreateAssetsFromDocDialogState extends State<CreateAssetsFromDocDialog> {
       List<PlatformFile>? files = result?.files;
       if (kIsWeb && (files == null || files.isEmpty || files.first.bytes == null)) {
         files = await pickFilesWithWebFallback(
-          allowedExtensions: ['pdf', 'txt', 'md', 'doc', 'docx'],
+          allowedExtensions: ['pdf', 'txt', 'md'],
           allowMultiple: false,
         );
       }

@@ -7,6 +7,41 @@ import '../providers/v2_session_provider.dart';
 class V2ChatHistorySidebar extends StatelessWidget {
   const V2ChatHistorySidebar({super.key});
 
+  Future<Map<String, dynamic>?> _extractForSwitch(
+    BuildContext context,
+    V2SessionProvider provider,
+  ) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (ctx) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Expanded(child: Text('Extracting session context...')),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      return await provider.extractSessionKnowledge(
+        refreshAfterExtraction: false,
+        showLoadingState: false,
+      );
+    } finally {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
   String _formatTime(DateTime dateTime) {
     final now = DateTime.now();
     final diff = now.difference(dateTime);
@@ -25,6 +60,73 @@ class V2ChatHistorySidebar extends StatelessWidget {
     final stage = s.currentStage?.trim();
     if (stage != null && stage.isNotEmpty) return stage;
     return 'Session ${s.sessionId.length > 8 ? s.sessionId.substring(0, 8) : s.sessionId}';
+  }
+
+  Future<bool> _confirmBeforeSessionSwitch(
+    BuildContext context,
+    V2SessionProvider provider,
+  ) async {
+    final hasActiveSession = provider.currentSession != null;
+    final shouldPrompt = hasActiveSession &&
+        (provider.hasPendingKnowledge ||
+            provider.shouldPromptSessionKnowledgeExtraction);
+    if (!shouldPrompt) {
+      return true;
+    }
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Switch Session'),
+        content: const Text(
+          'There are unextracted session learnings. What should we do before switching?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('switch_direct'),
+            child: const Text('Switch Directly'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop('extract_then_switch'),
+            child: const Text('Extract & Switch'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == null || action == 'cancel') {
+      return false;
+    }
+    if (!context.mounted) return false;
+
+    if (action == 'extract_then_switch') {
+      final result = await _extractForSwitch(context, provider);
+      if (!context.mounted) return false;
+      if (result == null && (provider.pendingKnowledgeError ?? '').isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Extraction failed: ${provider.pendingKnowledgeError}',
+            ),
+          ),
+        );
+        return false;
+      }
+
+      final pendingCount = (result?['pending_count'] as num?)?.toInt() ?? 0;
+      final message = pendingCount > 0
+          ? 'Extracted $pendingCount context item(s) for review. Switching session...'
+          : 'No new context found. Switching session...';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+
+    return true;
   }
 
   @override
@@ -81,8 +183,15 @@ class V2ChatHistorySidebar extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () =>
-                        context.read<V2SessionProvider>().startNewChat(),
+                    onPressed: () async {
+                      final provider = context.read<V2SessionProvider>();
+                      final allow = await _confirmBeforeSessionSwitch(
+                        context,
+                        provider,
+                      );
+                      if (!allow) return;
+                      provider.startNewChat();
+                    },
                     icon: const Icon(Icons.add_comment, size: 18),
                     label: const Text('New Chat'),
                   ),
@@ -151,28 +260,42 @@ class V2ChatHistorySidebar extends StatelessWidget {
                   itemCount: provider.sessions.length,
                   itemBuilder: (context, index) {
                     final session = provider.sessions[index];
+                    final isLoadingTarget =
+                        provider.loadingSessionId == session.sessionId;
                     final isSelected =
                         provider.currentSession?.sessionId == session.sessionId;
+                    final isActive = isLoadingTarget ||
+                        (!provider.isSessionSelectionLoading && isSelected);
                     return Container(
                       margin: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? colorScheme.primary.withOpacity(0.08)
+                        color: isActive
+                            ? colorScheme.primary.withValues(alpha: 0.08)
                             : null,
                         borderRadius: BorderRadius.circular(8),
-                        border: isSelected
+                        border: isActive
                             ? Border.all(
-                                color: colorScheme.primary.withOpacity(0.3))
+                                color:
+                                    colorScheme.primary.withValues(alpha: 0.3))
                             : null,
                       ),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(8),
                         onTap: () async {
+                          if (isSelected) {
+                            return;
+                          }
+                          final provider = context.read<V2SessionProvider>();
+                          final allow = await _confirmBeforeSessionSwitch(
+                            context,
+                            provider,
+                          );
+                          if (!allow) {
+                            return;
+                          }
                           try {
-                            await context
-                                .read<V2SessionProvider>()
-                                .selectSession(session.sessionId);
+                            await provider.selectSession(session.sessionId);
                           } catch (e) {
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -195,16 +318,28 @@ class V2ChatHistorySidebar extends StatelessWidget {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        fontWeight: isSelected
+                                        fontWeight: isActive
                                             ? FontWeight.w700
                                             : FontWeight.w500,
-                                        color: isSelected
+                                        color: isActive
                                             ? colorScheme.primary
                                             : null,
                                       ),
                                     ),
                                   ),
-                                  if (isSelected)
+                                  if (isLoadingTarget)
+                                    SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                          colorScheme.primary,
+                                        ),
+                                      ),
+                                    )
+                                  else if (isActive)
                                     Container(
                                       width: 8,
                                       height: 8,

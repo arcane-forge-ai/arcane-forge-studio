@@ -7,12 +7,12 @@ import 'auth_provider.dart';
 
 class EvaluateProvider extends ChangeNotifier {
   final EvaluateApiService _apiService;
-  
+
   EvaluateResponse? _latestEvaluation;
   List<EvaluateResponse> _history = [];
   bool _isLoading = false;
   String? _error;
-  
+
   // Polling state
   EvaluateResponse? _activeEvaluation;
   Timer? _pollingTimer;
@@ -32,7 +32,8 @@ class EvaluateProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   EvaluateResponse? get activeEvaluation => _activeEvaluation;
-  bool get isEvaluating => _activeEvaluation != null && 
+  bool get isEvaluating =>
+      _activeEvaluation != null &&
       (_activeEvaluation!.isPending || _activeEvaluation!.isProcessing);
 
   /// Fetch history and latest evaluation for a project
@@ -44,14 +45,9 @@ class EvaluateProvider extends ChangeNotifier {
     try {
       final historyResponse = await _apiService.getEvaluationHistory(projectId);
       _history = historyResponse.evaluations;
-      
-      try {
-        _latestEvaluation = await _apiService.getLatestEvaluation(projectId);
-      } catch (e) {
-        // It's okay if there's no latest evaluation yet
-        _latestEvaluation = null;
-      }
-      
+
+      _latestEvaluation = await _apiService.getLatestEvaluation(projectId);
+
       // Check if any evaluation is still in progress and resume polling
       EvaluateResponse? inProgress;
       try {
@@ -62,7 +58,7 @@ class EvaluateProvider extends ChangeNotifier {
         // No in-progress evaluation found, clear active evaluation
         inProgress = null;
       }
-      
+
       if (inProgress != null) {
         // Resume polling for this evaluation
         _activeEvaluation = inProgress;
@@ -72,7 +68,7 @@ class EvaluateProvider extends ChangeNotifier {
         _activeEvaluation = null;
         _stopPolling();
       }
-      
+
       _isLoading = false;
       notifyListeners();
     } catch (e) {
@@ -88,7 +84,7 @@ class EvaluateProvider extends ChangeNotifier {
 
     // Stop any existing polling
     _stopPolling();
-    
+
     _isLoading = true;
     _error = null;
     notifyListeners();
@@ -112,27 +108,28 @@ class EvaluateProvider extends ChangeNotifier {
     _pollingTimer?.cancel();
     _isPollingActive = true;
     _activeEvaluationId = evaluationId;
-    
+
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       // Check if polling is still active and this is still the active evaluation
       if (!_isPollingActive || _activeEvaluationId != evaluationId) {
         return;
       }
-      
+
       try {
-        final evaluation = await _apiService.getEvaluationById(projectId, evaluationId);
-        
+        final evaluation =
+            await _apiService.getEvaluationById(projectId, evaluationId);
+
         // Double-check after async call - polling might have stopped while we were waiting
         if (!_isPollingActive || _activeEvaluationId != evaluationId) {
           return;
         }
-        
+
         _activeEvaluation = evaluation;
-        
+
         if (evaluation.isCompleted || evaluation.isFailed) {
           _stopPolling();
           _activeEvaluation = null; // Clear active state
-          
+
           if (evaluation.isCompleted) {
             _latestEvaluation = evaluation;
             // Update history: replace the old entry with the completed one
@@ -144,7 +141,8 @@ class EvaluateProvider extends ChangeNotifier {
               _history.insert(0, evaluation);
             }
           } else {
-            _error = evaluation.errorMessage ?? 'Evaluation failed during processing';
+            _error = evaluation.errorMessage ??
+                'Evaluation failed during processing';
           }
           notifyListeners();
         } else {
@@ -166,7 +164,8 @@ class EvaluateProvider extends ChangeNotifier {
     }
   }
 
-  Future<EvaluateResponse> getEvaluationDetails(int projectId, int evaluationId) async {
+  Future<EvaluateResponse> getEvaluationDetails(
+      int projectId, int evaluationId) async {
     try {
       return await _apiService.getEvaluationById(projectId, evaluationId);
     } catch (e) {
@@ -181,4 +180,3 @@ class EvaluateProvider extends ChangeNotifier {
     super.dispose();
   }
 }
-

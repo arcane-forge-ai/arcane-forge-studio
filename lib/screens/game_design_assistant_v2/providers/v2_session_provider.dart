@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../providers/auth_provider.dart';
@@ -8,13 +8,30 @@ import '../../../providers/settings_provider.dart';
 import '../models/confirmation.dart';
 import '../models/context.dart';
 import '../models/message.dart';
-import '../models/progress.dart';
+import '../models/project_context.dart';
 import '../models/selection.dart';
 import '../models/session.dart';
+import '../models/write_summary.dart';
 import '../services/v2_api_service.dart';
 import '../services/v2_sse_service.dart';
+import '../utils/pending_etag_contract.dart';
+import '../utils/stream_locale.dart';
+
+class SelectionSubmitResult {
+  final String status; // success | stale | expired | validation_error | error
+  final String? message;
+  final SelectionInfo? latestSelection;
+
+  const SelectionSubmitResult({
+    required this.status,
+    this.message,
+    this.latestSelection,
+  });
+}
 
 class V2SessionProvider with ChangeNotifier {
+  static const int _knowledgeExtractionPromptTurnGap = 1;
+
   final String projectId;
   final String projectName;
   final V2ApiService _apiService;
@@ -26,21 +43,28 @@ class V2SessionProvider with ChangeNotifier {
     required this.projectName,
     required SettingsProvider settingsProvider,
     required AuthProvider authProvider,
-  })  : _apiService = V2ApiService(
-          settingsProvider: settingsProvider,
-          authProvider: authProvider,
-        ),
-        _sseService = V2SSEService(
-          settingsProvider: settingsProvider,
-          authProvider: authProvider,
-        ),
+    V2ApiService? apiService,
+    V2SSEService? sseService,
+  })  : _apiService = apiService ??
+            V2ApiService(
+              settingsProvider: settingsProvider,
+              authProvider: authProvider,
+            ),
+        _sseService = sseService ??
+            V2SSEService(
+              settingsProvider: settingsProvider,
+              authProvider: authProvider,
+            ),
         _authProvider = authProvider;
 
   List<SessionInfo> _sessions = [];
   SessionInfo? _currentSession;
   List<ChatMessage> _messages = [];
   GetContextResponse? _contextData;
-  GetProgressResponse? _progress;
+  List<Map<String, dynamic>> _documents = [];
+  String? _selectedDocPath;
+  String? _selectedDocContent;
+  int? _selectedDocVersionNumber;
   String? _gddContent;
   int? _gddVersionNumber;
   Confirmation? _pendingConfirmation;
@@ -50,34 +74,382 @@ class V2SessionProvider with ChangeNotifier {
   bool _isSessionsLoading = false;
   bool _isSending = false;
   bool _isConfirming = false;
+  bool _isSubmittingSelection = false;
   bool _hasDraftConversation = false;
+  String? _loadingSessionId;
 
   String _streamingContent = '';
   String? _thinkingContent;
+  DocumentWriteSummary? _pendingWriteSummary;
+  String? _streamStatusTip;
+  int _streamRenderVersion = 0;
+  String _pendingDeltaBuffer = '';
+  Timer? _deltaFlushTimer;
+  Timer? _streamStatusTipTimer;
 
   String? _sessionsError;
   String? _chatError;
+  String? _selectionPanelError;
+  String? _selectionPanelInfo;
+
+  // -- Project Context / Pending Knowledge state --
+  List<PendingKnowledgeItem> _pendingKnowledgeItems = [];
+  List<ProjectContextEntry> _projectContextEntries = [];
+  bool _isPendingKnowledgeLoading = false;
+  bool _isPendingKnowledgeSubmitting = false;
+  bool _isProjectContextLoading = false;
+  String? _pendingKnowledgeError;
+  String? _projectContextError;
+  bool _shouldPromptSessionKnowledgeExtraction = false;
+  String? _promptEligibleSessionId;
+  String _pendingBatchEtag = '';
+  int _pendingBatchVersion = 0;
+  String _pendingReadMode = 'dual';
+  String _pendingMigrationState = 'started';
+  bool _isWritePaused = false;
+  int _writePausedRetrySeconds = 0;
+  final Map<String, String> _localPendingDrafts = {};
+  int _activeStreamEpoch = 0;
+  String? _activeStreamSessionId;
+  int _pendingKnowledgeRefreshEpoch = 0;
+  int _sessionTitleRefreshEpoch = 0;
 
   List<SessionInfo> get sessions => _sessions;
   SessionInfo? get currentSession => _currentSession;
   List<ChatMessage> get messages => _messages;
   GetContextResponse? get contextData => _contextData;
-  GetProgressResponse? get progress => _progress;
+  List<Map<String, dynamic>> get documents => _documents;
+  String? get selectedDocPath => _selectedDocPath;
+  String? get selectedDocContent => _selectedDocContent;
+  int? get selectedDocVersionNumber => _selectedDocVersionNumber;
   String? get gddContent => _gddContent;
   int? get gddVersionNumber => _gddVersionNumber;
   Confirmation? get pendingConfirmation => _pendingConfirmation;
   SelectionInfo? get pendingSelection => _pendingSelection;
+  bool get hasExpiredPendingSelection {
+    final pending = _pendingSelection;
+    if (pending == null) return false;
+    return DateTime.now().isAfter(pending.expiresAt);
+  }
+
   bool get isLoading => _isLoading;
   bool get isSessionsLoading => _isSessionsLoading;
   bool get isSending => _isSending;
   bool get isConfirming => _isConfirming;
+  bool get isSubmittingSelection => _isSubmittingSelection;
   bool get hasDraftConversation => _hasDraftConversation;
+  String? get loadingSessionId => _loadingSessionId;
+  bool get isSessionSelectionLoading =>
+      _loadingSessionId != null && _loadingSessionId!.trim().isNotEmpty;
   String get streamingContent => _streamingContent;
   String? get thinkingContent => _thinkingContent;
+  String? get streamStatusTip => _streamStatusTip;
+  int get streamRenderVersion => _streamRenderVersion;
   String? get sessionsError => _sessionsError;
   String? get chatError => _chatError;
+  String? get selectionPanelError => _selectionPanelError;
+  String? get selectionPanelInfo => _selectionPanelInfo;
+
+  // -- Project Context / Pending Knowledge getters --
+  List<PendingKnowledgeItem> get pendingKnowledgeItems =>
+      _pendingKnowledgeItems;
+  List<ProjectContextEntry> get projectContextEntries => _projectContextEntries;
+  bool get isPendingKnowledgeLoading => _isPendingKnowledgeLoading;
+  bool get isPendingKnowledgeSubmitting => _isPendingKnowledgeSubmitting;
+  bool get isProjectContextLoading => _isProjectContextLoading;
+  String? get pendingKnowledgeError => _pendingKnowledgeError;
+  String? get projectContextError => _projectContextError;
+  bool get hasPendingKnowledge => _pendingKnowledgeItems.isNotEmpty;
+  String get pendingBatchEtag => _pendingBatchEtag;
+  int get pendingBatchVersion => _pendingBatchVersion;
+  String get pendingReadMode => _pendingReadMode;
+  String get pendingMigrationState => _pendingMigrationState;
+  bool get isWritePaused => _isWritePaused;
+  int get writePausedRetrySeconds => _writePausedRetrySeconds;
+  bool get shouldPromptSessionKnowledgeExtraction =>
+      _shouldPromptSessionKnowledgeExtraction;
 
   bool get canUseV2 => _authProvider.userId.trim().isNotEmpty;
+  bool get hasSelectedDocument =>
+      _selectedDocPath != null && _selectedDocPath!.trim().isNotEmpty;
+
+  String _newIdempotencyKey() {
+    final ts = DateTime.now().microsecondsSinceEpoch;
+    final salt = projectId.hashCode ^ ts.hashCode;
+    return 'gda2-$projectId-$ts-$salt';
+  }
+
+  PendingKnowledgeItem? _pendingItemById(String itemId) {
+    for (final item in _pendingKnowledgeItems) {
+      if (item.id == itemId) return item;
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _pendingItemPayloadForEtag(PendingKnowledgeItem item) {
+    return <String, dynamic>{
+      'project_id': item.projectId,
+      'item_id': item.id,
+      'session_id': item.sessionId,
+      'turn_number': item.turnNumber,
+      'type': item.type,
+      'content': item.content,
+      'original_text': item.originalText,
+      'merge_action': item.mergeAction,
+      'target_entry_id': item.targetEntryId,
+      'conflict_meta': item.conflictMeta,
+      'status': item.status,
+      'version': item.version,
+    };
+  }
+
+  String _effectiveItemEtag(PendingKnowledgeItem item) {
+    final etag = item.etag.trim();
+    if (etag.isNotEmpty) return etag;
+    return buildPendingItemEtag(_pendingItemPayloadForEtag(item));
+  }
+
+  int _beginStreamBinding(String sessionId) {
+    _activeStreamEpoch += 1;
+    _activeStreamSessionId = sessionId;
+    return _activeStreamEpoch;
+  }
+
+  bool _ownsStreamBinding(int epoch, String sessionId) {
+    return _activeStreamEpoch == epoch && _activeStreamSessionId == sessionId;
+  }
+
+  void _invalidateStreamBinding({bool clearUiState = false}) {
+    _activeStreamEpoch += 1;
+    _activeStreamSessionId = null;
+    _pendingKnowledgeRefreshEpoch += 1;
+    _sessionTitleRefreshEpoch += 1;
+    _sseService.cancelActiveStream();
+    _deltaFlushTimer?.cancel();
+    _deltaFlushTimer = null;
+    _pendingDeltaBuffer = '';
+    _streamStatusTipTimer?.cancel();
+    _streamStatusTipTimer = null;
+    _streamStatusTip = null;
+    if (clearUiState) {
+      _isSending = false;
+      _streamingContent = '';
+      _thinkingContent = null;
+      _pendingWriteSummary = null;
+    }
+  }
+
+  void _schedulePendingKnowledgeRefresh() {
+    final epoch = ++_pendingKnowledgeRefreshEpoch;
+    unawaited(_pollPendingKnowledgeRefresh(epoch));
+  }
+
+  Future<void> _pollPendingKnowledgeRefresh(int epoch) async {
+    const delays = <Duration>[
+      Duration(milliseconds: 200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1600),
+      Duration(milliseconds: 3200),
+    ];
+    final baselineEtag = _pendingBatchEtag;
+    final baselineCount = _pendingKnowledgeItems.length;
+
+    for (final delay in delays) {
+      await Future<void>.delayed(delay);
+      if (epoch != _pendingKnowledgeRefreshEpoch) {
+        return;
+      }
+
+      final previousEtag = _pendingBatchEtag;
+      final previousCount = _pendingKnowledgeItems.length;
+      await loadPendingKnowledge(notify: false, captureError: false);
+      if (epoch != _pendingKnowledgeRefreshEpoch) {
+        return;
+      }
+
+      final changedFromPrevious = _pendingBatchEtag != previousEtag ||
+          _pendingKnowledgeItems.length != previousCount;
+      final changedFromBaseline = _pendingBatchEtag != baselineEtag ||
+          _pendingKnowledgeItems.length != baselineCount;
+      if (changedFromPrevious || changedFromBaseline) {
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  SessionInfo? _sessionById(String sessionId) {
+    final normalized = sessionId.trim();
+    if (normalized.isEmpty) return null;
+    for (final session in _sessions) {
+      if (session.sessionId == normalized) return session;
+    }
+    return null;
+  }
+
+  bool _isFallbackSessionTitle(String? title, String sessionId) {
+    final normalizedTitle = title?.trim();
+    if (normalizedTitle == null || normalizedTitle.isEmpty) return true;
+    final shortId =
+        sessionId.length > 8 ? sessionId.substring(0, 8) : sessionId;
+    return normalizedTitle == 'Session $shortId';
+  }
+
+  bool _sessionNeedsTitleRefresh(String sessionId) {
+    final session = _sessionById(sessionId) ??
+        (_currentSession?.sessionId == sessionId ? _currentSession : null);
+    if (session == null) return false;
+    return _isFallbackSessionTitle(session.title, sessionId);
+  }
+
+  void _scheduleSessionTitleRefreshIfNeeded({String? sessionId}) {
+    final targetSessionId = (sessionId ?? _currentSession?.sessionId)?.trim();
+    if (targetSessionId == null || targetSessionId.isEmpty) {
+      return;
+    }
+    if (!_sessionNeedsTitleRefresh(targetSessionId)) {
+      return;
+    }
+    final epoch = ++_sessionTitleRefreshEpoch;
+    unawaited(_pollSessionTitleRefresh(epoch, targetSessionId));
+  }
+
+  Future<void> _pollSessionTitleRefresh(int epoch, String sessionId) async {
+    const delays = <Duration>[
+      Duration(milliseconds: 200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1600),
+      Duration(milliseconds: 3200),
+    ];
+
+    for (final delay in delays) {
+      await Future<void>.delayed(delay);
+      if (epoch != _sessionTitleRefreshEpoch) {
+        return;
+      }
+      if (_currentSession?.sessionId != sessionId) {
+        return;
+      }
+
+      await loadSessions();
+      if (epoch != _sessionTitleRefreshEpoch) {
+        return;
+      }
+      if (!_sessionNeedsTitleRefresh(sessionId)) {
+        return;
+      }
+    }
+  }
+
+  void _showStreamStatusTip(String tip) {
+    _streamStatusTip = tip;
+    _streamStatusTipTimer?.cancel();
+    _streamStatusTipTimer = Timer(const Duration(milliseconds: 1800), () {
+      _streamStatusTip = null;
+      notifyListeners();
+    });
+  }
+
+  void _flushPendingDelta({bool notify = true}) {
+    if (_pendingDeltaBuffer.isEmpty) {
+      return;
+    }
+    _streamingContent += _pendingDeltaBuffer;
+    _pendingDeltaBuffer = '';
+    _deltaFlushTimer?.cancel();
+    _deltaFlushTimer = null;
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  SelectionInfo? _selectionFromTextFallback(String text) {
+    final lines = text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (lines.isEmpty) return null;
+
+    const markers = ['展开', '优先', '选择', '先回答', '哪个方向', '先聊'];
+    final hasIntentMarker = lines.any(
+      (line) => markers.any((marker) => line.contains(marker)),
+    );
+    if (!hasIntentMarker) return null;
+
+    final optionPattern = RegExp(r'^(\d+)[\.\)、]\s*(.+\S)$');
+    final options = <SelectionOption>[];
+    final seenIds = <String>{};
+    for (final line in lines) {
+      final match = optionPattern.firstMatch(line);
+      if (match == null) continue;
+      final id = match.group(1)?.trim() ?? '';
+      final label = match.group(2)?.trim() ?? '';
+      if (id.isEmpty || label.isEmpty || seenIds.contains(id)) {
+        continue;
+      }
+      seenIds.add(id);
+      options.add(SelectionOption(id: id, label: label));
+    }
+
+    if (options.length < 2 || options.length > 8) {
+      return null;
+    }
+
+    String title = '请选择想先展开的方向';
+    for (final line in lines.reversed) {
+      if (markers.any((marker) => line.contains(marker))) {
+        title = line.replaceAll(RegExp(r'[：:。]+$'), '');
+        break;
+      }
+    }
+
+    return SelectionInfo(
+      questionId: 'local_sel_${DateTime.now().microsecondsSinceEpoch}',
+      title: title,
+      description: '也可以直接在输入框里说别的方向。',
+      options: options,
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+    );
+  }
+
+  SelectionInfo? _restorePendingSelectionFromMessages() {
+    for (final message in _messages.reversed) {
+      final selection = message.selection;
+      if (message.role == 'assistant' &&
+          selection != null &&
+          DateTime.now().isBefore(selection.expiresAt)) {
+        return selection;
+      }
+    }
+    return null;
+  }
+
+  void _queueDeltaContent(String deltaText) {
+    if (deltaText.isEmpty) {
+      return;
+    }
+    _pendingDeltaBuffer += deltaText;
+    _deltaFlushTimer ??= Timer(const Duration(milliseconds: 50), () {
+      _flushPendingDelta();
+    });
+  }
+
+  String _computeLocalBatchEtag() {
+    final pid = int.tryParse(projectId) ?? 0;
+    final items = _pendingKnowledgeItems
+        .map(_pendingItemPayloadForEtag)
+        .toList(growable: false);
+    return buildPendingBatchEtag(pid, _pendingBatchVersion, items);
+  }
+
+  void _ensurePendingBatchEtag() {
+    if (_pendingBatchEtag.trim().isNotEmpty) return;
+    if (_pendingKnowledgeItems.isEmpty) return;
+    _pendingBatchEtag = _computeLocalBatchEtag();
+  }
 
   Future<void> loadSessions() async {
     _isSessionsLoading = true;
@@ -95,6 +467,9 @@ class V2SessionProvider with ChangeNotifier {
           _currentSession = match.first;
         }
       }
+      if (_currentSession == null) {
+        await loadPendingKnowledge(notify: false);
+      }
     } catch (e) {
       _sessionsError = e.toString();
       if (kDebugMode) {
@@ -107,80 +482,111 @@ class V2SessionProvider with ChangeNotifier {
   }
 
   void startNewChat() {
+    _invalidateStreamBinding(clearUiState: true);
+    _loadingSessionId = null;
     _currentSession = null;
     _messages = [];
     _contextData = null;
-    _progress = null;
-    _gddContent = null;
-    _gddVersionNumber = null;
+    _clearSelectedDocument();
     _pendingConfirmation = null;
     _pendingSelection = null;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
     _streamingContent = '';
     _thinkingContent = null;
+    _pendingWriteSummary = null;
     _chatError = null;
     _hasDraftConversation = true;
+    _shouldPromptSessionKnowledgeExtraction = false;
+    _promptEligibleSessionId = null;
+    // Keep document inventory loaded for optional selection in draft mode.
+    unawaited(loadDocuments());
+    // Pending queue is project-scoped; keep it visible in draft/new-chat mode.
+    unawaited(loadPendingKnowledge());
+    // Load project context for new chat
+    unawaited(loadProjectContext());
     notifyListeners();
   }
 
   Future<void> selectSession(String sessionId) async {
+    _invalidateStreamBinding(clearUiState: true);
+    _loadingSessionId = sessionId;
     _isLoading = true;
     _chatError = null;
+    _promptEligibleSessionId = null;
     notifyListeners();
 
     try {
-      _currentSession = await _apiService.getSession(sessionId);
+      final bootstrap = await _apiService.getSessionBootstrap(sessionId);
+      _applySessionBootstrap(bootstrap);
       _hasDraftConversation = false;
-      await _loadSessionData(sessionId, reloadHistory: true);
+      _loadingSessionId = null;
+      _isLoading = false;
+      notifyListeners();
+      unawaited(_loadSessionPanels(sessionId));
     } catch (e) {
       _chatError = e.toString();
       rethrow;
     } finally {
-      _isLoading = false;
+      if (_isLoading) {
+        _loadingSessionId = null;
+        _isLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void _applySessionBootstrap(SessionBootstrapResponse bootstrap) {
+    _promptEligibleSessionId = null;
+    _clearSelectedDocument();
+    _contextData = null;
+    _documents = [];
+    _currentSession = bootstrap.session;
+    _messages =
+        List<ChatMessage>.of(bootstrap.history.messages, growable: true);
+    _pendingConfirmation = null;
+    _pendingSelection = _restorePendingSelectionFromMessages();
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
+    _streamingContent = '';
+    _thinkingContent = null;
+    _pendingWriteSummary = null;
+    _refreshExtractionPromptFlag();
+  }
+
+  Future<void> _loadSessionPanels(String sessionId) async {
+    unawaited(_loadSessionDocumentsPanel());
+    unawaited(_loadSessionContextPanel(sessionId));
+    unawaited(loadPendingKnowledge(notify: false));
+    unawaited(loadProjectContext());
+  }
+
+  Future<void> _loadSessionDocumentsPanel() async {
+    await loadDocuments(notify: false);
+    await _syncDocumentSelectionWithSession();
+    notifyListeners();
+  }
+
+  Future<void> _loadSessionContextPanel(String sessionId) async {
+    try {
+      _contextData = await _apiService.getContext(sessionId);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading session context: $e');
+      }
+      _contextData = _contextData ?? GetContextResponse();
+    } finally {
       notifyListeners();
     }
   }
 
-  Future<void> _loadSessionData(String sessionId,
-      {bool reloadHistory = true}) async {
-    _contextData = await _apiService.getContext(sessionId);
-
-    try {
-      _progress = await _apiService.getProgress(sessionId);
-    } catch (_) {
-      _progress = null;
-    }
-
-    final fileData =
-        await _apiService.getProjectFileWithVersion(projectId, 'gdd.md');
-    _gddContent = fileData['content']?.toString() ?? '';
-    _gddVersionNumber = (fileData['version_number'] as num?)?.toInt();
-
-    if (reloadHistory) {
-      _messages = await _apiService.getHistory(sessionId);
-    }
-
-    _pendingConfirmation = null;
-    _pendingSelection = null;
-    _streamingContent = '';
-    _thinkingContent = null;
-  }
-
-  Future<void> _createAndSelectSession({String? initialMessage}) async {
+  Future<void> _createAndSelectSession() async {
     final req = CreateSessionRequest(
       projectId: projectId,
-      title: _buildDraftTitle(initialMessage),
     );
     final created = await _apiService.createSession(req);
     await loadSessions();
     await selectSession(created.sessionId);
-  }
-
-  String? _buildDraftTitle(String? content) {
-    if (content == null) return null;
-    final trimmed = content.trim();
-    if (trimmed.isEmpty) return null;
-    if (trimmed.length <= 60) return trimmed;
-    return '${trimmed.substring(0, 57)}...';
   }
 
   Future<void> sendMessage(String content) async {
@@ -193,11 +599,15 @@ class V2SessionProvider with ChangeNotifier {
     }
 
     if (_currentSession == null) {
+      final draftSelectedPath = _selectedDocPath;
       _isLoading = true;
       _chatError = null;
       notifyListeners();
       try {
-        await _createAndSelectSession(initialMessage: trimmed);
+        await _createAndSelectSession();
+        if (draftSelectedPath != null && draftSelectedPath.trim().isNotEmpty) {
+          await selectDocument(draftSelectedPath);
+        }
       } catch (e) {
         _chatError = e.toString();
         _isLoading = false;
@@ -210,6 +620,9 @@ class V2SessionProvider with ChangeNotifier {
 
     final session = _currentSession;
     if (session == null) return;
+    final streamSessionId = session.sessionId;
+    _promptEligibleSessionId = streamSessionId;
+    final streamEpoch = _beginStreamBinding(streamSessionId);
 
     final userMsg = ChatMessage(
       role: 'user',
@@ -221,28 +634,103 @@ class V2SessionProvider with ChangeNotifier {
     _isSending = true;
     _chatError = null;
     _streamingContent = '';
+    _pendingDeltaBuffer = '';
+    _deltaFlushTimer?.cancel();
+    _deltaFlushTimer = null;
+    _streamStatusTipTimer?.cancel();
+    _streamStatusTipTimer = null;
+    _streamStatusTip = null;
     _thinkingContent = null;
+    _pendingWriteSummary = null;
     _pendingConfirmation = null;
     _pendingSelection = null;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
     notifyListeners();
 
+    var streamCancelled = false;
+    var receivedDone = false;
+    var pendingKnowledgeMayUpdate = false;
     try {
       await for (final event in _sseService.streamMessage(
-        sessionId: session.sessionId,
+        sessionId: streamSessionId,
         content: trimmed,
+        documentPath: _selectedDocPath,
+        shouldCancel: () => !_ownsStreamBinding(streamEpoch, streamSessionId),
       )) {
+        if (!_ownsStreamBinding(streamEpoch, streamSessionId)) {
+          streamCancelled = true;
+          break;
+        }
+        final eventSessionId = event.sessionId?.trim();
+        if (eventSessionId != null &&
+            eventSessionId.isNotEmpty &&
+            eventSessionId != streamSessionId) {
+          _chatError =
+              'Stream session mismatch detected. The response stream was dropped for safety.';
+          _invalidateStreamBinding(clearUiState: true);
+          notifyListeners();
+          streamCancelled = true;
+          break;
+        }
         switch (event.type) {
           case 'thinking':
             _thinkingContent = (_thinkingContent ?? '') + (event.content ?? '');
             notifyListeners();
             break;
           case 'content':
-            _streamingContent += (event.content ?? '');
-            notifyListeners();
+            final content = event.content ?? '';
+            final mode = (event.contentMode ?? '').trim().toLowerCase();
+            if (mode == 'replace') {
+              _flushPendingDelta(notify: false);
+              if (content != _streamingContent) {
+                _streamingContent = content;
+                _streamRenderVersion += 1;
+                _showStreamStatusTip(
+                  localizedStreamHint(
+                    refined: true,
+                    seedText: _streamingContent,
+                  ),
+                );
+              }
+              notifyListeners();
+              break;
+            }
+
+            if (mode == 'delta') {
+              _queueDeltaContent(content);
+              break;
+            }
+
+            // Legacy compatibility: content_mode missing -> append semantics.
+            _queueDeltaContent(content);
             break;
           case 'done':
-            _pendingConfirmation = event.confirmation;
+            receivedDone = true;
+            pendingKnowledgeMayUpdate = pendingKnowledgeMayUpdate ||
+                event.pendingKnowledgeMayUpdate == true;
+            _flushPendingDelta(notify: false);
+            final doneFinal = (event.finalContent ?? '').trim();
+            if (doneFinal.isNotEmpty && doneFinal != _streamingContent) {
+              _streamingContent = doneFinal;
+              _streamRenderVersion += 1;
+            }
+            // Canvas mode guard: only suppress file_merge_section confirmation
+            // when canvas_document is present (backend canvas mode is active).
+            // Without canvas_document, show all confirmations normally.
+            if (event.confirmation != null) {
+              final isCanvasMode = event.canvasDocument != null;
+              if (isCanvasMode &&
+                  _isFileMergeConfirmation(event.confirmation!)) {
+                // Canvas mode: suppress file_merge_section confirmation card
+              } else {
+                _pendingConfirmation = event.confirmation;
+              }
+            } else {
+              _pendingConfirmation = null;
+            }
             _pendingSelection = event.selection;
+            _pendingWriteSummary = event.writeSummary;
             notifyListeners();
             break;
           case 'error':
@@ -257,41 +745,320 @@ class V2SessionProvider with ChangeNotifier {
         }
       }
     } catch (e) {
-      _chatError = 'Failed to get response: $e';
-      if (kDebugMode) {
-        print('Error sending v2 message: $e');
+      if (_ownsStreamBinding(streamEpoch, streamSessionId) &&
+          !streamCancelled) {
+        final hasPartialResponse = _streamingContent.trim().isNotEmpty ||
+            (_thinkingContent?.trim().isNotEmpty ?? false);
+        if (hasPartialResponse) {
+          _chatError = null;
+        } else {
+          _chatError = 'Failed to get response: $e';
+        }
+        if (kDebugMode) {
+          print('Error sending v2 message: $e');
+        }
       }
     } finally {
-      final shouldAppendAssistantMessage = _streamingContent.isNotEmpty ||
-          (_thinkingContent?.isNotEmpty ?? false) ||
-          _pendingConfirmation != null ||
-          _pendingSelection != null;
-      if (shouldAppendAssistantMessage) {
-        _messages = [
-          ..._messages,
-          ChatMessage(
-            role: 'assistant',
-            content: _streamingContent,
-            timestamp: DateTime.now(),
-            thinking: _thinkingContent,
-            confirmation: _pendingConfirmation,
-            selection: _pendingSelection,
-          ),
-        ];
+      _flushPendingDelta(notify: false);
+      _deltaFlushTimer?.cancel();
+      _deltaFlushTimer = null;
+      final stillOwnsStream = _ownsStreamBinding(streamEpoch, streamSessionId);
+      if (stillOwnsStream && !streamCancelled) {
+        final isPartialResponse = !receivedDone;
+        if (isPartialResponse && _streamingContent.isNotEmpty) {
+          _pendingSelection ??= _selectionFromTextFallback(_streamingContent);
+          _showStreamStatusTip(
+            localizedStreamHint(
+              refined: false,
+              seedText: _streamingContent,
+            ),
+          );
+        }
+        final shouldAppendAssistantMessage = _streamingContent.isNotEmpty ||
+            (_thinkingContent?.isNotEmpty ?? false) ||
+            _pendingConfirmation != null ||
+            _pendingSelection != null ||
+            _pendingWriteSummary != null;
+        if (shouldAppendAssistantMessage) {
+          _messages = [
+            ..._messages,
+            ChatMessage(
+              role: 'assistant',
+              content: _streamingContent,
+              timestamp: DateTime.now(),
+              isPartial: isPartialResponse,
+              pendingKnowledgeMayUpdate: pendingKnowledgeMayUpdate,
+              thinking: _thinkingContent,
+              confirmation: _pendingConfirmation,
+              selection: _pendingSelection,
+              writeSummary: _pendingWriteSummary,
+            ),
+          ];
+        }
+
+        _isSending = false;
+        _streamingContent = '';
+        _thinkingContent = null;
+        _pendingWriteSummary = null;
+        _streamStatusTip = null;
+        _streamStatusTipTimer?.cancel();
+        _streamStatusTipTimer = null;
+        _activeStreamSessionId = null;
+        notifyListeners();
+
+        await Future.delayed(const Duration(milliseconds: 300));
+        await refreshData();
+        await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: streamSessionId);
+        if (pendingKnowledgeMayUpdate) {
+          _schedulePendingKnowledgeRefresh();
+        }
       }
-
-      _isSending = false;
-      _streamingContent = '';
-      _thinkingContent = null;
-      notifyListeners();
-
-      await Future.delayed(const Duration(milliseconds: 300));
-      await refreshData();
-      await loadSessions();
     }
   }
 
-  Future<void> confirmTransaction({String? transactionId}) async {
+  Map<String, dynamic>? _selectionErrorPayloadFromDio(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      if (data['detail'] is Map) {
+        return Map<String, dynamic>.from(data['detail'] as Map);
+      }
+      if (data.containsKey('error_code')) {
+        return Map<String, dynamic>.from(data);
+      }
+      return null;
+    }
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      if (map['detail'] is Map) {
+        return Map<String, dynamic>.from(map['detail'] as Map);
+      }
+      if (map.containsKey('error_code')) {
+        return map;
+      }
+    }
+    return null;
+  }
+
+  Future<SelectionSubmitResult> submitSelection({
+    required SelectionInfo selection,
+    required List<String> selectedIds,
+  }) async {
+    final session = _currentSession;
+    if (session == null) {
+      return const SelectionSubmitResult(
+        status: 'error',
+        message: 'No active session.',
+      );
+    }
+    final normalizedIds = selectedIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (normalizedIds.isEmpty) {
+      return const SelectionSubmitResult(
+        status: 'validation_error',
+        message: 'Please choose at least one option.',
+      );
+    }
+
+    _isSubmittingSelection = true;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
+    notifyListeners();
+
+    try {
+      final optionLabels = {
+        for (final option in selection.options) option.id.trim(): option.label
+      };
+      final selectedSummary =
+          normalizedIds.map((id) => optionLabels[id] ?? id).join(', ');
+      final assistantMessage = await _apiService.sendMessage(
+        sessionId: session.sessionId,
+        documentPath: _selectedDocPath,
+        selectionAnswer: SelectionAnswer(
+          questionId: selection.questionId,
+          action: 'submit',
+          selectedIds: normalizedIds,
+        ),
+      );
+      _messages = [
+        ..._messages,
+        ChatMessage(
+          role: 'user',
+          content: '[Selection] $selectedSummary',
+          timestamp: DateTime.now(),
+        ),
+        assistantMessage,
+      ];
+      _pendingSelection = assistantMessage.selection;
+      _selectionPanelInfo = 'Selection submitted.';
+      _chatError = null;
+
+      await Future.delayed(const Duration(milliseconds: 200));
+      await refreshData(reloadHistory: false);
+      await loadSessions();
+      _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
+      if (assistantMessage.pendingKnowledgeMayUpdate) {
+        _schedulePendingKnowledgeRefresh();
+      }
+      return const SelectionSubmitResult(status: 'success');
+    } on DioException catch (e) {
+      final payload = _selectionErrorPayloadFromDio(e);
+      final errorCode = payload?['error_code']?.toString() ?? '';
+      final message =
+          payload?['message']?.toString() ?? 'Selection submit failed.';
+      final latestRaw = payload?['latest_selection'];
+      final latestSelection = latestRaw is Map
+          ? SelectionInfo.fromJson(Map<String, dynamic>.from(latestRaw))
+          : null;
+
+      if (errorCode == 'stale_selection') {
+        if (latestSelection != null) {
+          _pendingSelection = latestSelection;
+        }
+        _selectionPanelInfo = message;
+        await refreshData(reloadHistory: true);
+        await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
+        return SelectionSubmitResult(
+          status: 'stale',
+          message: message,
+          latestSelection: latestSelection,
+        );
+      }
+
+      if (errorCode == 'selection_expired') {
+        _pendingSelection = null;
+        _selectionPanelInfo = message;
+        await refreshData(reloadHistory: true);
+        await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
+        return SelectionSubmitResult(
+          status: 'expired',
+          message: message,
+        );
+      }
+
+      if (errorCode == 'selection_validation_failed') {
+        _selectionPanelError = message;
+        return SelectionSubmitResult(
+          status: 'validation_error',
+          message: message,
+          latestSelection: latestSelection,
+        );
+      }
+
+      _selectionPanelError = message;
+      return SelectionSubmitResult(status: 'error', message: message);
+    } catch (e) {
+      final message = 'Selection submit failed: $e';
+      _selectionPanelError = message;
+      return SelectionSubmitResult(status: 'error', message: message);
+    } finally {
+      _isSubmittingSelection = false;
+      notifyListeners();
+    }
+  }
+
+  Future<SelectionSubmitResult> cancelSelection({
+    required SelectionInfo selection,
+  }) async {
+    final session = _currentSession;
+    if (session == null) {
+      return const SelectionSubmitResult(
+        status: 'error',
+        message: 'No active session.',
+      );
+    }
+
+    _isSubmittingSelection = true;
+    _selectionPanelError = null;
+    _selectionPanelInfo = null;
+    notifyListeners();
+    try {
+      final assistantMessage = await _apiService.sendMessage(
+        sessionId: session.sessionId,
+        documentPath: _selectedDocPath,
+        selectionAnswer: SelectionAnswer(
+          questionId: selection.questionId,
+          action: 'cancel',
+        ),
+      );
+      _messages = [
+        ..._messages,
+        ChatMessage(
+          role: 'user',
+          content: '[Selection] skipped',
+          timestamp: DateTime.now(),
+        ),
+        assistantMessage,
+      ];
+      _pendingSelection = assistantMessage.selection;
+      _selectionPanelInfo = 'Selection skipped.';
+      await Future.delayed(const Duration(milliseconds: 200));
+      await refreshData(reloadHistory: false);
+      await loadSessions();
+      _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
+      if (assistantMessage.pendingKnowledgeMayUpdate) {
+        _schedulePendingKnowledgeRefresh();
+      }
+      return const SelectionSubmitResult(status: 'success');
+    } on DioException catch (e) {
+      final payload = _selectionErrorPayloadFromDio(e);
+      final errorCode = payload?['error_code']?.toString() ?? '';
+      final message =
+          payload?['message']?.toString() ?? 'Selection cancel failed.';
+      final latestRaw = payload?['latest_selection'];
+      final latestSelection = latestRaw is Map
+          ? SelectionInfo.fromJson(Map<String, dynamic>.from(latestRaw))
+          : null;
+
+      if (errorCode == 'stale_selection') {
+        if (latestSelection != null) {
+          _pendingSelection = latestSelection;
+        }
+        _selectionPanelInfo = message;
+        await refreshData(reloadHistory: true);
+        await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
+        return SelectionSubmitResult(
+          status: 'stale',
+          message: message,
+          latestSelection: latestSelection,
+        );
+      }
+
+      if (errorCode == 'selection_expired') {
+        _pendingSelection = null;
+        _selectionPanelInfo = message;
+        await refreshData(reloadHistory: true);
+        await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: session.sessionId);
+        return SelectionSubmitResult(
+          status: 'expired',
+          message: message,
+        );
+      }
+
+      _selectionPanelError = message;
+      return SelectionSubmitResult(status: 'error', message: message);
+    } catch (e) {
+      final message = 'Selection cancel failed: $e';
+      _selectionPanelError = message;
+      return SelectionSubmitResult(status: 'error', message: message);
+    } finally {
+      _isSubmittingSelection = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> confirmTransaction({
+    String? transactionId,
+    String? argsChecksum,
+    int retryCount = 0,
+  }) async {
     final sessionId = _currentSession?.sessionId;
     if (sessionId == null) return;
 
@@ -301,14 +1068,105 @@ class V2SessionProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _apiService.confirmTransaction(
+      final result = await _apiService.confirmTransaction(
         sessionId: sessionId,
         action: 'confirm',
         transactionId: transactionId,
+        argsChecksum: argsChecksum,
       );
-      await Future.delayed(const Duration(milliseconds: 300));
-      await refreshData(reloadHistory: true);
-      await loadSessions();
+
+      if (result['status'] == 'awaiting_confirmation' &&
+          result['confirmation'] != null) {
+        // New pending step: append a message with confirmation card
+        final conf = Confirmation.fromJson(
+          Map<String, dynamic>.from(result['confirmation'] as Map),
+        );
+        _pendingConfirmation = conf;
+        _messages = [
+          ..._messages,
+          ChatMessage(
+            role: 'assistant',
+            content: '',
+            timestamp: DateTime.now(),
+            confirmation: conf,
+          ),
+        ];
+        notifyListeners();
+        // Refresh context/doc but don't reload history (avoid overwriting local confirmation message)
+        await Future.delayed(const Duration(milliseconds: 300));
+        await refreshData(reloadHistory: false);
+        await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: sessionId);
+        if (result['pending_knowledge_may_update'] == true) {
+          _schedulePendingKnowledgeRefresh();
+        }
+      } else {
+        // Normal completion or failure: reload history (TurnManager wrote the completion message)
+        await Future.delayed(const Duration(milliseconds: 300));
+        await refreshData(reloadHistory: true);
+        await loadSessions();
+        _scheduleSessionTitleRefreshIfNeeded(sessionId: sessionId);
+        if (result['pending_knowledge_may_update'] == true) {
+          _schedulePendingKnowledgeRefresh();
+        }
+      }
+    } on DioException catch (e) {
+      // Handle 409 conflict with automatic retry
+      if (e.response?.statusCode == 409 && retryCount == 0) {
+        // Extract latest_confirmation from response
+        final responseData = e.response?.data;
+        if (responseData is Map &&
+            responseData['latest_confirmation'] != null) {
+          final latestConfirmation = Confirmation.fromJson(
+            Map<String, dynamic>.from(
+                responseData['latest_confirmation'] as Map),
+          );
+
+          // Update pending confirmation
+          _pendingConfirmation = latestConfirmation;
+          notifyListeners();
+
+          // Automatic retry after 500ms
+          await Future.delayed(const Duration(milliseconds: 500));
+          return confirmTransaction(
+            transactionId: latestConfirmation.transactionId,
+            argsChecksum: latestConfirmation.argsChecksum,
+            retryCount: 1,
+          );
+        } else {
+          // 409 without latest_confirmation
+          _chatError =
+              'Operation content has changed. Review the latest content and confirm again.';
+        }
+      } else if (e.response?.statusCode == 409 && retryCount > 0) {
+        // Retry failed: show friendly error
+        _chatError =
+            'Operation content has changed. Review the latest content and confirm again.';
+      } else if (e.type == DioExceptionType.connectionTimeout) {
+        _chatError = 'Network timeout. Check your connection and try again.';
+      } else if (e.response?.statusCode == 500) {
+        _chatError = 'Server error. Please try again later.';
+      } else if (e.response?.statusCode == 401) {
+        _chatError = 'Login expired. Please sign in again.';
+        // TODO: Handle auth expiration
+      } else {
+        _chatError = 'Action failed. Please try again.';
+      }
+
+      if (_chatError != null) {
+        _messages = [
+          ..._messages,
+          ChatMessage(
+            role: 'assistant',
+            content: _chatError!,
+            timestamp: DateTime.now(),
+          ),
+        ];
+      }
+    } on ConfirmFlowDisabledException {
+      _pendingConfirmation = null;
+      _chatError = null;
+      // Silently dismiss — confirmation card is stale, no user-facing error needed.
     } catch (e) {
       _chatError = 'Error confirming transaction: $e';
       _messages = [
@@ -340,9 +1198,24 @@ class V2SessionProvider with ChangeNotifier {
         action: 'cancel',
         transactionId: transactionId,
       );
+
+      // Add friendly feedback message
+      _messages = [
+        ..._messages,
+        ChatMessage(
+          role: 'assistant',
+          content: 'Operation cancelled. You can continue the conversation.',
+          timestamp: DateTime.now(),
+        ),
+      ];
+
       await Future.delayed(const Duration(milliseconds: 300));
       await refreshData(reloadHistory: true);
       await loadSessions();
+      _scheduleSessionTitleRefreshIfNeeded(sessionId: sessionId);
+    } on ConfirmFlowDisabledException {
+      _pendingConfirmation = null;
+      _chatError = null;
     } catch (e) {
       _chatError = 'Error cancelling transaction: $e';
       _messages = [
@@ -365,21 +1238,21 @@ class V2SessionProvider with ChangeNotifier {
 
     try {
       _contextData = await _apiService.getContext(sessionId);
-      try {
-        _progress = await _apiService.getProgress(sessionId);
-      } catch (_) {
-        _progress = null;
-      }
-      final fileData =
-          await _apiService.getProjectFileWithVersion(projectId, 'gdd.md');
-      _gddContent = fileData['content']?.toString() ?? '';
-      _gddVersionNumber = (fileData['version_number'] as num?)?.toInt();
       _currentSession = await _apiService.getSession(sessionId);
+      await loadDocuments(notify: false);
+      final selectionChanged = await _syncDocumentSelectionWithSession();
+      if (!selectionChanged) {
+        await _refreshSelectedDocumentContent();
+      }
 
       if (reloadHistory) {
         _messages = await _apiService.getHistory(sessionId);
+        _pendingSelection = _restorePendingSelectionFromMessages();
       }
 
+      await loadPendingKnowledge(notify: false);
+
+      _refreshExtractionPromptFlag();
       notifyListeners();
     } catch (e) {
       _chatError = e.toString();
@@ -390,17 +1263,180 @@ class V2SessionProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> saveGddContent(String newContent, {String? comment}) async {
-    if (_currentSession?.projectId == null && projectId.isEmpty) return false;
+  Future<void> closeOpenQuestion(String question) async {
+    final sessionId = _currentSession?.sessionId;
+    final contextData = _contextData;
+    if (sessionId == null || contextData == null) return;
+
+    final normalizedTarget = _normalizeQuestionForCompare(question);
+    if (normalizedTarget.isEmpty) return;
+
+    final remainingQuestions = contextData.openQuestions.where((item) {
+      final text = item['question']?.toString() ?? '';
+      return _normalizeQuestionForCompare(text) != normalizedTarget;
+    }).toList(growable: false);
+
+    if (remainingQuestions.length == contextData.openQuestions.length) {
+      return;
+    }
+
+    final previousContext = contextData;
+    _contextData = contextData.copyWith(openQuestions: remainingQuestions);
+    _chatError = null;
+    notifyListeners();
+
     try {
-      final result = await _apiService.saveGddContent(
+      await _apiService.updateContext(
+        sessionId: sessionId,
+        key: 'open_questions_remove',
+        value: {'question': question},
+      );
+      await refreshData();
+    } catch (e) {
+      _contextData = previousContext;
+      _chatError = 'Failed to close question: $e';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> loadDocuments({bool notify = true}) async {
+    try {
+      final sessionId = _currentSession?.sessionId;
+      if (sessionId == null || sessionId.trim().isEmpty) {
+        _documents = [];
+      } else {
+        final sessionDocuments =
+            await _apiService.listSessionDocuments(sessionId);
+        var mergedDocuments = List<Map<String, dynamic>>.from(sessionDocuments);
+        final activePath =
+            _asNonEmptyString(_currentSession?.activeDocumentPath);
+        final selectedPath = _asNonEmptyString(_selectedDocPath);
+
+        // Backward compatibility:
+        // when backend doesn't support session-scoped document filtering yet,
+        // session endpoint may return empty; fallback to project-level list
+        // only when we have an existing selection/active-path to recover.
+        final shouldFallbackToProject = mergedDocuments.isEmpty &&
+            (activePath != null || selectedPath != null);
+        if (shouldFallbackToProject) {
+          final projectDocuments = await _apiService.listDocuments(projectId);
+          mergedDocuments = _mergeDocumentsByPath([], projectDocuments);
+        }
+
+        _documents = mergedDocuments;
+      }
+      if (notify) {
+        notifyListeners();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading documents: $e');
+      }
+    }
+  }
+
+  Future<void> selectDocument(
+    String filePath, {
+    bool syncSession = true,
+  }) async {
+    final normalized = filePath.trim();
+    if (normalized.isEmpty) return;
+
+    _selectedDocPath = normalized;
+    _chatError = null;
+    try {
+      final fileData =
+          await _apiService.getProjectFileWithVersion(projectId, normalized);
+      _selectedDocContent = fileData['content']?.toString() ?? '';
+      _selectedDocVersionNumber = (fileData['version_number'] as num?)?.toInt();
+      _gddContent = _selectedDocContent;
+      _gddVersionNumber = _selectedDocVersionNumber;
+
+      final sessionId = _currentSession?.sessionId;
+      if (syncSession && sessionId != null) {
+        await _apiService.setActiveDocument(
+          sessionId: sessionId,
+          filePath: normalized,
+        );
+      }
+      notifyListeners();
+    } catch (e) {
+      _chatError = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> createDocument(String title, {String? filePath}) async {
+    final sessionId = _currentSession?.sessionId;
+    if (sessionId == null) {
+      _chatError = 'Please select a session before creating documents.';
+      notifyListeners();
+      throw Exception(_chatError);
+    }
+    _chatError = null;
+    try {
+      final created = await _apiService.createSessionDocument(
+        sessionId,
+        title,
+        filePath: filePath,
+      );
+      await loadDocuments();
+      final createdPath = created['file_path']?.toString();
+      if (createdPath != null && createdPath.isNotEmpty) {
+        await selectDocument(createdPath);
+      }
+    } catch (e) {
+      _chatError = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> renameDocument(String slug, String title) async {
+    try {
+      await _apiService.renameDocument(projectId, slug, title);
+      await loadDocuments();
+    } catch (e) {
+      _chatError = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> deleteDocument(String slug) async {
+    try {
+      final deletedPath = _documents
+          .where((d) => d['slug']?.toString() == slug)
+          .map(_documentPathFromInventoryItem)
+          .whereType<String>()
+          .firstOrNull;
+      await _apiService.deleteDocument(projectId, slug, _authProvider.userId);
+      await loadDocuments();
+      if (_selectedDocPath == deletedPath) {
+        _clearSelectedDocument();
+      }
+    } catch (e) {
+      _chatError = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<bool> saveDocumentContent(String newContent, {String? comment}) async {
+    if (projectId.isEmpty || _selectedDocPath == null) return false;
+    try {
+      final result = await _apiService.saveDocumentContent(
         projectId: projectId,
+        filePath: _selectedDocPath!,
         contentMarkdown: newContent,
-        baseVersionNumber: _gddVersionNumber,
+        baseVersionNumber: _selectedDocVersionNumber,
         comment: comment,
       );
-      _gddContent = newContent;
-      _gddVersionNumber = (result['version_number'] as num?)?.toInt();
+      _selectedDocContent = newContent;
+      _selectedDocVersionNumber = (result['version_number'] as num?)?.toInt();
+      _gddContent = _selectedDocContent;
+      _gddVersionNumber = _selectedDocVersionNumber;
       notifyListeners();
       return true;
     } on ConflictException {
@@ -411,6 +1447,10 @@ class V2SessionProvider with ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+  }
+
+  Future<bool> saveGddContent(String newContent, {String? comment}) async {
+    return saveDocumentContent(newContent, comment: comment);
   }
 
   Future<bool> uploadFileToKnowledgeBase(
@@ -428,7 +1468,485 @@ class V2SessionProvider with ChangeNotifier {
 
   @override
   void dispose() {
+    _invalidateStreamBinding(clearUiState: true);
+    _sseService.dispose();
     _apiService.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshSelectedDocumentContent() async {
+    if (_selectedDocPath == null) return;
+    final fileData = await _apiService.getProjectFileWithVersion(
+        projectId, _selectedDocPath!);
+    _selectedDocContent = fileData['content']?.toString() ?? '';
+    _selectedDocVersionNumber = (fileData['version_number'] as num?)?.toInt();
+    _gddContent = _selectedDocContent;
+    _gddVersionNumber = _selectedDocVersionNumber;
+  }
+
+  void _clearSelectedDocument() {
+    _selectedDocPath = null;
+    _selectedDocContent = null;
+    _selectedDocVersionNumber = null;
+    _gddContent = null;
+    _gddVersionNumber = null;
+  }
+
+  String? _documentPathFromInventoryItem(Map<String, dynamic> doc) {
+    return _asNonEmptyString(doc['file_path']) ??
+        _asNonEmptyString(doc['path']) ??
+        _asNonEmptyString(doc['document_path']) ??
+        _asNonEmptyString(doc['filePath']) ??
+        _asNonEmptyString(doc['documentPath']);
+  }
+
+  Future<bool> _syncDocumentSelectionWithSession() async {
+    final knownPaths = _documents
+        .map(_documentPathFromInventoryItem)
+        .whereType<String>()
+        .toList(growable: false);
+    final knownPathSet = knownPaths.toSet();
+    final activePath = _asNonEmptyString(_currentSession?.activeDocumentPath);
+
+    final selectedPath = _asNonEmptyString(_selectedDocPath);
+    final sessionId = _currentSession?.sessionId;
+    if (activePath != null && !knownPathSet.contains(activePath)) {
+      if (sessionId != null) {
+        try {
+          await _apiService.setActiveDocument(
+            sessionId: sessionId,
+            filePath: null,
+          );
+          _currentSession = await _apiService.getSession(sessionId);
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error clearing stale active document path: $e');
+          }
+        }
+      }
+
+      if (selectedPath == activePath ||
+          (selectedPath != null && !knownPathSet.contains(selectedPath))) {
+        _clearSelectedDocument();
+      }
+
+      if (_selectedDocPath == null && knownPaths.isNotEmpty) {
+        await selectDocument(knownPaths.first);
+      }
+      return true;
+    }
+
+    if (activePath != null &&
+        knownPathSet.contains(activePath) &&
+        selectedPath != activePath) {
+      await selectDocument(activePath, syncSession: false);
+      return true;
+    }
+
+    if (selectedPath != null && !knownPathSet.contains(selectedPath)) {
+      _clearSelectedDocument();
+    }
+
+    if (_selectedDocPath == null && knownPaths.isNotEmpty) {
+      // Heal stale session active_document_path by syncing to a valid document.
+      await selectDocument(knownPaths.first);
+      return true;
+    }
+
+    return false;
+  }
+
+  bool _isFileMergeConfirmation(Confirmation conf) {
+    return conf.action.contains('file_merge_section') ||
+        conf.action.contains('Merge section');
+  }
+
+  String? _asNonEmptyString(dynamic value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String _normalizeQuestionForCompare(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\u4e00-\u9fff]+'), '');
+  }
+
+  List<Map<String, dynamic>> _mergeDocumentsByPath(
+    List<Map<String, dynamic>> sessionDocuments,
+    List<Map<String, dynamic>> projectDocuments,
+  ) {
+    final merged = <String, Map<String, dynamic>>{};
+
+    for (final doc in [...projectDocuments, ...sessionDocuments]) {
+      final path = _documentPathFromInventoryItem(doc);
+      if (path == null) continue;
+      merged[path] = doc;
+    }
+
+    return merged.values.toList(growable: false);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Project Context / Pending Knowledge Methods
+  // ---------------------------------------------------------------------------
+
+  void _updateWriteGate(Map<String, dynamic> writeGate) {
+    final status = (writeGate['status'] as String? ?? 'open').toLowerCase();
+    _isWritePaused = status == 'frozen';
+    if (_isWritePaused) {
+      final freezeStartedAt =
+          DateTime.tryParse(writeGate['freeze_started_at']?.toString() ?? '');
+      final budget = writeGate['freeze_budget_seconds'] is int
+          ? writeGate['freeze_budget_seconds'] as int
+          : int.tryParse(
+                  writeGate['freeze_budget_seconds']?.toString() ?? '') ??
+              90;
+      if (freezeStartedAt != null) {
+        final elapsed =
+            DateTime.now().toUtc().difference(freezeStartedAt.toUtc());
+        _writePausedRetrySeconds =
+            (budget - elapsed.inSeconds).clamp(1, budget);
+      } else {
+        _writePausedRetrySeconds = budget;
+      }
+    } else {
+      _writePausedRetrySeconds = 0;
+    }
+  }
+
+  /// Load project-scoped pending knowledge items via project API.
+  Future<void> loadPendingKnowledge({
+    bool notify = true,
+    int retryAttempt = 0,
+    bool captureError = true,
+  }) async {
+    _isPendingKnowledgeLoading = true;
+    _pendingKnowledgeError = null;
+    if (notify) {
+      notifyListeners();
+    }
+
+    try {
+      final result = await _apiService.listPendingKnowledge(projectId);
+      _pendingKnowledgeItems =
+          List<PendingKnowledgeItem>.of(result.items, growable: true);
+      _pendingBatchVersion = result.batchVersion;
+      _pendingBatchEtag = result.batchEtag;
+      _ensurePendingBatchEtag();
+      _pendingReadMode = result.readMode;
+      _pendingMigrationState = result.migrationState;
+      _updateWriteGate(result.writeGate);
+      _pendingKnowledgeError = null;
+      _refreshExtractionPromptFlag();
+    } catch (e) {
+      final text = e.toString();
+      if (text.contains('MIGRATION_IN_PROGRESS') && retryAttempt < 3) {
+        await Future<void>.delayed(
+            Duration(milliseconds: 500 * (retryAttempt + 1)));
+        return loadPendingKnowledge(
+            notify: notify,
+            retryAttempt: retryAttempt + 1,
+            captureError: captureError);
+      }
+      if (captureError) {
+        _pendingKnowledgeError = e.toString();
+      }
+    } finally {
+      _isPendingKnowledgeLoading = false;
+      if (notify) {
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Confirm or reject pending knowledge items.
+  Future<ConfirmKnowledgeResult?> confirmPendingKnowledge(
+      List<Map<String, String>> decisions) async {
+    if (decisions.isEmpty) return null;
+    if (_isWritePaused) {
+      _pendingKnowledgeError =
+          'Writes are temporarily paused. Retry in ${_writePausedRetrySeconds}s.';
+      notifyListeners();
+      return null;
+    }
+    if (_pendingBatchEtag.trim().isEmpty) {
+      await loadPendingKnowledge(notify: false);
+      _ensurePendingBatchEtag();
+      if (_pendingBatchEtag.trim().isEmpty) {
+        _pendingKnowledgeError =
+            'Pending queue metadata is unavailable. Please refresh and retry.';
+        notifyListeners();
+        return null;
+      }
+    }
+
+    _isPendingKnowledgeSubmitting = true;
+    _pendingKnowledgeError = null;
+    notifyListeners();
+
+    try {
+      for (final decision in decisions) {
+        final id = decision['id'];
+        if (id == null) continue;
+        final item = _pendingItemById(id);
+        if (item == null) {
+          decision['version'] = '0';
+        } else {
+          decision['version'] = item.version.toString();
+        }
+      }
+
+      final result = await _apiService.confirmPendingKnowledge(
+        projectId: projectId,
+        decisions: decisions,
+        batchEtag: _pendingBatchEtag,
+        mode: 'atomic',
+        idempotencyKey: _newIdempotencyKey(),
+      );
+      await loadPendingKnowledge();
+      await loadProjectContext();
+      return result;
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+      return null;
+    } finally {
+      _isPendingKnowledgeSubmitting = false;
+      notifyListeners();
+    }
+  }
+
+  /// Edit a pending knowledge item.
+  Future<bool> updatePendingItem(String itemId,
+      {String? content, String? type}) async {
+    final item = _pendingItemById(itemId);
+    if (item == null) return false;
+    if (_isWritePaused) {
+      if (content != null && content.trim().isNotEmpty) {
+        _localPendingDrafts[itemId] = content;
+      }
+      _pendingKnowledgeError =
+          'Writes are temporarily paused. Retry in ${_writePausedRetrySeconds}s. '
+          'Your latest edit has been kept locally.';
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      final updated = await _apiService.updatePendingItem(
+        projectId: projectId,
+        itemId: itemId,
+        ifMatch: _effectiveItemEtag(item),
+        content: content,
+        type: type,
+      );
+      final idx = _pendingKnowledgeItems.indexWhere((i) => i.id == itemId);
+      if (idx >= 0) {
+        _pendingKnowledgeItems[idx] = updated;
+        _localPendingDrafts.remove(itemId);
+        notifyListeners();
+      }
+      return true;
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Delete a pending knowledge item.
+  Future<bool> deletePendingItem(String itemId) async {
+    final item = _pendingItemById(itemId);
+    if (item == null) return false;
+    if (_isWritePaused) {
+      _pendingKnowledgeError =
+          'Writes are temporarily paused. Retry in ${_writePausedRetrySeconds}s.';
+      notifyListeners();
+      return false;
+    }
+
+    try {
+      await _apiService.deletePendingItem(
+        projectId: projectId,
+        itemId: itemId,
+        ifMatch: _effectiveItemEtag(item),
+      );
+      _pendingKnowledgeItems.removeWhere((i) => i.id == itemId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Trigger context extraction from this session into project context.
+  ///
+  /// Returns backend extraction payload when successful, otherwise null.
+  Future<Map<String, dynamic>?> extractSessionKnowledge({
+    bool refreshAfterExtraction = true,
+    bool showLoadingState = true,
+  }) async {
+    final sessionId = _currentSession?.sessionId;
+    if (sessionId == null) return null;
+
+    if (showLoadingState) {
+      _isPendingKnowledgeLoading = true;
+    }
+    _shouldPromptSessionKnowledgeExtraction = false;
+    _pendingKnowledgeError = null;
+    if (showLoadingState) {
+      notifyListeners();
+    }
+
+    try {
+      final result = Map<String, dynamic>.from(
+        await _apiService.extractSessionKnowledge(sessionId),
+      );
+
+      if (refreshAfterExtraction) {
+        try {
+          _currentSession = await _apiService.getSession(sessionId);
+        } catch (_) {}
+        final expectedPending = (result['pending_count'] as num?)?.toInt() ?? 0;
+        bool pendingLoaded = true;
+        String? pendingLoadError;
+        if (expectedPending > 0) {
+          pendingLoaded = false;
+          for (var attempt = 0; attempt < 3; attempt++) {
+            await loadPendingKnowledge(notify: false, captureError: true);
+            if (_pendingKnowledgeItems.isNotEmpty) {
+              pendingLoaded = true;
+              break;
+            }
+            if (attempt < 2) {
+              await Future<void>.delayed(
+                  Duration(milliseconds: 350 * (attempt + 1)));
+            }
+          }
+          if (!pendingLoaded) {
+            pendingLoadError = _pendingKnowledgeError;
+          }
+        } else {
+          await loadPendingKnowledge(notify: false, captureError: false);
+        }
+        await loadProjectContext();
+        _refreshExtractionPromptFlag();
+        result['pending_loaded'] = pendingLoaded;
+        if (pendingLoadError != null && pendingLoadError.trim().isNotEmpty) {
+          result['pending_load_error'] = pendingLoadError;
+        }
+      }
+      return result;
+    } catch (e) {
+      _pendingKnowledgeError = e.toString();
+      return null;
+    } finally {
+      if (showLoadingState) {
+        _isPendingKnowledgeLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void _refreshExtractionPromptFlag() {
+    final session = _currentSession;
+    final hasSession = session != null;
+    final hasPending = _pendingKnowledgeItems.isNotEmpty;
+    final isPromptEligibleSession =
+        session != null && session.sessionId == _promptEligibleSessionId;
+    final unextractedTurns =
+        session == null ? 0 : session.turnCount - session.lastExtractionTurn;
+    final hasNewMessages =
+        unextractedTurns >= _knowledgeExtractionPromptTurnGap;
+
+    _shouldPromptSessionKnowledgeExtraction =
+        hasSession && isPromptEligibleSession && !hasPending && hasNewMessages;
+  }
+
+  /// Load project context entries (confirmed knowledge).
+  Future<void> loadProjectContext({String? type, String? query}) async {
+    _isProjectContextLoading = true;
+    _projectContextError = null;
+    notifyListeners();
+
+    try {
+      final loaded = await _apiService.listProjectContext(
+        projectId: projectId,
+        type: type,
+        query: query,
+      );
+      _projectContextEntries =
+          List<ProjectContextEntry>.of(loaded, growable: true);
+    } catch (e) {
+      _projectContextError = e.toString();
+    } finally {
+      _isProjectContextLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Add a new entry to project context.
+  Future<bool> addProjectContextEntry({
+    required String type,
+    required String content,
+  }) async {
+    try {
+      final entry = await _apiService.createProjectContextEntry(
+        projectId: projectId,
+        type: type,
+        content: content,
+      );
+      _projectContextEntries.insert(0, entry);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _projectContextError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Edit a project context entry.
+  Future<bool> updateProjectContextEntry(String entryId,
+      {String? content, String? type}) async {
+    try {
+      final updated = await _apiService.updateProjectContextEntry(
+        projectId: projectId,
+        entryId: entryId,
+        content: content,
+        type: type,
+      );
+      final idx = _projectContextEntries.indexWhere((e) => e.id == entryId);
+      if (idx >= 0) {
+        _projectContextEntries[idx] = updated;
+        notifyListeners();
+      }
+      return true;
+    } catch (e) {
+      _projectContextError = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Delete a project context entry (soft delete).
+  Future<bool> deleteProjectContextEntry(String entryId) async {
+    try {
+      await _apiService.deleteProjectContextEntry(
+        projectId: projectId,
+        entryId: entryId,
+      );
+      _projectContextEntries.removeWhere((e) => e.id == entryId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _projectContextError = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 }

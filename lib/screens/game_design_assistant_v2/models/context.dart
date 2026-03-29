@@ -36,4 +36,24 @@ class GetContextResponse {
           : Map<String, dynamic>.from(json['current_focus'] as Map),
     );
   }
+
+  GetContextResponse copyWith({
+    List<Map<String, dynamic>>? establishedFacts,
+    List<Map<String, dynamic>>? openQuestions,
+    List<Map<String, dynamic>>? designDecisions,
+    List<String>? userPreferences,
+    Map<String, dynamic>? stages,
+    Map<String, dynamic>? currentFocus,
+    bool clearCurrentFocus = false,
+  }) {
+    return GetContextResponse(
+      establishedFacts: establishedFacts ?? this.establishedFacts,
+      openQuestions: openQuestions ?? this.openQuestions,
+      designDecisions: designDecisions ?? this.designDecisions,
+      userPreferences: userPreferences ?? this.userPreferences,
+      stages: stages ?? this.stages,
+      currentFocus:
+          clearCurrentFocus ? null : (currentFocus ?? this.currentFocus),
+    );
+  }
 }
