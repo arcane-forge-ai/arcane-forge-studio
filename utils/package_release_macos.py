@@ -3,11 +3,9 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-import platform
-import os
 from pathlib import Path
 
-from opencode_sidecar import stage_sidecar, verify_staged_sidecar
+from opencode_sidecar import RELEASE_DEPS_SIDECAR_DIR, verify_staged_sidecar
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,35 +40,25 @@ def ensure_build_directory() -> Path:
     return app_path
 
 
-def resolve_macos_sidecar_platform() -> str:
-    override = os.environ.get("ARCANE_FORGE_OPENCODE_PLATFORM", "").strip()
-    if override:
-        return override
-    machine = platform.machine().lower()
-    return "darwin-arm64" if machine in {"arm64", "aarch64"} else "darwin-x64"
-
-
 def copy_opencode_sidecar(app_path: Path) -> None:
+    verify_staged_sidecar(RELEASE_DEPS_SIDECAR_DIR)
+
     sidecar_dir = app_path / SIDECAR_RESOURCE_DIR
     if sidecar_dir.exists():
         shutil.rmtree(sidecar_dir)
-    sidecar_dir.mkdir(parents=True, exist_ok=True)
-    binary = stage_sidecar(resolve_macos_sidecar_platform(), sidecar_dir)
-    verify_staged_sidecar(sidecar_dir)
-    print(f"Bundled OpenCode sidecar: {binary}")
+    shutil.copytree(RELEASE_DEPS_SIDECAR_DIR, sidecar_dir)
+    print(f"Bundled OpenCode sidecar from {RELEASE_DEPS_SIDECAR_DIR} -> {sidecar_dir}")
 
 
 def create_dmg(app_path: Path, version: str) -> Path:
     RELEASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     dmg_name = ASSET_NAME_TEMPLATE.format(version=version) + ".dmg"
     dmg_path = RELEASE_OUTPUT_DIR / dmg_name
-    
-    # Remove existing DMG if it exists
+
     if dmg_path.exists():
         dmg_path.unlink()
         print(f"Removed existing DMG: {dmg_path}")
-    
-    # Create DMG using hdiutil
+
     print(f"Creating DMG: {dmg_path}")
     try:
         subprocess.run(
@@ -89,7 +77,7 @@ def create_dmg(app_path: Path, version: str) -> Path:
         )
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"Failed to create DMG: {e.stderr}")
-    
+
     return dmg_path
 
 
@@ -106,24 +94,20 @@ def get_dmg_size(dmg_path: Path) -> str:
 def main() -> int:
     version = read_version()
     print(f"Building release package for version {version}")
-    
+
     app_path = ensure_build_directory()
     print(f"Found app bundle at: {app_path}")
     copy_opencode_sidecar(app_path)
 
     dmg_path = create_dmg(app_path, version)
     dmg_size = get_dmg_size(dmg_path)
-    
-    print(f"✓ Release DMG created: {dmg_path}")
-    print(f"✓ Size: {dmg_size}")
+
+    print(f"Release DMG created: {dmg_path}")
+    print(f"Size: {dmg_size}")
     print(f"\nTo distribute, share the DMG file at: {dmg_path}")
-    
+
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
-
-

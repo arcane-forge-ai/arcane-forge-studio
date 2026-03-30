@@ -4,7 +4,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from opencode_sidecar import stage_sidecar, verify_staged_sidecar
+from opencode_sidecar import verify_staged_sidecar
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -16,7 +16,6 @@ UPDATE_SCRIPT_PY = ROOT / "utils" / "update.py"
 RELEASE_DEPENDENCIES_DIR = ROOT / "utils" / "release_dependencies"
 VERSION_FILE_NAME = "version.txt"
 ASSET_NAME_TEMPLATE = "arcane-forge-studio-windows-v{version}"
-WINDOWS_SIDECAR_PLATFORM = "windows-x64"
 
 
 def read_version() -> str:
@@ -55,23 +54,24 @@ def copy_update_assets(build_dir: Path, version: str) -> None:
 
 def copy_release_dependencies(build_dir: Path) -> None:
     if not RELEASE_DEPENDENCIES_DIR.exists():
-        print(f"Warning: Release dependencies directory not found at {RELEASE_DEPENDENCIES_DIR}")
-        return
+        raise SystemExit(
+            f"Release dependencies not found at {RELEASE_DEPENDENCIES_DIR}. "
+            "Run `python utils/opencode_sidecar.py <platform>` first."
+        )
 
-    for file_path in RELEASE_DEPENDENCIES_DIR.iterdir():
-        if file_path.is_file():
-            shutil.copy2(file_path, build_dir / file_path.name)
-            print(f"Copied dependency: {file_path.name}")
+    sidecar_source = RELEASE_DEPENDENCIES_DIR / "opencode_sidecar"
+    verify_staged_sidecar(sidecar_source)
 
-
-def copy_opencode_sidecar(build_dir: Path) -> None:
-    sidecar_dir = build_dir / "opencode_sidecar"
-    if sidecar_dir.exists():
-        shutil.rmtree(sidecar_dir)
-    sidecar_dir.mkdir(parents=True, exist_ok=True)
-    binary = stage_sidecar(WINDOWS_SIDECAR_PLATFORM, sidecar_dir)
-    verify_staged_sidecar(sidecar_dir)
-    print(f"Bundled OpenCode sidecar: {binary.name}")
+    for child in RELEASE_DEPENDENCIES_DIR.iterdir():
+        dest = build_dir / child.name
+        if child.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(child, dest)
+            print(f"Copied dependency dir: {child.name}")
+        elif child.is_file():
+            shutil.copy2(child, dest)
+            print(f"Copied dependency: {child.name}")
 
 
 def create_archive(build_dir: Path, version: str) -> Path:
@@ -86,7 +86,6 @@ def main() -> int:
     build_dir = ensure_build_directory()
     copy_update_assets(build_dir, version)
     copy_release_dependencies(build_dir)
-    copy_opencode_sidecar(build_dir)
     archive = create_archive(build_dir, version)
     print(f"Release archive created: {archive}")
     return 0

@@ -26,59 +26,58 @@ first use and prefers that installed copy over any system `opencode`.
 
 ## Source Of Truth
 
-The OpenCode version and download URLs are pinned in
-`utils/opencode_sidecar_manifest.json`.
+The OpenCode version is pinned in `utils/opencode_sidecar_manifest.json`.
+The manifest contains a single `version` field and a `urlTemplate` that
+constructs download URLs at runtime. Bumping the version is a single edit.
 
 If you want to upgrade the bundled OpenCode version:
 
-1. Update `version` and the platform asset URLs in
-   `utils/opencode_sidecar_manifest.json`.
+1. Update `version` in `utils/opencode_sidecar_manifest.json`.
 2. Rebuild and smoke-test Arcane Forge with that pinned version.
 3. Only then package and publish release artifacts.
 
-Do not commit raw OpenCode binaries into this repo. The release scripts stage
-them into build output at packaging time.
+Do not commit raw OpenCode binaries into this repo. The sidecar prep script
+stages them into `utils/release_dependencies/` (which is gitignored).
+
+## Sidecar Prep Step
+
+Before running either packaging script, stage the sidecar binary:
+
+```bash
+python3 utils/opencode_sidecar.py <platform>
+```
+
+Available platforms: `darwin-arm64`, `darwin-x64`, `windows-x64`.
+
+This downloads the pinned archive from GitHub and extracts the binary into
+`utils/release_dependencies/opencode_sidecar/`.
 
 ## Sidecar Asset Resolution
 
-`utils/opencode_sidecar.py` resolves the bundled sidecar in this order:
+`utils/opencode_sidecar.py` resolves the sidecar binary in this order:
 
-1. `ARCANE_FORGE_OPENCODE_SOURCE_DIR`
-2. `OPENCODE_LOCAL_REPO`
-3. default local repo path: `~/gbtemp/opencode`
-4. download the pinned archive from the URL in the manifest
-
-The helper accepts either:
-
-- a directory containing the exact release archive, for example
-  `opencode-darwin-arm64.zip`
-- a directory containing an unpacked build at
-  `dist/<asset-stem>/bin/opencode`
-
-This means contributors can package from a locally built OpenCode checkout or
-let the packaging helper fetch the pinned release asset automatically.
+1. If `OPENCODE_LOCAL_REPO` is set, look for the binary or archive there.
+2. Otherwise, download the pinned archive from the GitHub release URL.
 
 ## Local OpenCode Build Inputs
 
 If you want to package from a local OpenCode checkout instead of downloading
-release assets, make sure the repo has already produced a matching standalone
-CLI build under `dist/`.
-
-Example local repo location:
+release assets, set the `OPENCODE_LOCAL_REPO` environment variable to point at
+your local checkout. Make sure it has already produced a matching standalone CLI
+build under `dist/`.
 
 ```bash
-export OPENCODE_LOCAL_REPO=~/gbtemp/opencode
+export OPENCODE_LOCAL_REPO=/path/to/your/opencode
 ```
 
-The packaging helper looks for platform builds such as:
+The script looks for platform builds such as:
 
 ```text
-~/gbtemp/opencode/dist/opencode-darwin-arm64/bin/opencode
-~/gbtemp/opencode/dist/opencode-darwin-x64/bin/opencode
-~/gbtemp/opencode/dist/opencode-windows-x64/bin/opencode.exe
+$OPENCODE_LOCAL_REPO/dist/opencode-darwin-arm64/bin/opencode
+$OPENCODE_LOCAL_REPO/dist/opencode-windows-x64/bin/opencode.exe
 ```
 
-If those files are not present, the helper falls back to the manifest URLs.
+If those files are not present, the script falls back to the GitHub download.
 
 ## Windows Packaging
 
@@ -88,18 +87,19 @@ Build the Windows app first:
 flutter build windows --release
 ```
 
-Then package it:
+Prep the sidecar and then package:
 
 ```bash
+python3 utils/opencode_sidecar.py windows-x64
 python3 utils/package_release.py
 ```
 
-What the script does:
+What the packaging script does:
 
 - reads the app version from `pubspec.yaml`
 - copies updater files into `build/windows/x64/runner/Release`
-- stages the pinned OpenCode sidecar into
-  `build/windows/x64/runner/Release/opencode_sidecar/`
+- copies everything from `utils/release_dependencies/` (including the sidecar)
+  into `build/windows/x64/runner/Release/`
 - verifies that `opencode_sidecar/manifest.json` and `opencode.exe` exist
 - zips the release directory into
   `build/release/arcane-forge-studio-windows-v<version>.zip`
@@ -119,54 +119,41 @@ Build the macOS app first:
 flutter build macos --release
 ```
 
-Then package it:
+Prep the sidecar and then package:
 
 ```bash
+python3 utils/opencode_sidecar.py darwin-arm64
 python3 utils/package_release_macos.py
 ```
 
-What the script does:
+What the packaging script does:
 
 - reads the app version from `pubspec.yaml`
 - locates `build/macos/Build/Products/Release/Arcane Forge Studio.app`
-- stages the pinned OpenCode sidecar into
+- copies the sidecar from `utils/release_dependencies/opencode_sidecar/` into
   `Arcane Forge Studio.app/Contents/Resources/opencode_sidecar/`
 - verifies that the sidecar manifest and binary are present
 - creates a DMG at
   `build/release/Arcane-Forge-Studio-macOS-v<version>.dmg`
-
-The macOS script chooses the OpenCode sidecar platform from the current host
-architecture by default.
-
-You can override it explicitly if needed:
-
-```bash
-ARCANE_FORGE_OPENCODE_PLATFORM=darwin-x64 python3 utils/package_release_macos.py
-```
-
-Supported macOS values today:
-
-- `darwin-arm64`
-- `darwin-x64`
 
 ## Publishing Checklist
 
 Use this checklist before publishing a release:
 
 1. Bump the app version in `pubspec.yaml`.
-2. If needed, update `utils/opencode_sidecar_manifest.json` to the new pinned
-   OpenCode version.
+2. If needed, update `version` in `utils/opencode_sidecar_manifest.json`.
 3. Run local validation:
    `dart analyze lib/screens/development/coding_agent test`
 4. Run targeted sidecar tests:
    `flutter test test/opencode_server_manager_test.dart test/coding_agent_config_service_test.dart test/coding_agent_screen_widget_test.dart`
 5. Build the desktop artifact for the platform you are releasing.
-6. Run the matching packaging script from `utils/`.
-7. Inspect the packaged artifact and confirm the sidecar exists:
+6. Run `python3 utils/opencode_sidecar.py <platform>` to stage the sidecar.
+7. Run the matching packaging script from `utils/`.
+8. Inspect the packaged artifact and confirm the sidecar exists:
    - Windows: `opencode_sidecar/manifest.json` and `opencode.exe`
    - macOS: `Contents/Resources/opencode_sidecar/manifest.json` and `opencode`
-8. Smoke-test on a machine without a system `opencode` installed.
-9. Publish the artifact to GitHub Releases.
+9. Smoke-test on a machine without a system `opencode` installed.
+10. Publish the artifact to GitHub Releases.
 
 ## Contributor Notes
 

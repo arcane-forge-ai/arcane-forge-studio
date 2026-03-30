@@ -19,6 +19,8 @@ class OpencodeServerManager {
     Map<String, String> Function()? environmentProvider,
     String Function()? resolvedExecutablePathProvider,
     Future<String?> Function()? systemBinaryPathResolver,
+    Future<bool> Function(String path)? executableFileChecker,
+    Future<String> Function(String binaryPath)? binaryVersionReader,
   })  : _httpClient = httpClient ?? http.Client(),
         _supportDirectoryProvider =
             supportDirectoryProvider ?? getApplicationSupportDirectory,
@@ -27,6 +29,8 @@ class OpencodeServerManager {
         _resolvedExecutablePathProvider = resolvedExecutablePathProvider ??
             (() => Platform.resolvedExecutable),
         _systemBinaryPathResolver = systemBinaryPathResolver,
+        _executableFileChecker = executableFileChecker,
+        _binaryVersionReader = binaryVersionReader,
         _configService = configService ??
             CodingAgentConfigService(
               supportDirectoryProvider:
@@ -49,6 +53,8 @@ class OpencodeServerManager {
   final Map<String, String> Function() _environmentProvider;
   final String Function() _resolvedExecutablePathProvider;
   final Future<String?> Function()? _systemBinaryPathResolver;
+  final Future<bool> Function(String path)? _executableFileChecker;
+  final Future<String> Function(String binaryPath)? _binaryVersionReader;
   final StreamController<String> _logController =
       StreamController<String>.broadcast();
   final List<String> _recentLogs = <String>[];
@@ -838,6 +844,12 @@ class OpencodeServerManager {
   }
 
   Future<bool> _isExecutableFile(String path) async {
+    final Future<bool> Function(String path)? executableFileChecker =
+        _executableFileChecker;
+    if (executableFileChecker != null) {
+      return executableFileChecker(path);
+    }
+
     try {
       final File file = File(path);
       if (!await file.exists()) {
@@ -1111,6 +1123,12 @@ class OpencodeServerManager {
   }
 
   Future<String> _verifyBinaryAndReadVersion(String binaryPath) async {
+    final Future<String> Function(String binaryPath)? binaryVersionReader =
+        _binaryVersionReader;
+    if (binaryVersionReader != null) {
+      return binaryVersionReader(binaryPath);
+    }
+
     final ProcessResult result = await Process.run(binaryPath, <String>[
       '--version',
     ]);

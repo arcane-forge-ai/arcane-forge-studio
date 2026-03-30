@@ -2,16 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:arcane_forge/screens/development/coding_agent/services/coding_agent_config_service.dart';
+import 'package:arcane_forge/screens/development/coding_agent/services/coding_agent_embedded_browser_host.dart';
 import 'package:arcane_forge/screens/development/coding_agent/models/opencode_models.dart';
 import 'package:arcane_forge/screens/development/coding_agent/services/opencode_server_manager.dart';
 import 'package:arcane_forge/screens/development/coding_agent_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
 
 Widget _buildHarness(Widget child) {
   return MaterialApp(home: child);
@@ -37,7 +35,6 @@ Future<void> _pumpUntilFound(
 void main() {
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
-    WebViewPlatform.instance = _FakeWebViewPlatform();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_workspaceAccessChannel, (_) async => null);
   });
@@ -88,7 +85,9 @@ void main() {
       );
 
       expect(
-        find.text('Coding Agent (Beta) is available on macOS desktop only.'),
+        find.text(
+          'Coding Agent (Beta) is available on macOS and Windows desktop only.',
+        ),
         findsOneWidget,
       );
     });
@@ -146,6 +145,7 @@ void main() {
           'Starting opencode serve on port 4096',
         ],
       );
+      final _FakeEmbeddedBrowserHost browserHost = _FakeEmbeddedBrowserHost();
       Uri? capturedInitialUrl;
 
       await tester.pumpWidget(
@@ -157,17 +157,14 @@ void main() {
             debugServerManager: serverManager,
             debugWorkspacePathOverride: workspaceDirectory.path,
             debugConfigService: configService,
-            debugControllerFactory: (
-              NavigationDelegate _,
-              Uri initialUrl,
+            debugEmbeddedBrowserHostFactory: (
+              CodingAgentEmbeddedBrowserCallbacks callbacks,
             ) {
-              capturedInitialUrl = initialUrl;
-              return WebViewController.fromPlatform(
-                _FakePlatformWebViewController(
-                  const PlatformWebViewControllerCreationParams(),
-                  initialUrl.toString(),
-                ),
-              );
+              browserHost.callbacks = callbacks;
+              browserHost.onLoad = (Uri initialUrl) {
+                capturedInitialUrl = initialUrl;
+              };
+              return browserHost;
             },
           ),
         ),
@@ -179,15 +176,13 @@ void main() {
       expect(find.text('Connecting to Coding Agent...'), findsOneWidget);
 
       startCompleter.complete('http://127.0.0.1:4102');
-      await _pumpUntilFound(
-          tester, find.byKey(_FakePlatformWebViewWidget.viewKey));
+      await _pumpUntilFound(tester, find.byKey(_FakeEmbeddedBrowserHost.viewKey));
 
-      expect(find.byKey(_FakePlatformWebViewWidget.viewKey), findsOneWidget);
+      expect(find.byKey(_FakeEmbeddedBrowserHost.viewKey), findsOneWidget);
       expect(capturedInitialUrl, Uri.parse('http://127.0.0.1:4102'));
       expect(serverManager.startCalls, 1);
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Utilities'));
-      await tester.pumpAndSettle();
+      await _openUtilitiesDrawer(tester);
 
       expect(find.text('OpenCode Logs'), findsOneWidget);
       expect(find.text('Starting opencode serve on port 4096'), findsOneWidget);
@@ -206,7 +201,7 @@ void main() {
       expect(copiedText, contains('Starting opencode serve on port 4096'));
     });
 
-    testWidgets('shows the Agent Settings entry when Coding Agent is ready', (
+    testWidgets('opens the Utilities drawer when Coding Agent is ready', (
       WidgetTester tester,
     ) async {
       final _TestOpencodeServerManager serverManager =
@@ -214,6 +209,7 @@ void main() {
         startResult: 'http://127.0.0.1:4102',
         managed: true,
       );
+      final _FakeEmbeddedBrowserHost browserHost = _FakeEmbeddedBrowserHost();
 
       await tester.pumpWidget(
         _buildHarness(
@@ -224,16 +220,11 @@ void main() {
             debugServerManager: serverManager,
             debugWorkspacePathOverride: workspaceDirectory.path,
             debugConfigService: configService,
-            debugControllerFactory: (
-              NavigationDelegate _,
-              Uri initialUrl,
+            debugEmbeddedBrowserHostFactory: (
+              CodingAgentEmbeddedBrowserCallbacks callbacks,
             ) {
-              return WebViewController.fromPlatform(
-                _FakePlatformWebViewController(
-                  const PlatformWebViewControllerCreationParams(),
-                  initialUrl.toString(),
-                ),
-              );
+              browserHost.callbacks = callbacks;
+              return browserHost;
             },
           ),
         ),
@@ -242,7 +233,56 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('Agent Settings'), findsOneWidget);
+      expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
+
+      await _openUtilitiesDrawer(tester);
+
+      expect(find.text('Utilities'), findsOneWidget);
+    });
+
+    testWidgets('reload action routes through the embedded browser host', (
+      WidgetTester tester,
+    ) async {
+      final _TestOpencodeServerManager serverManager =
+          _TestOpencodeServerManager(
+        startResult: 'http://127.0.0.1:4102',
+        managed: true,
+      );
+      final _FakeEmbeddedBrowserHost browserHost = _FakeEmbeddedBrowserHost();
+
+      await tester.pumpWidget(
+        _buildHarness(
+          CodingAgentScreen(
+            projectId: 'project-1',
+            projectName: 'Project One',
+            debugIsSupportedPlatformOverride: true,
+            debugServerManager: serverManager,
+            debugWorkspacePathOverride: workspaceDirectory.path,
+            debugConfigService: configService,
+            debugEmbeddedBrowserHostFactory: (
+              CodingAgentEmbeddedBrowserCallbacks callbacks,
+            ) {
+              browserHost.callbacks = callbacks;
+              return browserHost;
+            },
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await _openUtilitiesDrawer(tester);
+      final Finder reloadLabel = find.text('Reload');
+      final Finder reloadButton = find.ancestor(
+        of: reloadLabel,
+        matching: find.byType(OutlinedButton),
+      );
+      await tester.ensureVisible(reloadLabel);
+      await tester.tap(reloadButton, warnIfMissed: false);
+      await tester.pump();
+
+      expect(browserHost.reloadCalls, 1);
     });
 
     testWidgets('shows launcher failure details when OpenCode cannot start', (
@@ -274,6 +314,61 @@ void main() {
 
       expect(find.text('Coding Agent could not be loaded'), findsOneWidget);
       expect(find.text('The `opencode` binary was not found.'), findsOneWidget);
+    });
+
+    testWidgets('keeps browser fallback available when embedded view fails', (
+      WidgetTester tester,
+    ) async {
+      final _TestOpencodeServerManager serverManager =
+          _TestOpencodeServerManager(
+        startResult: 'http://127.0.0.1:4102',
+        managed: true,
+      );
+
+      await tester.pumpWidget(
+        _buildHarness(
+          CodingAgentScreen(
+            projectId: 'project-1',
+            projectName: 'Project One',
+            debugIsSupportedPlatformOverride: true,
+            debugServerManager: serverManager,
+            debugWorkspacePathOverride: workspaceDirectory.path,
+            debugConfigService: configService,
+            debugEmbeddedBrowserHostFactory: (
+              CodingAgentEmbeddedBrowserCallbacks callbacks,
+            ) {
+              return _FailingEmbeddedBrowserHost(
+                callbacks: callbacks,
+                message:
+                    'Microsoft Edge WebView2 Runtime is required to use the embedded Coding Agent view on Windows. Install WebView2 or use Open in Browser.',
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Coding Agent could not be loaded'), findsOneWidget);
+      expect(find.textContaining('Microsoft Edge WebView2 Runtime is required'),
+          findsOneWidget);
+
+      await _openUtilitiesDrawer(tester);
+
+      final Finder openInBrowserLabel = find.text('Open in Browser');
+      final Finder openInBrowserButtonFinder = find.ancestor(
+        of: openInBrowserLabel,
+        matching: find.byWidgetPredicate(
+          (Widget widget) => widget is ButtonStyleButton,
+        ),
+      );
+      await tester.ensureVisible(openInBrowserLabel);
+      final ButtonStyleButton openInBrowserButton =
+          tester.widget<ButtonStyleButton>(
+        openInBrowserButtonFinder,
+      );
+      expect(openInBrowserButton.onPressed, isNotNull);
     });
   });
 }
@@ -382,130 +477,61 @@ class _TestOpencodeServerManager extends OpencodeServerManager {
   }
 }
 
-class _FakeWebViewPlatform extends WebViewPlatform
-    with MockPlatformInterfaceMixin {
-  @override
-  PlatformNavigationDelegate createPlatformNavigationDelegate(
-    PlatformNavigationDelegateCreationParams params,
-  ) {
-    return _FakePlatformNavigationDelegate(params);
-  }
-
-  @override
-  PlatformWebViewController createPlatformWebViewController(
-    PlatformWebViewControllerCreationParams params,
-  ) {
-    return _FakePlatformWebViewController(params);
-  }
-
-  @override
-  PlatformWebViewWidget createPlatformWebViewWidget(
-    PlatformWebViewWidgetCreationParams params,
-  ) {
-    return _FakePlatformWebViewWidget(params);
-  }
+Future<void> _openUtilitiesDrawer(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.settings_outlined));
+  await tester.pumpAndSettle();
+  expect(find.text('Utilities'), findsOneWidget);
 }
 
-class _FakePlatformNavigationDelegate extends PlatformNavigationDelegate
-    with MockPlatformInterfaceMixin {
-  _FakePlatformNavigationDelegate(super.params) : super.implementation();
-
-  @override
-  Future<void> setOnHttpAuthRequest(HttpAuthRequestCallback onHttpAuthRequest) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setOnHttpError(HttpResponseErrorCallback onHttpError) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setOnNavigationRequest(
-    NavigationRequestCallback onNavigationRequest,
-  ) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setOnPageFinished(PageEventCallback onPageFinished) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setOnPageStarted(PageEventCallback onPageStarted) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setOnProgress(ProgressCallback onProgress) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setOnSSlAuthError(SslAuthErrorCallback onSslAuthError) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setOnUrlChange(UrlChangeCallback onUrlChange) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setOnWebResourceError(
-    WebResourceErrorCallback onWebResourceError,
-  ) {
-    return Future<void>.value();
-  }
-}
-
-class _FakePlatformWebViewController extends PlatformWebViewController
-    with MockPlatformInterfaceMixin {
-  _FakePlatformWebViewController(super.params, [this._currentUrl])
-      : super.implementation();
-
-  String? _currentUrl;
-
-  @override
-  Future<bool> canGoBack() => Future<bool>.value(false);
-
-  @override
-  Future<bool> canGoForward() => Future<bool>.value(false);
-
-  @override
-  Future<String?> currentUrl() => Future<String?>.value(_currentUrl);
-
-  @override
-  Future<void> loadRequest(LoadRequestParams params) {
-    _currentUrl = params.uri.toString();
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> reload() => Future<void>.value();
-
-  @override
-  Future<void> setJavaScriptMode(JavaScriptMode javaScriptMode) {
-    return Future<void>.value();
-  }
-
-  @override
-  Future<void> setPlatformNavigationDelegate(
-    PlatformNavigationDelegate handler,
-  ) {
-    return Future<void>.value();
-  }
-}
-
-class _FakePlatformWebViewWidget extends PlatformWebViewWidget
-    with MockPlatformInterfaceMixin {
-  _FakePlatformWebViewWidget(super.params) : super.implementation();
-
+class _FakeEmbeddedBrowserHost implements CodingAgentEmbeddedBrowserHost {
   static const ValueKey<String> viewKey = ValueKey<String>('fake-webview');
 
+  CodingAgentEmbeddedBrowserCallbacks? callbacks;
+  FutureOr<void> Function(Uri initialUrl)? onLoad;
+  int reloadCalls = 0;
+  int disposeCalls = 0;
+
   @override
-  Widget build(BuildContext context) {
-    return const SizedBox(key: viewKey);
+  Widget buildView() => const SizedBox(key: viewKey);
+
+  @override
+  Future<void> dispose() async {
+    disposeCalls += 1;
   }
+
+  @override
+  Future<void> load(Uri initialUrl) async {
+    await onLoad?.call(initialUrl);
+    callbacks?.onUrlChanged(initialUrl.toString());
+  }
+
+  @override
+  Future<void> reload() async {
+    reloadCalls += 1;
+  }
+}
+
+class _FailingEmbeddedBrowserHost implements CodingAgentEmbeddedBrowserHost {
+  _FailingEmbeddedBrowserHost({
+    required this.callbacks,
+    required this.message,
+  });
+
+  final CodingAgentEmbeddedBrowserCallbacks callbacks;
+  final String message;
+
+  @override
+  Widget buildView() => const SizedBox.shrink();
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<void> load(Uri initialUrl) async {
+    callbacks.onUrlChanged(initialUrl.toString());
+    throw CodingAgentEmbeddedBrowserException(message);
+  }
+
+  @override
+  Future<void> reload() async {}
 }

@@ -1,20 +1,18 @@
 {
   "version": "1.3.3",
+  "urlTemplate": "https://github.com/anomalyco/opencode/releases/download/v{version}/{assetName}",
   "platforms": {
     "darwin-arm64": {
       "assetName": "opencode-darwin-arm64.zip",
-      "binaryName": "opencode",
-      "url": "https://github.com/anomalyco/opencode/releases/download/v1.3.3/opencode-darwin-arm64.zip"
+      "binaryName": "opencode"
     },
     "darwin-x64": {
       "assetName": "opencode-darwin-x64.zip",
-      "binaryName": "opencode",
-      "url": "https://github.com/anomalyco/opencode/releases/download/v1.3.3/opencode-darwin-x64.zip"
+      "binaryName": "opencode"
     },
     "windows-x64": {
       "assetName": "opencode-windows-x64.zip",
-      "binaryName": "opencode.exe",
-      "url": "https://github.com/anomalyco/opencode/releases/download/v1.3.3/opencode-windows-x64.zip"
+      "binaryName": "opencode.exe"
     }
   }
 }
