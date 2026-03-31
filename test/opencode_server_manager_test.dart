@@ -65,6 +65,62 @@ void main() {
         isNull,
       );
     });
+
+    test('matches a Windows-style managed serve command', () {
+      expect(
+        OpencodeServerManager.looksLikeManagedServeCommandForTesting(
+          r'"C:\Users\dev\AppData\Local\ArcaneForge\opencode_sidecar\bin\1.3.3\opencode.exe" serve --hostname 127.0.0.1 --port 4096 --print-logs',
+        ),
+        isTrue,
+      );
+    });
+
+    test('extracts sidecar pids from wmic list output', () {
+      const String wmicOutput = '''
+
+CommandLine="C:\\path\\opencode.exe" serve --hostname 127.0.0.1 --port 4099 --print-logs
+ProcessId=7890
+
+CommandLine="C:\\path\\opencode.exe" serve --hostname 127.0.0.1 --port 4096 --print-logs
+ProcessId=1234
+
+''';
+      expect(
+        OpencodeServerManager.managedSidecarPidsFromWmicListForTesting(
+          wmicOutput,
+        ),
+        <int>[7890, 1234],
+      );
+    });
+
+    test('ignores wmic records that are not managed sidecar commands', () {
+      const String wmicOutput = '''
+
+CommandLine="C:\\path\\opencode.exe" version
+ProcessId=5555
+
+CommandLine="C:\\path\\opencode.exe" serve --hostname 127.0.0.1 --port 4100 --print-logs
+ProcessId=6666
+
+''';
+      expect(
+        OpencodeServerManager.managedSidecarPidsFromWmicListForTesting(
+          wmicOutput,
+        ),
+        <int>[6666],
+      );
+    });
+
+    test('handles wmic output with BOM prefix', () {
+      const String wmicOutput =
+          '\uFEFF\r\nCommandLine="C:\\path\\opencode.exe" serve --hostname 127.0.0.1 --port 4096 --print-logs\r\nProcessId=42\r\n\r\n';
+      expect(
+        OpencodeServerManager.managedSidecarPidsFromWmicListForTesting(
+          wmicOutput,
+        ),
+        <int>[42],
+      );
+    });
   });
 
   group('OpencodeServerManager ownership stop logic', () {

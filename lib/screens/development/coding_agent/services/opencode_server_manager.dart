@@ -682,7 +682,27 @@ class OpencodeServerManager {
 
   Future<List<int>> _findManagedSidecarPids() async {
     if (Platform.isWindows) {
-      return const <int>[];
+      try {
+        final ProcessResult result = await Process.run('wmic', <String>[
+          'process',
+          'where',
+          "name='opencode.exe'",
+          'get',
+          'ProcessId,CommandLine',
+          '/format:list',
+        ]);
+        if (result.exitCode != 0) {
+          return const <int>[];
+        }
+        final String stdout = result.stdout as String;
+        if (stdout.trim().isEmpty) {
+          return const <int>[];
+        }
+        return _managedSidecarPidsFromWmicList(stdout);
+      } catch (error) {
+        _appendLog('Failed to inspect running OpenCode processes: $error');
+        return const <int>[];
+      }
     }
 
     try {
@@ -714,6 +734,43 @@ class OpencodeServerManager {
   }
 
   @visibleForTesting
+  static List<int> managedSidecarPidsFromWmicListForTesting(String output) =>
+      _managedSidecarPidsFromWmicList(output);
+
+  static List<int> _managedSidecarPidsFromWmicList(String output) {
+    final List<int> pids = <int>[];
+    String? currentCommandLine;
+    int? currentPid;
+
+    for (final String rawLine in const LineSplitter().convert(output)) {
+      final String line = rawLine.replaceAll('\uFEFF', '').trim();
+      if (line.isEmpty) {
+        if (currentPid != null &&
+            currentCommandLine != null &&
+            _looksLikeManagedServeCommand(currentCommandLine)) {
+          pids.add(currentPid);
+        }
+        currentCommandLine = null;
+        currentPid = null;
+        continue;
+      }
+      if (line.startsWith('CommandLine=')) {
+        currentCommandLine = line.substring('CommandLine='.length);
+      } else if (line.startsWith('ProcessId=')) {
+        currentPid = int.tryParse(line.substring('ProcessId='.length));
+      }
+    }
+
+    if (currentPid != null &&
+        currentCommandLine != null &&
+        _looksLikeManagedServeCommand(currentCommandLine)) {
+      pids.add(currentPid);
+    }
+
+    return pids;
+  }
+
+  @visibleForTesting
   static int? managedSidecarPidFromPsLine(String line) {
     final RegExpMatch? match =
         RegExp(r'^\s*(\d+)\s+(.*?)\s*$').firstMatch(line);
@@ -726,6 +783,17 @@ class OpencodeServerManager {
       return null;
     }
     return pid;
+  }
+
+  static String _wmicListProperty(String output, String propertyName) {
+    final String prefix = '$propertyName=';
+    for (final String rawLine in const LineSplitter().convert(output)) {
+      final String line = rawLine.replaceAll('\uFEFF', '').trim();
+      if (line.startsWith(prefix)) {
+        return line.substring(prefix.length).trim();
+      }
+    }
+    return '';
   }
 
   static bool _looksLikeManagedServeCommand(String command) {
@@ -747,7 +815,21 @@ class OpencodeServerManager {
 
   Future<bool> _isPidRunning(int pid) async {
     if (Platform.isWindows) {
-      return false;
+      try {
+        final ProcessResult result = await Process.run('tasklist', <String>[
+          '/FI',
+          'PID eq $pid',
+          '/FO',
+          'CSV',
+          '/NH',
+        ]);
+        if (result.exitCode != 0) {
+          return false;
+        }
+        return (result.stdout as String).contains('"$pid"');
+      } catch (_) {
+        return false;
+      }
     }
 
     try {
@@ -795,7 +877,26 @@ class OpencodeServerManager {
 
   Future<String?> _readCommandForPid(int pid) async {
     if (Platform.isWindows) {
-      return null;
+      try {
+        final ProcessResult result = await Process.run('wmic', <String>[
+          'process',
+          'where',
+          'ProcessId=$pid',
+          'get',
+          'CommandLine',
+          '/format:list',
+        ]);
+        if (result.exitCode != 0) {
+          return null;
+        }
+        final String command = _wmicListProperty(
+          result.stdout as String,
+          'CommandLine',
+        );
+        return command.isEmpty ? null : command;
+      } catch (_) {
+        return null;
+      }
     }
 
     try {
@@ -820,7 +921,30 @@ class OpencodeServerManager {
 
   Future<int?> _readResidentMemoryMb(int pid) async {
     if (Platform.isWindows) {
-      return null;
+      try {
+        final ProcessResult result = await Process.run('wmic', <String>[
+          'process',
+          'where',
+          'ProcessId=$pid',
+          'get',
+          'WorkingSetSize',
+          '/format:list',
+        ]);
+        if (result.exitCode != 0) {
+          return null;
+        }
+        final String value = _wmicListProperty(
+          result.stdout as String,
+          'WorkingSetSize',
+        );
+        final int? bytes = int.tryParse(value);
+        if (bytes == null) {
+          return null;
+        }
+        return bytes ~/ (1024 * 1024);
+      } catch (_) {
+        return null;
+      }
     }
 
     try {
