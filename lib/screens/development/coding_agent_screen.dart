@@ -30,11 +30,6 @@ enum _KbSyncOperation { idle, pulling, pushing }
 
 enum _KbSyncMenuAction { pull, push, status }
 
-typedef CodingAgentWebViewControllerFactory = WebViewController Function(
-  NavigationDelegate navigationDelegate,
-  Uri initialUrl,
-);
-
 class CodingAgentScreen extends StatefulWidget {
   const CodingAgentScreen({
     super.key,

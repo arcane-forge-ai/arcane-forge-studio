@@ -274,16 +274,10 @@ void main() {
             debugWorkspacePathOverride: workspaceDirectory.path,
             debugConfigService: configService,
             debugKbDocsSyncService: kbSyncService,
-            debugControllerFactory: (
-              NavigationDelegate _,
-              Uri initialUrl,
+            debugEmbeddedBrowserHostFactory: (
+              CodingAgentEmbeddedBrowserCallbacks callbacks,
             ) {
-              return WebViewController.fromPlatform(
-                _FakePlatformWebViewController(
-                  const PlatformWebViewControllerCreationParams(),
-                  initialUrl.toString(),
-                ),
-              );
+              return _FakeEmbeddedBrowserHost()..callbacks = callbacks;
             },
           ),
         ),
@@ -335,16 +329,10 @@ void main() {
             debugWorkspacePathOverride: workspaceDirectory.path,
             debugConfigService: configService,
             debugKbDocsSyncService: kbSyncService,
-            debugControllerFactory: (
-              NavigationDelegate _,
-              Uri initialUrl,
+            debugEmbeddedBrowserHostFactory: (
+              CodingAgentEmbeddedBrowserCallbacks callbacks,
             ) {
-              return WebViewController.fromPlatform(
-                _FakePlatformWebViewController(
-                  const PlatformWebViewControllerCreationParams(),
-                  initialUrl.toString(),
-                ),
-              );
+              return _FakeEmbeddedBrowserHost()..callbacks = callbacks;
             },
           ),
         ),
