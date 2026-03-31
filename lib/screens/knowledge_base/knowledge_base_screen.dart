@@ -707,53 +707,63 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Widget _buildFilesList() {
     return Card(
-      child: Column(
-        children: [
-          // Header row with sorting
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(8)),
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.grey[850]
-                  : Colors.grey[100],
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 36), // Icon space
-                // Name column header
-                SizedBox(
-                  width: 350,
-                  child: _buildSortableHeader('Name', SortField.name),
-                ),
-                // Type & Metadata column header
-                SizedBox(
-                  width: 250,
-                  child:
-                      _buildSortableHeader('Type & Metadata', SortField.type),
-                ),
-                // Date column header
-                SizedBox(
-                  width: 280,
-                  child: _buildSortableHeader('Date Added', SortField.date),
-                ),
-                const SizedBox(width: 120), // Space for action buttons
-              ],
-            ),
-          ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // 16px padding on each side; fixed columns: icon(36) + type&meta(250) + actions(240)
+          const double _iconColW = 36;
+          const double _typeMetaColW = 250;
+          const double _actionsColW = 240;
+          final double flexSpace =
+              constraints.maxWidth - 32 - _iconColW - _typeMetaColW - _actionsColW;
+          final double nameColW = (flexSpace * 2 / 3).clamp(100.0, double.infinity);
+          final double dateColW = (flexSpace / 3).clamp(80.0, double.infinity);
 
-          // Files list
-          Expanded(
-            child: ListView.builder(
-              itemCount: _fileGroups.length,
-              itemBuilder: (context, index) {
-                final group = _fileGroups[index];
-                return _buildFileGroupItem(group);
-              },
-            ),
-          ),
-        ],
+          return Column(
+            children: [
+              // Header row with sorting
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(8)),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.grey[850]
+                      : Colors.grey[100],
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: _iconColW), // Icon space
+                    SizedBox(
+                      width: nameColW,
+                      child: _buildSortableHeader('Name', SortField.name),
+                    ),
+                    SizedBox(
+                      width: _typeMetaColW,
+                      child: _buildSortableHeader('Type & Metadata', SortField.type),
+                    ),
+                    SizedBox(
+                      width: dateColW,
+                      child: _buildSortableHeader('Date Added', SortField.date),
+                    ),
+                    const SizedBox(width: _actionsColW),
+                  ],
+                ),
+              ),
+
+              // Files list
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _fileGroups.length,
+                  itemBuilder: (context, index) {
+                    final group = _fileGroups[index];
+                    return _buildFileGroupItem(group,
+                        nameColW: nameColW, dateColW: dateColW);
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -787,7 +797,11 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     );
   }
 
-  Widget _buildFileGroupItem(FileVersionGroup group) {
+  Widget _buildFileGroupItem(
+    FileVersionGroup group, {
+    required double nameColW,
+    required double dateColW,
+  }) {
     final isExpanded = _expandedGroups.contains(group.fileName);
     final latestFile = group.latestVersion;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -799,6 +813,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
           latestFile,
           isLatest: true,
           showVersionBadge: true,
+          nameColW: nameColW,
+          dateColW: dateColW,
         ),
 
         // Version count and expansion control
@@ -858,6 +874,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 isLatest: false,
                 showVersionBadge: true,
                 isIndented: true,
+                nameColW: nameColW,
+                dateColW: dateColW,
               )),
       ],
     );
@@ -868,6 +886,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     bool isLatest = true,
     bool showVersionBadge = false,
     bool isIndented = false,
+    required double nameColW,
+    required double dateColW,
   }) {
     final opacity = isLatest ? 1.0 : 0.85;
     final leftPadding = isIndented ? 52.0 : 16.0;
@@ -915,7 +935,9 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
             // File name with version badge, link/email, and description
             SizedBox(
-              width: 350,
+              // Indented rows have 60px less available space (36px extra left padding
+              // + 24px arrow indicator), so reduce name col proportionally (2/3 of 60).
+              width: isIndented ? (nameColW - 40).clamp(80.0, double.infinity) : nameColW,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1042,7 +1064,9 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
             // Date
             SizedBox(
-              width: 280,
+              // Indented rows have 60px less available space; reduce date col
+              // proportionally (1/3 of 60).
+              width: isIndented ? (dateColW - 20).clamp(60.0, double.infinity) : dateColW,
               child: Text(
                 _formatDate(file.createdAt),
                 style: TextStyle(color: Colors.grey[600]),
@@ -1050,7 +1074,10 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
             ),
 
             // Action buttons
-            Row(
+            SizedBox(
+              width: 240,
+              child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 // View metadata button for non-file entries
                 if (file.entryType != 'document')
@@ -1117,6 +1144,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   tooltip: 'Delete entry',
                 ),
               ],
+            ),
             ),
           ],
         ),

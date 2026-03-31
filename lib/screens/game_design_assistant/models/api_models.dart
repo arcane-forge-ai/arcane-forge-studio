@@ -297,6 +297,9 @@ class KnowledgeBaseFile {
   final String? errorMessage;
   final String? errorCode;
   final String? displayStatus;
+  final bool hasStorage;
+  final String? contentType;
+  final int? originalFileSize;
 
   // Unified Knowledge Base fields
   final String entryType; // 'document', 'link', 'folder', 'contact', 'other'
@@ -317,6 +320,9 @@ class KnowledgeBaseFile {
     this.errorMessage,
     this.errorCode,
     this.displayStatus,
+    this.hasStorage = true,
+    this.contentType,
+    this.originalFileSize,
     this.entryType = 'document',
     this.visibility = 'vendor_visible',
     this.authorityLevel = 'reference',
@@ -342,6 +348,11 @@ class KnowledgeBaseFile {
       errorMessage: json['error_message'] ?? json['errorMessage'],
       errorCode: json['error_code'] ?? json['errorCode'],
       displayStatus: json['display_status'] ?? json['displayStatus'],
+      hasStorage: _parseKbHasStorage(json),
+      contentType: json['content_type'] ?? json['contentType'],
+      originalFileSize: _parseNullableInt(
+        json['original_file_size'] ?? json['originalFileSize'],
+      ),
       entryType: json['entry_type'] ?? json['entryType'] ?? 'document',
       visibility: json['visibility'] ?? 'vendor_visible',
       authorityLevel:
@@ -366,6 +377,9 @@ class KnowledgeBaseFile {
       if (errorMessage != null) 'error_message': errorMessage,
       if (errorCode != null) 'error_code': errorCode,
       if (displayStatus != null) 'display_status': displayStatus,
+      'has_storage': hasStorage,
+      if (contentType != null) 'content_type': contentType,
+      if (originalFileSize != null) 'original_file_size': originalFileSize,
       'entry_type': entryType,
       'visibility': visibility,
       'authority_level': authorityLevel,
@@ -386,6 +400,9 @@ class KnowledgeBaseFile {
     String? errorMessage,
     String? errorCode,
     String? displayStatus,
+    bool? hasStorage,
+    String? contentType,
+    int? originalFileSize,
     String? entryType,
     String? visibility,
     String? authorityLevel,
@@ -404,6 +421,9 @@ class KnowledgeBaseFile {
       errorMessage: errorMessage ?? this.errorMessage,
       errorCode: errorCode ?? this.errorCode,
       displayStatus: displayStatus ?? this.displayStatus,
+      hasStorage: hasStorage ?? this.hasStorage,
+      contentType: contentType ?? this.contentType,
+      originalFileSize: originalFileSize ?? this.originalFileSize,
       entryType: entryType ?? this.entryType,
       visibility: visibility ?? this.visibility,
       authorityLevel: authorityLevel ?? this.authorityLevel,
@@ -412,6 +432,33 @@ class KnowledgeBaseFile {
       url: url ?? this.url,
       contactInfo: contactInfo ?? this.contactInfo,
     );
+  }
+
+  static bool _parseKbHasStorage(Map<String, dynamic> json) {
+    final dynamic rawHasStorage = json['has_storage'] ?? json['hasStorage'];
+    if (rawHasStorage is bool) {
+      return rawHasStorage;
+    }
+    if (rawHasStorage is String) {
+      return rawHasStorage.toLowerCase() == 'true';
+    }
+    return json['storage_file_key'] != null ||
+        json['storage_public_url'] != null ||
+        json['download_url'] != null ||
+        json['downloadUrl'] != null;
+  }
+
+  static int? _parseNullableInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
   }
 }
 

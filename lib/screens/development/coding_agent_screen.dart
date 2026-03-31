@@ -6,9 +6,12 @@ import 'package:file_selector/file_selector.dart' as file_selector;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../../providers/auth_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../constants.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
 import 'coding_agent/services/kb_docs_sync_service.dart';
@@ -20,6 +23,10 @@ import 'coding_agent/services/opencode_server_manager.dart';
 import 'coding_agent/services/workspace_service.dart';
 
 enum _OpencodeViewState { loading, ready, error, unsupported, workspaceSetup }
+
+enum _KbSyncOperation { idle, pulling, pushing }
+
+enum _KbSyncMenuAction { pull, push, status }
 
 typedef CodingAgentWebViewControllerFactory = WebViewController Function(
   NavigationDelegate navigationDelegate,
@@ -37,6 +44,7 @@ class CodingAgentScreen extends StatefulWidget {
     this.debugServerManager,
     this.debugWorkspacePathOverride,
     this.debugConfigService,
+    this.debugKbDocsSyncService,
   });
 
   final String projectId;
@@ -53,6 +61,8 @@ class CodingAgentScreen extends StatefulWidget {
   final String? debugWorkspacePathOverride;
   @visibleForTesting
   final CodingAgentConfigService? debugConfigService;
+  @visibleForTesting
+  final KbDocsSyncService? debugKbDocsSyncService;
 
   @override
   State<CodingAgentScreen> createState() => _CodingAgentScreenState();
@@ -86,10 +96,8 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
   static const int _maxVisibleServerLogs = 300;
 
   final WorkspaceService _workspaceService = WorkspaceService();
-  final ChatApiService _chatApiService = ChatApiService();
-  late final KbDocsSyncService _kbDocsSyncService = KbDocsSyncService(
-    chatApiService: _chatApiService,
-  );
+  late final ChatApiService _chatApiService;
+  late final KbDocsSyncService _kbDocsSyncService;
   late final OpencodeServerManager _serverManager =
       widget.debugServerManager ?? OpencodeServerManager();
   late final CodingAgentConfigService _configService =
@@ -104,7 +112,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
   Uri? _serverBaseUrl;
   String _currentUrl = '';
   String _loadingMessage = 'Loading your saved workspace selection...';
-  bool _isSyncingDocs = false;
+  _KbSyncOperation _kbSyncOperation = _KbSyncOperation.idle;
   List<String> _serverLogs = <String>[];
   OpencodeDiagnostics? _diagnostics;
 
@@ -119,6 +127,19 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
       _currentUrl.trim().isNotEmpty || _serverBaseUrl != null;
 
   bool get _showsManagedServerActions => _serverManager.ownsManagedServer;
+
+  bool get _isSyncingDocs => _kbSyncOperation != _KbSyncOperation.idle;
+
+  String get _kbSyncButtonLabel {
+    switch (_kbSyncOperation) {
+      case _KbSyncOperation.idle:
+        return 'KB Sync';
+      case _KbSyncOperation.pulling:
+        return 'Pulling KB...';
+      case _KbSyncOperation.pushing:
+        return 'Pushing KB...';
+    }
+  }
 
   String get _serverLifecycleLabel {
     switch (_serverManager.status()) {
@@ -138,6 +159,16 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
   @override
   void initState() {
     super.initState();
+    final SettingsProvider? settingsProvider =
+        Provider.of<SettingsProvider?>(context, listen: false);
+    final AuthProvider? authProvider =
+        Provider.of<AuthProvider?>(context, listen: false);
+    _chatApiService = ChatApiService(
+      settingsProvider: settingsProvider,
+      authProvider: authProvider,
+    );
+    _kbDocsSyncService = widget.debugKbDocsSyncService ??
+        KbDocsSyncService(chatApiService: _chatApiService);
     _serverLogs = List<String>.from(_serverManager.recentLogs);
     _serverLogSubscription = _serverManager.logs.listen(_handleServerLog);
     if (!_supportsCodingAgentPlatform) {
@@ -892,10 +923,10 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
     }
   }
 
-  Future<void> _syncKbDocs() async {
+  Future<void> _pullKbDocs() async {
     final String? workspacePath = _workspacePath;
     if (workspacePath == null || workspacePath.isEmpty) {
-      _showNotice('Set a workspace folder before syncing KB docs.');
+      _showNotice('Set a workspace folder before pulling KB docs.');
       return;
     }
     if (_isSyncingDocs) {
@@ -904,7 +935,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
 
     if (mounted) {
       setState(() {
-        _isSyncingDocs = true;
+        _kbSyncOperation = _KbSyncOperation.pulling;
       });
     }
 
@@ -913,25 +944,215 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
           await _kbDocsSyncService.pullKnowledgeBaseDocs(
         projectId: widget.projectId,
         workspacePath: workspacePath,
+        projectName: widget.projectName,
       );
-      if (result.failed.isNotEmpty) {
+      if (result.failed.isNotEmpty ||
+          result.skippedNoStorage.isNotEmpty ||
+          result.skippedCollision.isNotEmpty) {
         _showNotice(
-          'KB sync finished with issues: downloaded ${result.downloaded.length}, collisions ${result.skippedCollision.length}, failed ${result.failed.length}.',
+          'KB pull finished with issues: downloaded ${result.downloaded.length}, no storage ${result.skippedNoStorage.length}, collisions ${result.skippedCollision.length}, failed ${result.failed.length}. Local deletions do not affect the knowledge base.',
         );
       } else {
         _showNotice(
-          'KB sync complete: downloaded ${result.downloaded.length}, collisions ${result.skippedCollision.length}.',
+          'KB pull complete: downloaded ${result.downloaded.length}. Local deletions do not affect the knowledge base.',
         );
       }
     } catch (error) {
-      _showNotice('KB sync failed: $error');
+      _showNotice('KB pull failed: $error');
     } finally {
       if (mounted) {
         setState(() {
-          _isSyncingDocs = false;
+          _kbSyncOperation = _KbSyncOperation.idle;
         });
       }
     }
+  }
+
+  Future<void> _pushKbDocs() async {
+    final String? workspacePath = _workspacePath;
+    if (workspacePath == null || workspacePath.isEmpty) {
+      _showNotice('Set a workspace folder before pushing KB docs.');
+      return;
+    }
+    if (_isSyncingDocs) {
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _kbSyncOperation = _KbSyncOperation.pushing;
+      });
+    }
+
+    try {
+      final KbPushResult result =
+          await _kbDocsSyncService.pushKnowledgeBaseDocs(
+        projectId: widget.projectId,
+        workspacePath: workspacePath,
+        projectName: widget.projectName,
+      );
+      if (result.failed.isNotEmpty || result.skippedConflicts.isNotEmpty) {
+        _showNotice(
+          'KB push finished with issues: uploaded ${result.uploaded.length}, unchanged ${result.skippedUnchanged.length}, conflicts ${result.skippedConflicts.length}, failed ${result.failed.length}. Local deletions do not delete KB entries.',
+        );
+      } else {
+        _showNotice(
+          'KB push complete: uploaded ${result.uploaded.length}, unchanged ${result.skippedUnchanged.length}. Local deletions do not delete KB entries.',
+        );
+      }
+    } catch (error) {
+      _showNotice('KB push failed: $error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _kbSyncOperation = _KbSyncOperation.idle;
+        });
+      }
+    }
+  }
+
+  Future<void> _showKbSyncStatus() async {
+    final String? workspacePath = _workspacePath;
+    if (workspacePath == null || workspacePath.isEmpty) {
+      _showNotice('Set a workspace folder before viewing KB sync status.');
+      return;
+    }
+
+    try {
+      final KbSyncStatus status =
+          await _kbDocsSyncService.getKnowledgeBaseSyncStatus(
+        projectId: widget.projectId,
+        workspacePath: workspacePath,
+        projectName: widget.projectName,
+      );
+      if (!mounted) {
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('KB Sync Status'),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _buildStatusLine(
+                      'Project',
+                      status.projectName.trim().isNotEmpty
+                          ? '${status.projectName} (${status.projectId})'
+                          : status.projectId,
+                    ),
+                    _buildStatusLine(
+                      'Tracked Files',
+                      '${status.trackedFiles}',
+                    ),
+                    _buildStatusLine(
+                      'Last Pull',
+                      _formatKbSyncTimestamp(status.lastPullAt),
+                    ),
+                    _buildStatusLine(
+                      'Last Push',
+                      _formatKbSyncTimestamp(status.lastPushAt),
+                    ),
+                    _buildStatusLine('Workspace', status.workspacePath),
+                    _buildStatusLine('KB Directory', status.kbDirectoryPath),
+                    _buildStatusLine('Manifest', status.manifestPath),
+                  ],
+                ),
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (error) {
+      _showNotice('Unable to load KB sync status: $error');
+    }
+  }
+
+  void _handleKbSyncMenuAction(_KbSyncMenuAction action) {
+    switch (action) {
+      case _KbSyncMenuAction.pull:
+        unawaited(_pullKbDocs());
+        return;
+      case _KbSyncMenuAction.push:
+        unawaited(_pushKbDocs());
+        return;
+      case _KbSyncMenuAction.status:
+        unawaited(_showKbSyncStatus());
+        return;
+    }
+  }
+
+  String _formatKbSyncTimestamp(String? raw) {
+    if (raw == null || raw.trim().isEmpty) {
+      return 'Never';
+    }
+    final DateTime? parsed = DateTime.tryParse(raw);
+    if (parsed == null) {
+      return raw;
+    }
+    return parsed.toLocal().toString();
+  }
+
+  Widget _buildStatusLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          SelectableText(value),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKbSyncButton(bool supported) {
+    final bool enabled = supported && _workspacePath != null && !_isSyncingDocs;
+    return PopupMenuButton<_KbSyncMenuAction>(
+      enabled: enabled,
+      tooltip: 'KB sync actions',
+      onSelected: _handleKbSyncMenuAction,
+      itemBuilder: (BuildContext context) =>
+          const <PopupMenuEntry<_KbSyncMenuAction>>[
+        PopupMenuItem<_KbSyncMenuAction>(
+          value: _KbSyncMenuAction.pull,
+          child: Text('Pull from KB'),
+        ),
+        PopupMenuItem<_KbSyncMenuAction>(
+          value: _KbSyncMenuAction.push,
+          child: Text('Push to KB'),
+        ),
+        PopupMenuDivider(),
+        PopupMenuItem<_KbSyncMenuAction>(
+          value: _KbSyncMenuAction.status,
+          child: Text('Show Sync Status'),
+        ),
+      ],
+      child: AbsorbPointer(
+        child: FilledButton.tonalIcon(
+          onPressed: enabled ? () {} : null,
+          icon: Icon(
+            _isSyncingDocs ? Icons.sync : Icons.library_books_outlined,
+          ),
+          label: Text(_kbSyncButtonLabel),
+        ),
+      ),
+    );
   }
 
   String get _viewStatusLabel {
@@ -1205,17 +1426,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
                   label: const Text('Run Game'),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.tonalIcon(
-                  onPressed:
-                      supported && _workspacePath != null && !_isSyncingDocs
-                          ? _syncKbDocs
-                          : null,
-                  icon: Icon(
-                    _isSyncingDocs ? Icons.sync : Icons.library_books_outlined,
-                  ),
-                  label:
-                      Text(_isSyncingDocs ? 'Syncing KB...' : 'Sync KB Docs'),
-                ),
+                _buildKbSyncButton(supported),
                 const SizedBox(width: 8),
                 // FilledButton.tonalIcon(
                 //   onPressed: supported ? _openSettingsDialog : null,

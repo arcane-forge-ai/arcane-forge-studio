@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:arcane_forge/screens/development/coding_agent/services/coding_agent_config_service.dart';
+import 'package:arcane_forge/screens/development/coding_agent/services/kb_docs_sync_service.dart';
 import 'package:arcane_forge/screens/development/coding_agent/models/opencode_models.dart';
 import 'package:arcane_forge/screens/development/coding_agent/services/opencode_server_manager.dart';
 import 'package:arcane_forge/screens/development/coding_agent_screen.dart';
+import 'package:arcane_forge/screens/game_design_assistant/services/chat_api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -186,7 +188,7 @@ void main() {
       expect(capturedInitialUrl, Uri.parse('http://127.0.0.1:4102'));
       expect(serverManager.startCalls, 1);
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Utilities'));
+      await tester.tap(find.byIcon(Icons.settings_outlined).first);
       await tester.pumpAndSettle();
 
       expect(find.text('OpenCode Logs'), findsOneWidget);
@@ -206,7 +208,7 @@ void main() {
       expect(copiedText, contains('Starting opencode serve on port 4096'));
     });
 
-    testWidgets('shows the Agent Settings entry when Coding Agent is ready', (
+    testWidgets('shows the utilities drawer when Coding Agent is ready', (
       WidgetTester tester,
     ) async {
       final _TestOpencodeServerManager serverManager =
@@ -242,7 +244,170 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('Agent Settings'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.settings_outlined).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Utilities'), findsOneWidget);
+    });
+
+    testWidgets('shows KB sync actions and the sync status dialog', (
+      WidgetTester tester,
+    ) async {
+      final _TestOpencodeServerManager serverManager =
+          _TestOpencodeServerManager(
+        startResult: 'http://127.0.0.1:4102',
+        managed: true,
+      );
+      final _TestKbDocsSyncService kbSyncService = _TestKbDocsSyncService(
+        statusResult: KbSyncStatus(
+          workspacePath: workspaceDirectory.path,
+          kbDirectoryPath: '${workspaceDirectory.path}/docs',
+          manifestPath:
+              '${workspaceDirectory.path}/.arcane-forge/sync-manifest.json',
+          trackedFiles: 3,
+          projectId: 'project-1',
+          projectName: 'Project One',
+          lastPullAt: '2026-03-01T10:00:00.000Z',
+          lastPushAt: '2026-03-02T11:00:00.000Z',
+        ),
+      );
+
+      await tester.pumpWidget(
+        _buildHarness(
+          CodingAgentScreen(
+            projectId: 'project-1',
+            projectName: 'Project One',
+            debugIsSupportedPlatformOverride: true,
+            debugServerManager: serverManager,
+            debugWorkspacePathOverride: workspaceDirectory.path,
+            debugConfigService: configService,
+            debugKbDocsSyncService: kbSyncService,
+            debugControllerFactory: (
+              NavigationDelegate _,
+              Uri initialUrl,
+            ) {
+              return WebViewController.fromPlatform(
+                _FakePlatformWebViewController(
+                  const PlatformWebViewControllerCreationParams(),
+                  initialUrl.toString(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('KB sync actions'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pull from KB'), findsOneWidget);
+      expect(find.text('Push to KB'), findsOneWidget);
+      expect(find.text('Show Sync Status'), findsOneWidget);
+
+      await tester.tap(find.text('Show Sync Status'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('KB Sync Status'), findsOneWidget);
+      expect(find.text('Tracked Files'), findsOneWidget);
+      expect(find.text('3'), findsOneWidget);
+      expect(find.text('Close'), findsOneWidget);
+      expect(kbSyncService.statusCalls, 1);
+    });
+
+    testWidgets('disables the KB sync control while pull and push are running',
+        (
+      WidgetTester tester,
+    ) async {
+      final _TestOpencodeServerManager serverManager =
+          _TestOpencodeServerManager(
+        startResult: 'http://127.0.0.1:4102',
+        managed: true,
+      );
+      final Completer<KbPullResult> pullCompleter = Completer<KbPullResult>();
+      final Completer<KbPushResult> pushCompleter = Completer<KbPushResult>();
+      final _TestKbDocsSyncService kbSyncService = _TestKbDocsSyncService(
+        pullCompleter: pullCompleter,
+        pushCompleter: pushCompleter,
+      );
+
+      await tester.pumpWidget(
+        _buildHarness(
+          CodingAgentScreen(
+            projectId: 'project-1',
+            projectName: 'Project One',
+            debugIsSupportedPlatformOverride: true,
+            debugServerManager: serverManager,
+            debugWorkspacePathOverride: workspaceDirectory.path,
+            debugConfigService: configService,
+            debugKbDocsSyncService: kbSyncService,
+            debugControllerFactory: (
+              NavigationDelegate _,
+              Uri initialUrl,
+            ) {
+              return WebViewController.fromPlatform(
+                _FakePlatformWebViewController(
+                  const PlatformWebViewControllerCreationParams(),
+                  initialUrl.toString(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('KB sync actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pull from KB'));
+      await tester.pump();
+
+      expect(find.text('Pulling KB...'), findsOneWidget);
+      final PopupMenuButton<dynamic> pullingMenu =
+          tester.widget<PopupMenuButton<dynamic>>(
+        find.byWidgetPredicate((Widget widget) => widget is PopupMenuButton),
+      );
+      expect(pullingMenu.enabled, isFalse);
+      expect(kbSyncService.pullCalls, 1);
+
+      pullCompleter.complete(
+        const KbPullResult(
+          downloaded: <String>[],
+          skippedNoStorage: <String>[],
+          skippedCollision: <String>[],
+          failed: <KbPullFailure>[],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('KB sync actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Push to KB'));
+      await tester.pump();
+
+      expect(find.text('Pushing KB...'), findsOneWidget);
+      final PopupMenuButton<dynamic> pushingMenu =
+          tester.widget<PopupMenuButton<dynamic>>(
+        find.byWidgetPredicate((Widget widget) => widget is PopupMenuButton),
+      );
+      expect(pushingMenu.enabled, isFalse);
+      expect(kbSyncService.pushCalls, 1);
+
+      pushCompleter.complete(
+        const KbPushResult(
+          uploaded: <String>[],
+          skippedUnchanged: <String>[],
+          skippedConflicts: <String>[],
+          failed: <KbPushFailure>[],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('KB Sync'), findsOneWidget);
     });
 
     testWidgets('shows launcher failure details when OpenCode cannot start', (
@@ -276,6 +441,75 @@ void main() {
       expect(find.text('The `opencode` binary was not found.'), findsOneWidget);
     });
   });
+}
+
+class _TestKbDocsSyncService extends KbDocsSyncService {
+  _TestKbDocsSyncService({
+    this.pullCompleter,
+    this.pushCompleter,
+    this.statusResult,
+  }) : super(chatApiService: ChatApiService());
+
+  final Completer<KbPullResult>? pullCompleter;
+  final Completer<KbPushResult>? pushCompleter;
+  final KbSyncStatus? statusResult;
+  int pullCalls = 0;
+  int pushCalls = 0;
+  int statusCalls = 0;
+
+  @override
+  Future<KbPullResult> pullKnowledgeBaseDocs({
+    required String projectId,
+    required String workspacePath,
+    String? projectName,
+  }) async {
+    pullCalls += 1;
+    if (pullCompleter != null) {
+      return pullCompleter!.future;
+    }
+    return const KbPullResult(
+      downloaded: <String>[],
+      skippedNoStorage: <String>[],
+      skippedCollision: <String>[],
+      failed: <KbPullFailure>[],
+    );
+  }
+
+  @override
+  Future<KbPushResult> pushKnowledgeBaseDocs({
+    required String projectId,
+    required String workspacePath,
+    String? projectName,
+  }) async {
+    pushCalls += 1;
+    if (pushCompleter != null) {
+      return pushCompleter!.future;
+    }
+    return const KbPushResult(
+      uploaded: <String>[],
+      skippedUnchanged: <String>[],
+      skippedConflicts: <String>[],
+      failed: <KbPushFailure>[],
+    );
+  }
+
+  @override
+  Future<KbSyncStatus> getKnowledgeBaseSyncStatus({
+    required String projectId,
+    required String workspacePath,
+    String? projectName,
+  }) async {
+    statusCalls += 1;
+    return statusResult ??
+        KbSyncStatus(
+          workspacePath: workspacePath,
+          kbDirectoryPath: '$workspacePath/docs',
+          manifestPath: '$workspacePath/.arcane-forge/sync-manifest.json',
+          trackedFiles: 0,
+          projectId: projectId,
+          projectName: projectName ?? '',
+        );
+  }
 }
 
 class _TestOpencodeServerManager extends OpencodeServerManager {
