@@ -61,3 +61,6 @@ packages/*
 
 # Firebase
 .firebase/
+
+# Release dependencies (downloaded binaries)
+utils/release_dependencies/

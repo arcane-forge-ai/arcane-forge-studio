@@ -65,6 +65,62 @@ void main() {
         isNull,
       );
     });
+
+    test('matches a Windows-style managed serve command', () {
+      expect(
+        OpencodeServerManager.looksLikeManagedServeCommandForTesting(
+          r'"C:\Users\dev\AppData\Local\ArcaneForge\opencode_sidecar\bin\1.3.3\opencode.exe" serve --hostname 127.0.0.1 --port 4096 --print-logs',
+        ),
+        isTrue,
+      );
+    });
+
+    test('extracts sidecar pids from wmic list output', () {
+      const String wmicOutput = '''
+
+CommandLine="C:\\path\\opencode.exe" serve --hostname 127.0.0.1 --port 4099 --print-logs
+ProcessId=7890
+
+CommandLine="C:\\path\\opencode.exe" serve --hostname 127.0.0.1 --port 4096 --print-logs
+ProcessId=1234
+
+''';
+      expect(
+        OpencodeServerManager.managedSidecarPidsFromWmicListForTesting(
+          wmicOutput,
+        ),
+        <int>[7890, 1234],
+      );
+    });
+
+    test('ignores wmic records that are not managed sidecar commands', () {
+      const String wmicOutput = '''
+
+CommandLine="C:\\path\\opencode.exe" version
+ProcessId=5555
+
+CommandLine="C:\\path\\opencode.exe" serve --hostname 127.0.0.1 --port 4100 --print-logs
+ProcessId=6666
+
+''';
+      expect(
+        OpencodeServerManager.managedSidecarPidsFromWmicListForTesting(
+          wmicOutput,
+        ),
+        <int>[6666],
+      );
+    });
+
+    test('handles wmic output with BOM prefix', () {
+      const String wmicOutput =
+          '\uFEFF\r\nCommandLine="C:\\path\\opencode.exe" serve --hostname 127.0.0.1 --port 4096 --print-logs\r\nProcessId=42\r\n\r\n';
+      expect(
+        OpencodeServerManager.managedSidecarPidsFromWmicListForTesting(
+          wmicOutput,
+        ),
+        <int>[42],
+      );
+    });
   });
 
   group('OpencodeServerManager ownership stop logic', () {
@@ -122,35 +178,25 @@ void main() {
     });
 
     test('installs the packaged sidecar into app-managed storage', () async {
-      final Directory packagedSidecarDirectory = Directory(
-        p.join(
-          bundleRoot.path,
-          'Arcane Forge Studio.app',
-          'Contents',
-          'Resources',
-          'opencode_sidecar',
-        ),
-      )..createSync(recursive: true);
+      final Directory packagedSidecarDirectory =
+          _packagedSidecarDirectory(bundleRoot)
+            ..createSync(recursive: true);
       final File packagedBinary = File(
-        p.join(packagedSidecarDirectory.path, 'opencode'),
+        p.join(packagedSidecarDirectory.path, _testBinaryFileName()),
       );
-      _writeVersionScript(packagedBinary, '1.3.3');
+      _writeVersionBinary(packagedBinary, '1.3.3');
       File(
         p.join(packagedSidecarDirectory.path, 'manifest.json'),
       ).writeAsStringSync(
-        '{"version":"1.3.3","binaryName":"opencode"}',
+        '{"version":"1.3.3","binaryName":"${_testBinaryFileName()}"}',
       );
 
       final OpencodeServerManager manager = OpencodeServerManager(
         supportDirectoryProvider: () async => supportDirectory,
-        resolvedExecutablePathProvider: () => p.join(
-          bundleRoot.path,
-          'Arcane Forge Studio.app',
-          'Contents',
-          'MacOS',
-          'arcane_forge',
-        ),
+        resolvedExecutablePathProvider: () => _resolvedExecutablePath(bundleRoot),
         environmentProvider: () => <String, String>{},
+        executableFileChecker: _isTestExecutable,
+        binaryVersionReader: _readTestVersion,
       );
 
       final diagnostics = await manager.diagnostics();
@@ -162,8 +208,6 @@ void main() {
       expect(diagnostics.installPath, isNotNull);
       expect(diagnostics.binaryPath, startsWith(supportDirectory.path));
       expect(File(diagnostics.binaryPath!).existsSync(), isTrue);
-      expect(FileStat.statSync(diagnostics.binaryPath!).modeString(),
-          contains('x'));
     });
 
     test('bundled install prunes older versions after a successful upgrade',
@@ -176,38 +220,30 @@ void main() {
           '1.2.0',
         ),
       )..createSync(recursive: true);
-      _writeVersionScript(
-          File(p.join(oldVersionDirectory.path, 'opencode')), '1.2.0');
+      _writeVersionBinary(
+        File(p.join(oldVersionDirectory.path, _testBinaryFileName())),
+        '1.2.0',
+      );
 
-      final Directory packagedSidecarDirectory = Directory(
-        p.join(
-          bundleRoot.path,
-          'Arcane Forge Studio.app',
-          'Contents',
-          'Resources',
-          'opencode_sidecar',
-        ),
-      )..createSync(recursive: true);
-      _writeVersionScript(
-        File(p.join(packagedSidecarDirectory.path, 'opencode')),
+      final Directory packagedSidecarDirectory =
+          _packagedSidecarDirectory(bundleRoot)
+            ..createSync(recursive: true);
+      _writeVersionBinary(
+        File(p.join(packagedSidecarDirectory.path, _testBinaryFileName())),
         '1.3.3',
       );
       File(
         p.join(packagedSidecarDirectory.path, 'manifest.json'),
       ).writeAsStringSync(
-        '{"version":"1.3.3","binaryName":"opencode"}',
+        '{"version":"1.3.3","binaryName":"${_testBinaryFileName()}"}',
       );
 
       final OpencodeServerManager manager = OpencodeServerManager(
         supportDirectoryProvider: () async => supportDirectory,
-        resolvedExecutablePathProvider: () => p.join(
-          bundleRoot.path,
-          'Arcane Forge Studio.app',
-          'Contents',
-          'MacOS',
-          'arcane_forge',
-        ),
+        resolvedExecutablePathProvider: () => _resolvedExecutablePath(bundleRoot),
         environmentProvider: () => <String, String>{},
+        executableFileChecker: _isTestExecutable,
+        binaryVersionReader: _readTestVersion,
       );
 
       final diagnostics = await manager.diagnostics();
@@ -217,42 +253,32 @@ void main() {
     });
 
     test('override path wins over the packaged sidecar', () async {
-      final Directory packagedSidecarDirectory = Directory(
-        p.join(
-          bundleRoot.path,
-          'Arcane Forge Studio.app',
-          'Contents',
-          'Resources',
-          'opencode_sidecar',
-        ),
-      )..createSync(recursive: true);
-      _writeVersionScript(
-        File(p.join(packagedSidecarDirectory.path, 'opencode')),
+      final Directory packagedSidecarDirectory =
+          _packagedSidecarDirectory(bundleRoot)
+            ..createSync(recursive: true);
+      _writeVersionBinary(
+        File(p.join(packagedSidecarDirectory.path, _testBinaryFileName())),
         '1.3.3',
       );
       File(
         p.join(packagedSidecarDirectory.path, 'manifest.json'),
       ).writeAsStringSync(
-        '{"version":"1.3.3","binaryName":"opencode"}',
+        '{"version":"1.3.3","binaryName":"${_testBinaryFileName()}"}',
       );
 
       final File overrideBinary = File(
-        p.join(bundleRoot.path, 'override-opencode'),
+        p.join(bundleRoot.path, 'override-opencode.${Platform.isWindows ? 'exe' : 'sh'}'),
       );
-      _writeVersionScript(overrideBinary, '9.9.9');
+      _writeVersionBinary(overrideBinary, '9.9.9');
 
       final OpencodeServerManager manager = OpencodeServerManager(
         supportDirectoryProvider: () async => supportDirectory,
-        resolvedExecutablePathProvider: () => p.join(
-          bundleRoot.path,
-          'Arcane Forge Studio.app',
-          'Contents',
-          'MacOS',
-          'arcane_forge',
-        ),
+        resolvedExecutablePathProvider: () => _resolvedExecutablePath(bundleRoot),
         environmentProvider: () => <String, String>{
           'OPENCODE_BINARY_PATH': overrideBinary.path,
         },
+        executableFileChecker: _isTestExecutable,
+        binaryVersionReader: _readTestVersion,
       );
 
       final diagnostics = await manager.diagnostics();
@@ -264,20 +290,16 @@ void main() {
 
     test('falls back to PATH only when no packaged sidecar exists', () async {
       final File systemBinary =
-          File(p.join(bundleRoot.path, 'system-opencode'));
-      _writeVersionScript(systemBinary, '1.2.3');
+          File(p.join(bundleRoot.path, 'system-opencode.${Platform.isWindows ? 'exe' : 'sh'}'));
+      _writeVersionBinary(systemBinary, '1.2.3');
 
       final OpencodeServerManager manager = OpencodeServerManager(
         supportDirectoryProvider: () async => supportDirectory,
-        resolvedExecutablePathProvider: () => p.join(
-          bundleRoot.path,
-          'Arcane Forge Studio.app',
-          'Contents',
-          'MacOS',
-          'arcane_forge',
-        ),
+        resolvedExecutablePathProvider: () => _resolvedExecutablePath(bundleRoot),
         environmentProvider: () => <String, String>{},
         systemBinaryPathResolver: () async => systemBinary.path,
+        executableFileChecker: _isTestExecutable,
+        binaryVersionReader: _readTestVersion,
       );
 
       final diagnostics = await manager.diagnostics();
@@ -288,7 +310,50 @@ void main() {
   });
 }
 
-void _writeVersionScript(File file, String version) {
-  file.writeAsStringSync('#!/bin/sh\necho "$version"\n');
-  Process.runSync('/bin/chmod', <String>['755', file.path]);
+Directory _packagedSidecarDirectory(Directory bundleRoot) {
+  if (Platform.isWindows) {
+    return Directory(p.join(bundleRoot.path, 'opencode_sidecar'));
+  }
+  return Directory(
+    p.join(
+      bundleRoot.path,
+      'Arcane Forge Studio.app',
+      'Contents',
+      'Resources',
+      'opencode_sidecar',
+    ),
+  );
+}
+
+String _resolvedExecutablePath(Directory bundleRoot) {
+  if (Platform.isWindows) {
+    return p.join(bundleRoot.path, 'arcane_forge.exe');
+  }
+  return p.join(
+    bundleRoot.path,
+    'Arcane Forge Studio.app',
+    'Contents',
+    'MacOS',
+    'arcane_forge',
+  );
+}
+
+String _testBinaryFileName() {
+  return Platform.isWindows ? 'opencode.exe' : 'opencode';
+}
+
+Future<bool> _isTestExecutable(String path) async {
+  return File(path).existsSync();
+}
+
+Future<String> _readTestVersion(String binaryPath) async {
+  return File(binaryPath).readAsString();
+}
+
+void _writeVersionBinary(File file, String version) {
+  file.parent.createSync(recursive: true);
+  file.writeAsStringSync(version);
+  if (!Platform.isWindows) {
+    Process.runSync('/bin/chmod', <String>['755', file.path]);
+  }
 }

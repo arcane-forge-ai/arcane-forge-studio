@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import tempfile
+import sys
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = ROOT / "utils" / "opencode_sidecar_manifest.json"
-DEFAULT_LOCAL_REPO = Path.home() / "gbtemp" / "opencode"
+RELEASE_DEPS_SIDECAR_DIR = ROOT / "utils" / "release_dependencies" / "opencode_sidecar"
 CACHE_DIR = ROOT / "build" / "opencode_sidecar_cache"
 
 
@@ -19,7 +19,8 @@ def load_manifest() -> dict:
     return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
 
-def resolve_platform_entry(platform_key: str) -> tuple[dict, dict]:
+def resolve_platform_entry(platform_key: str) -> tuple[dict, dict, str]:
+    """Return (manifest, platform_entry, resolved_url) for *platform_key*."""
     manifest = load_manifest()
     platforms = manifest.get("platforms", {})
     if platform_key not in platforms:
@@ -27,15 +28,20 @@ def resolve_platform_entry(platform_key: str) -> tuple[dict, dict]:
             f"Unsupported OpenCode sidecar platform '{platform_key}'. "
             f"Available platforms: {', '.join(sorted(platforms))}"
         )
-    return manifest, platforms[platform_key]
+    entry = platforms[platform_key]
+    url = manifest["urlTemplate"].format(
+        version=manifest["version"],
+        assetName=entry["assetName"],
+    )
+    return manifest, entry, url
 
 
 def stage_sidecar(platform_key: str, destination_dir: Path) -> Path:
-    manifest, entry = resolve_platform_entry(platform_key)
+    manifest, entry, url = resolve_platform_entry(platform_key)
     binary_name = entry["binaryName"]
     destination_dir.mkdir(parents=True, exist_ok=True)
 
-    binary_path = _resolve_binary(platform_key, manifest["version"], entry)
+    binary_path = _resolve_binary(platform_key, manifest["version"], entry, url)
     target_binary = destination_dir / binary_name
     shutil.copy2(binary_path, target_binary)
     if not binary_name.endswith(".exe"):
@@ -46,7 +52,7 @@ def stage_sidecar(platform_key: str, destination_dir: Path) -> Path:
         "platform": platform_key,
         "assetName": entry["assetName"],
         "binaryName": binary_name,
-        "url": entry["url"],
+        "url": url,
     }
     (destination_dir / "manifest.json").write_text(
         json.dumps(packaged_manifest, indent=2) + "\n",
@@ -70,24 +76,21 @@ def verify_staged_sidecar(destination_dir: Path) -> None:
         raise SystemExit(f"Bundled sidecar binary missing at {binary_file}")
 
 
-def _resolve_binary(platform_key: str, version: str, entry: dict) -> Path:
+def _resolve_binary(platform_key: str, version: str, entry: dict, url: str) -> Path:
     direct_binary = _resolve_local_binary(entry)
     if direct_binary is not None:
         return direct_binary
 
-    archive_path = _resolve_archive(platform_key, version, entry)
+    archive_path = _resolve_archive(platform_key, version, entry, url)
     return _extract_binary_from_archive(platform_key, version, archive_path, entry["binaryName"])
 
 
 def _resolve_local_binary(entry: dict) -> Path | None:
-    source_dir = os.environ.get("ARCANE_FORGE_OPENCODE_SOURCE_DIR")
-    if source_dir:
-      for candidate in _binary_candidates(Path(source_dir), entry):
-        if candidate.exists():
-            return candidate
+    local_repo = os.environ.get("OPENCODE_LOCAL_REPO", "").strip()
+    if not local_repo:
+        return None
 
-    local_repo = Path(os.environ.get("OPENCODE_LOCAL_REPO", DEFAULT_LOCAL_REPO))
-    for candidate in _binary_candidates(local_repo, entry):
+    for candidate in _binary_candidates(Path(local_repo), entry):
         if candidate.exists():
             return candidate
 
@@ -104,17 +107,12 @@ def _binary_candidates(source_root: Path, entry: dict) -> list[Path]:
     ]
 
 
-def _resolve_archive(platform_key: str, version: str, entry: dict) -> Path:
-    source_dir = os.environ.get("ARCANE_FORGE_OPENCODE_SOURCE_DIR")
-    if source_dir:
-        candidate = Path(source_dir) / entry["assetName"]
-        if candidate.exists():
-            return candidate
-
-    local_repo = Path(os.environ.get("OPENCODE_LOCAL_REPO", DEFAULT_LOCAL_REPO))
-    local_archive = local_repo / "dist" / entry["assetName"]
-    if local_archive.exists():
-        return local_archive
+def _resolve_archive(platform_key: str, version: str, entry: dict, url: str) -> Path:
+    local_repo = os.environ.get("OPENCODE_LOCAL_REPO", "").strip()
+    if local_repo:
+        local_archive = Path(local_repo) / "dist" / entry["assetName"]
+        if local_archive.exists():
+            return local_archive
 
     cache_dir = CACHE_DIR / version / platform_key
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -122,13 +120,14 @@ def _resolve_archive(platform_key: str, version: str, entry: dict) -> Path:
     if archive_path.exists():
         return archive_path
 
+    print(f"Downloading {url} ...")
     try:
-        with urllib.request.urlopen(entry["url"]) as response:
+        with urllib.request.urlopen(url) as response:
             archive_path.write_bytes(response.read())
     except Exception as exc:
         raise SystemExit(
-            "Unable to fetch the pinned OpenCode sidecar archive. "
-            f"Tried {entry['url']} and local repo {local_repo}. Error: {exc}"
+            f"Unable to fetch the pinned OpenCode sidecar archive from {url}. "
+            f"Error: {exc}"
         )
     return archive_path
 
@@ -162,7 +161,24 @@ def _extract_binary_from_archive(
     )
 
 
-def stage_sidecar_to_temp(platform_key: str) -> tuple[Path, Path]:
-    temp_dir = Path(tempfile.mkdtemp(prefix="arcane-forge-opencode-"))
-    binary_path = stage_sidecar(platform_key, temp_dir)
-    return temp_dir, binary_path
+def main() -> int:
+    if len(sys.argv) < 2:
+        manifest = load_manifest()
+        platforms = list(manifest.get("platforms", {}).keys())
+        print(f"Usage: python {sys.argv[0]} <platform>")
+        print(f"Available platforms: {', '.join(sorted(platforms))}")
+        return 1
+
+    platform_key = sys.argv[1]
+    dest = RELEASE_DEPS_SIDECAR_DIR
+    if dest.exists():
+        shutil.rmtree(dest)
+
+    binary = stage_sidecar(platform_key, dest)
+    verify_staged_sidecar(dest)
+    print(f"Staged sidecar for {platform_key}: {binary}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

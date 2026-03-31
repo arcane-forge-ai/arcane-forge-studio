@@ -1,3 +1,5 @@
+// ignore_for_file: unused_element
+
 import 'dart:async';
 import 'dart:io';
 
@@ -8,13 +10,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../constants.dart';
 import '../game_design_assistant/services/chat_api_service.dart';
 import 'coding_agent/services/kb_docs_sync_service.dart';
+import 'coding_agent/services/coding_agent_embedded_browser_host.dart';
 import 'coding_agent/models/coding_agent_config.dart';
 import 'coding_agent/models/opencode_models.dart';
 import 'coding_agent/services/coding_agent_config_service.dart';
@@ -40,7 +42,7 @@ class CodingAgentScreen extends StatefulWidget {
     required this.projectName,
     this.debugIsSupportedPlatformOverride,
     this.debugInitialUrl,
-    this.debugControllerFactory,
+    this.debugEmbeddedBrowserHostFactory,
     this.debugServerManager,
     this.debugWorkspacePathOverride,
     this.debugConfigService,
@@ -54,7 +56,8 @@ class CodingAgentScreen extends StatefulWidget {
   @visibleForTesting
   final Uri? debugInitialUrl;
   @visibleForTesting
-  final CodingAgentWebViewControllerFactory? debugControllerFactory;
+  final CodingAgentEmbeddedBrowserHostFactory?
+      debugEmbeddedBrowserHostFactory;
   @visibleForTesting
   final OpencodeServerManager? debugServerManager;
   @visibleForTesting
@@ -105,7 +108,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
   final OpencodeApiClient _opencodeApiClient = OpencodeApiClient();
 
   _OpencodeViewState _state = _OpencodeViewState.loading;
-  WebViewController? _webViewController;
+  CodingAgentEmbeddedBrowserHost? _embeddedBrowserHost;
   StreamSubscription<String>? _serverLogSubscription;
   String? _errorMessage;
   String? _workspacePath;
@@ -117,7 +120,8 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
   OpencodeDiagnostics? _diagnostics;
 
   bool get _supportsCodingAgentPlatform =>
-      widget.debugIsSupportedPlatformOverride ?? (!kIsWeb && Platform.isMacOS);
+      widget.debugIsSupportedPlatformOverride ??
+      (!kIsWeb && (Platform.isMacOS || Platform.isWindows));
 
   String get _visibleUrl => _currentUrl.isNotEmpty
       ? _currentUrl
@@ -184,6 +188,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
   void dispose() {
     unawaited(_serverLogSubscription?.cancel());
     unawaited(_serverManager.detach());
+    unawaited(_disposeEmbeddedBrowserHost());
     _opencodeApiClient.dispose();
     _chatApiService.dispose();
     super.dispose();
@@ -271,11 +276,12 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
       return;
     }
 
+    await _disposeEmbeddedBrowserHost();
     if (mounted) {
       setState(() {
         _state = _OpencodeViewState.loading;
         _errorMessage = null;
-        _webViewController = null;
+        _embeddedBrowserHost = null;
         _serverBaseUrl = null;
         _currentUrl = '';
         _loadingMessage = loadingMessage;
@@ -298,43 +304,49 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
     }
 
     final Uri initialUrl = widget.debugInitialUrl ?? Uri.parse(serverUrl);
-    await _initializeWebView(initialUrl);
+    await _initializeEmbeddedBrowser(initialUrl);
     await _refreshDiagnostics();
   }
 
-  Future<void> _initializeWebView(Uri initialUrl) async {
+  Future<void> _initializeEmbeddedBrowser(Uri initialUrl) async {
     final Uri origin = _originOf(initialUrl);
+    CodingAgentEmbeddedBrowserHost? host;
 
     try {
-      final NavigationDelegate navigationDelegate = NavigationDelegate(
-        onNavigationRequest: _handleNavigation,
-        onWebResourceError: _handleWebResourceError,
-        onPageStarted: _handlePageStarted,
-        onPageFinished: _handlePageFinished,
+      final CodingAgentEmbeddedBrowserCallbacks callbacks =
+          CodingAgentEmbeddedBrowserCallbacks(
+        onUrlChanged: _handleEmbeddedBrowserUrlChanged,
+        onLoadError: _handleEmbeddedBrowserLoadError,
+        openExternalUrl: _launchExternally,
       );
-      final CodingAgentWebViewControllerFactory factory =
-          widget.debugControllerFactory ?? _defaultControllerFactory;
-      final WebViewController controller =
-          factory(navigationDelegate, initialUrl);
+      final CodingAgentEmbeddedBrowserHostFactory factory =
+          widget.debugEmbeddedBrowserHostFactory ??
+          createDefaultCodingAgentEmbeddedBrowserHost;
+      host = factory(callbacks);
+      await host.load(initialUrl);
 
       if (!mounted) {
+        await host.dispose();
         return;
       }
 
       setState(() {
-        _webViewController = controller;
+        _embeddedBrowserHost = host;
         _state = _OpencodeViewState.ready;
         _serverBaseUrl = origin;
         _currentUrl = initialUrl.toString();
+        _errorMessage = null;
       });
     } catch (error) {
+      await host?.dispose();
       if (!mounted) {
         return;
       }
       setState(() {
         _state = _OpencodeViewState.error;
-        _errorMessage =
-            'Failed to create the embedded Coding Agent view: $error';
+        _errorMessage = error is CodingAgentEmbeddedBrowserException
+            ? error.message
+            : 'Failed to create the embedded Coding Agent view: $error';
         _serverBaseUrl = origin;
         _currentUrl = initialUrl.toString();
       });
@@ -346,6 +358,15 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
       return Uri(scheme: uri.scheme, host: uri.host, port: uri.port);
     }
     return Uri(scheme: uri.scheme, host: uri.host);
+  }
+
+  Future<void> _disposeEmbeddedBrowserHost() async {
+    final CodingAgentEmbeddedBrowserHost? host = _embeddedBrowserHost;
+    _embeddedBrowserHost = null;
+    if (host == null) {
+      return;
+    }
+    await host.dispose();
   }
 
   Future<void> _copyValue(String label, String value) async {
@@ -1194,70 +1215,24 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
     }
   }
 
-  WebViewController _defaultControllerFactory(
-    NavigationDelegate navigationDelegate,
-    Uri initialUrl,
-  ) {
-    final WebViewController controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(navigationDelegate)
-      ..loadRequest(initialUrl);
-    return controller;
-  }
-
-  NavigationDecision _handleNavigation(NavigationRequest request) {
-    final Uri? requested = Uri.tryParse(request.url);
-    if (requested == null) {
-      return NavigationDecision.navigate;
-    }
-
-    final Uri? serverBaseUrl = _serverBaseUrl;
-    final bool isHttpLike =
-        requested.scheme == 'http' || requested.scheme == 'https';
-    final bool sameOrigin = serverBaseUrl != null &&
-        requested.scheme == serverBaseUrl.scheme &&
-        requested.host == serverBaseUrl.host &&
-        requested.port == serverBaseUrl.port;
-
-    if (!isHttpLike || sameOrigin) {
-      return NavigationDecision.navigate;
-    }
-
-    unawaited(launchUrl(requested, mode: LaunchMode.externalApplication));
-    return NavigationDecision.prevent;
-  }
-
-  void _handleWebResourceError(WebResourceError error) {
-    if (error.isForMainFrame == false) {
-      return;
-    }
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _state = _OpencodeViewState.error;
-      _errorMessage = _buildWebViewErrorMessage(error);
-    });
-  }
-
-  String _buildWebViewErrorMessage(WebResourceError error) {
+  String _buildEmbeddedBrowserErrorMessage(String description) {
     final StringBuffer buffer = StringBuffer(
       'Unable to load ${_currentUrl.isNotEmpty ? _currentUrl : 'the local OpenCode page'}.',
     );
-    if (error.description.trim().isNotEmpty) {
-      buffer.write(' ${error.description.trim()}');
+    if (description.trim().isNotEmpty) {
+      buffer.write(' ${description.trim()}');
     }
     final String? launcherError = _serverManager.lastError;
     if (launcherError != null &&
         launcherError.trim().isNotEmpty &&
-        launcherError.trim() != error.description.trim()) {
+        launcherError.trim() != description.trim()) {
       buffer.write(' $launcherError');
     }
     buffer.write(' Use Retry to reconnect to the local server.');
     return buffer.toString();
   }
 
-  void _handlePageStarted(String url) {
+  void _handleEmbeddedBrowserUrlChanged(String url) {
     if (!mounted) {
       return;
     }
@@ -1266,12 +1241,13 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
     });
   }
 
-  void _handlePageFinished(String url) {
+  void _handleEmbeddedBrowserLoadError(String description) {
     if (!mounted) {
       return;
     }
     setState(() {
-      _currentUrl = url;
+      _state = _OpencodeViewState.error;
+      _errorMessage = _buildEmbeddedBrowserErrorMessage(description);
     });
   }
 
@@ -1320,6 +1296,10 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
       _showNotice('OpenCode is not connected yet.');
       return;
     }
+    await _launchExternally(target);
+  }
+
+  Future<void> _launchExternally(Uri target) async {
     await launchUrl(target, mode: LaunchMode.externalApplication);
   }
 
@@ -1340,13 +1320,14 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
       return;
     }
     await _serverManager.stop();
+    await _disposeEmbeddedBrowserHost();
     await _refreshDiagnostics();
     if (!mounted) {
       return;
     }
     setState(() {
       _state = _OpencodeViewState.error;
-      _webViewController = null;
+      _embeddedBrowserHost = null;
       _serverBaseUrl = null;
       _currentUrl = '';
       _errorMessage =
@@ -1618,7 +1599,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
                               ),
                             OutlinedButton.icon(
                               onPressed: ready
-                                  ? () => _webViewController?.reload()
+                                  ? () => _embeddedBrowserHost?.reload()
                                   : null,
                               icon: const Icon(Icons.refresh),
                               label: const Text('Reload'),
@@ -1705,9 +1686,10 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
         return _buildMessageCard(
           context,
           icon: Icons.desktop_windows_outlined,
-          title: 'Coding Agent (Beta) is available on macOS desktop only.',
+          title:
+              'Coding Agent (Beta) is available on macOS and Windows desktop only.',
           message:
-              'For now this beta release embeds the local OpenCode web UI on macOS desktop.',
+              'This beta release embeds the local OpenCode web UI on macOS and Windows desktop.',
         );
       case _OpencodeViewState.loading:
         return Card(
@@ -1823,13 +1805,13 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
           ),
         );
       case _OpencodeViewState.ready:
-        final WebViewController? controller = _webViewController;
-        if (controller == null) {
+        final CodingAgentEmbeddedBrowserHost? host = _embeddedBrowserHost;
+        if (host == null) {
           return const SizedBox.shrink();
         }
         return Card(
           clipBehavior: Clip.antiAlias,
-          child: WebViewWidget(controller: controller),
+          child: host.buildView(),
         );
     }
   }
