@@ -118,6 +118,7 @@ KnowledgeBaseFile _doc({
   required DateTime createdAt,
   String authorityLevel = 'reference',
   bool hasStorage = true,
+  String status = 'completed',
 }) {
   return KnowledgeBaseFile(
     id: id,
@@ -127,6 +128,7 @@ KnowledgeBaseFile _doc({
     entryType: 'document',
     authorityLevel: authorityLevel,
     hasStorage: hasStorage,
+    status: status,
   );
 }
 
@@ -494,6 +496,14 @@ void main() {
     expect(status.projectId, 'project-1');
     expect(status.projectName, 'Project One');
     expect(status.trackedFiles, 2);
+    expect(status.localFiles, 0);
+    expect(status.remoteActiveFiles, 0);
+    expect(status.inSyncCount, 0);
+    expect(status.needsPushCount, 0);
+    expect(status.needsPullCount, 0);
+    expect(status.needsReviewCount, 2);
+    expect(status.needsReviewExamples, <String>['a.md', 'b.md']);
+    expect(status.remoteUnavailableCount, 0);
     expect(status.lastPullAt, '2026-03-01T00:00:00.000Z');
     expect(status.lastPushAt, '2026-03-02T00:00:00.000Z');
     expect(status.kbDirectoryPath, p.join(workspace.path, 'docs'));
@@ -501,5 +511,169 @@ void main() {
       status.manifestPath,
       p.join(workspace.path, '.arcane-forge', 'sync-manifest.json'),
     );
+  });
+
+  test('status classifies push, pull, review, in-sync, and unavailable docs',
+      () async {
+    final Directory workspace = await Directory.systemTemp.createTemp(
+      'kb-doc-sync-status-buckets-test-',
+    );
+    addTearDown(() async {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    });
+
+    final Directory docsDir =
+        await Directory(p.join(workspace.path, 'docs')).create(recursive: true);
+    await File(p.join(docsDir.path, 'in_sync.md')).writeAsString('# synced');
+    await File(p.join(docsDir.path, 'needs_push.md'))
+        .writeAsString('# changed locally');
+    await File(p.join(docsDir.path, 'needs_pull_remote.md'))
+        .writeAsString('# stable local copy');
+    await File(p.join(docsDir.path, 'needs_review.md'))
+        .writeAsString('# local change');
+    await File(p.join(docsDir.path, 'missing_remote.md'))
+        .writeAsString('# last known local copy');
+    await File(p.join(docsDir.path, 'collision.md'))
+        .writeAsString('# untracked local collision');
+    await File(p.join(docsDir.path, 'new_local.md'))
+        .writeAsString('# local draft');
+
+    await _writeManifest(
+      workspace,
+      <String, dynamic>{
+        'version': 1,
+        'projectId': 'project-1',
+        'projectName': 'Project One',
+        'lastPullAt': '2026-03-01T00:00:00.000Z',
+        'lastPushAt': '2026-03-02T00:00:00.000Z',
+        'entries': <String, dynamic>{
+          'in_sync.md': <String, dynamic>{
+            'relativePath': 'in_sync.md',
+            'documentName': 'in_sync.md',
+            'remoteFileId': 1,
+            'remoteCreatedAt': '2026-03-01T00:00:00.000',
+            'remoteAuthorityLevel': 'reference',
+            'lastPulledHash': _hashText('# synced'),
+          },
+          'needs_push.md': <String, dynamic>{
+            'relativePath': 'needs_push.md',
+            'documentName': 'needs_push.md',
+            'remoteFileId': 2,
+            'remoteCreatedAt': '2026-03-01T01:00:00.000',
+            'remoteAuthorityLevel': 'reference',
+            'lastUploadedHash': _hashText('# stable local copy'),
+          },
+          'needs_pull_remote.md': <String, dynamic>{
+            'relativePath': 'needs_pull_remote.md',
+            'documentName': 'needs_pull_remote.md',
+            'remoteFileId': 3,
+            'remoteCreatedAt': '2026-03-01T02:00:00.000',
+            'remoteAuthorityLevel': 'reference',
+            'lastPulledHash': _hashText('# stable local copy'),
+          },
+          'needs_review.md': <String, dynamic>{
+            'relativePath': 'needs_review.md',
+            'documentName': 'needs_review.md',
+            'remoteFileId': 4,
+            'remoteCreatedAt': '2026-03-01T03:00:00.000',
+            'remoteAuthorityLevel': 'reference',
+            'lastPulledHash': _hashText('# base sync'),
+          },
+          'missing_remote.md': <String, dynamic>{
+            'relativePath': 'missing_remote.md',
+            'documentName': 'missing_remote.md',
+            'remoteFileId': 5,
+            'remoteCreatedAt': '2026-03-01T04:00:00.000',
+            'remoteAuthorityLevel': 'reference',
+            'lastPulledHash': _hashText('# last known local copy'),
+          },
+        },
+      },
+    );
+
+    final _FakeChatApiService fakeApi = _FakeChatApiService(
+      remoteFiles: <KnowledgeBaseFile>[
+        _doc(
+          id: 1,
+          documentName: 'in_sync.md',
+          createdAt: DateTime.parse('2026-03-01T00:00:00.000'),
+        ),
+        _doc(
+          id: 2,
+          documentName: 'needs_push.md',
+          createdAt: DateTime.parse('2026-03-01T01:00:00.000'),
+        ),
+        _doc(
+          id: 30,
+          documentName: 'needs_pull_remote.md',
+          createdAt: DateTime.parse('2026-03-03T02:00:00.000'),
+        ),
+        _doc(
+          id: 40,
+          documentName: 'needs_review.md',
+          createdAt: DateTime.parse('2026-03-03T03:00:00.000'),
+        ),
+        _doc(
+          id: 60,
+          documentName: 'collision.md',
+          createdAt: DateTime.parse('2026-03-03T05:00:00.000'),
+        ),
+        _doc(
+          id: 70,
+          documentName: 'new_remote.md',
+          createdAt: DateTime.parse('2026-03-03T06:00:00.000'),
+        ),
+        _doc(
+          id: 80,
+          documentName: 'pending_remote.md',
+          createdAt: DateTime.parse('2026-03-03T07:00:00.000'),
+          hasStorage: false,
+          status: 'processing',
+        ),
+      ],
+      downloadResponses: const <int, FileDownloadResponse?>{},
+    );
+
+    final KbDocsSyncService service = KbDocsSyncService(
+      chatApiService: fakeApi,
+    );
+
+    final KbSyncStatus status = await service.getKnowledgeBaseSyncStatus(
+      projectId: 'project-1',
+      projectName: 'Project One',
+      workspacePath: workspace.path,
+    );
+
+    expect(status.localFiles, 7);
+    expect(status.remoteActiveFiles, 7);
+    expect(status.trackedFiles, 5);
+    expect(status.inSyncCount, 1);
+
+    expect(status.needsPushCount, 2);
+    expect(
+      status.needsPushExamples,
+      containsAll(<String>['needs_push.md', 'new_local.md']),
+    );
+
+    expect(status.needsPullCount, 2);
+    expect(
+      status.needsPullExamples,
+      containsAll(<String>['needs_pull_remote.md', 'new_remote.md']),
+    );
+
+    expect(status.needsReviewCount, 3);
+    expect(
+      status.needsReviewExamples,
+      containsAll(<String>[
+        'collision.md',
+        'missing_remote.md',
+        'needs_review.md',
+      ]),
+    );
+
+    expect(status.remoteUnavailableCount, 1);
+    expect(status.remoteUnavailableExamples, <String>['pending_remote.md']);
   });
 }

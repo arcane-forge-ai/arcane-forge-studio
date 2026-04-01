@@ -178,7 +178,8 @@ void main() {
       expect(find.text('Connecting to Coding Agent...'), findsOneWidget);
 
       startCompleter.complete('http://127.0.0.1:4102');
-      await _pumpUntilFound(tester, find.byKey(_FakeEmbeddedBrowserHost.viewKey));
+      await _pumpUntilFound(
+          tester, find.byKey(_FakeEmbeddedBrowserHost.viewKey));
 
       expect(find.byKey(_FakeEmbeddedBrowserHost.viewKey), findsOneWidget);
       expect(capturedInitialUrl, Uri.parse('http://127.0.0.1:4102'));
@@ -259,6 +260,17 @@ void main() {
           trackedFiles: 3,
           projectId: 'project-1',
           projectName: 'Project One',
+          localFiles: 4,
+          remoteActiveFiles: 5,
+          inSyncCount: 1,
+          needsPushCount: 1,
+          needsPushExamples: const <String>['docs/design.md'],
+          needsPullCount: 1,
+          needsPullExamples: const <String>['docs/world.md'],
+          needsReviewCount: 1,
+          needsReviewExamples: const <String>['docs/conflict.md'],
+          remoteUnavailableCount: 1,
+          remoteUnavailableExamples: const <String>['docs/pending.md'],
           lastPullAt: '2026-03-01T10:00:00.000Z',
           lastPushAt: '2026-03-02T11:00:00.000Z',
         ),
@@ -297,8 +309,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('KB Sync Status'), findsOneWidget);
+      expect(find.text('Local Files'), findsOneWidget);
+      expect(find.text('Online KB Docs'), findsOneWidget);
+      expect(find.text('Likely Safe to Push'), findsOneWidget);
+      expect(find.text('Likely Safe to Pull'), findsOneWidget);
+      expect(find.text('Needs Review'), findsOneWidget);
+      expect(find.text('Online Not Ready'), findsOneWidget);
       expect(find.text('Tracked Files'), findsOneWidget);
       expect(find.text('3'), findsOneWidget);
+      expect(find.textContaining('docs/design.md'), findsOneWidget);
+      expect(find.textContaining('docs/world.md'), findsOneWidget);
+      expect(find.textContaining('docs/conflict.md'), findsOneWidget);
+      expect(find.textContaining('docs/pending.md'), findsOneWidget);
       expect(find.text('Close'), findsOneWidget);
       expect(kbSyncService.statusCalls, 1);
     });

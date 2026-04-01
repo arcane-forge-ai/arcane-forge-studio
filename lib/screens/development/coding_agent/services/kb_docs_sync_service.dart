@@ -59,6 +59,17 @@ class KbSyncStatus {
     required this.trackedFiles,
     required this.projectId,
     required this.projectName,
+    this.localFiles = 0,
+    this.remoteActiveFiles = 0,
+    this.inSyncCount = 0,
+    this.needsPushCount = 0,
+    this.needsPushExamples = const <String>[],
+    this.needsPullCount = 0,
+    this.needsPullExamples = const <String>[],
+    this.needsReviewCount = 0,
+    this.needsReviewExamples = const <String>[],
+    this.remoteUnavailableCount = 0,
+    this.remoteUnavailableExamples = const <String>[],
     this.lastPullAt,
     this.lastPushAt,
   });
@@ -69,6 +80,17 @@ class KbSyncStatus {
   final int trackedFiles;
   final String projectId;
   final String projectName;
+  final int localFiles;
+  final int remoteActiveFiles;
+  final int inSyncCount;
+  final int needsPushCount;
+  final List<String> needsPushExamples;
+  final int needsPullCount;
+  final List<String> needsPullExamples;
+  final int needsReviewCount;
+  final List<String> needsReviewExamples;
+  final int remoteUnavailableCount;
+  final List<String> remoteUnavailableExamples;
   final String? lastPullAt;
   final String? lastPushAt;
 }
@@ -242,6 +264,8 @@ class _ScannedLocalFile {
 }
 
 class KbDocsSyncService {
+  static const int _statusExampleLimit = 5;
+
   KbDocsSyncService({
     required ChatApiService chatApiService,
     Dio? dio,
@@ -555,6 +579,114 @@ class KbDocsSyncService {
       workspacePath,
       projectName: projectName,
     );
+    final Map<String, _ScannedLocalFile> localFiles = await _scanLocalFiles(
+      _docsRootPath(workspacePath),
+    );
+    final Map<String, KnowledgeBaseFile> activeRemoteEntries =
+        _resolveActiveEntries(
+      (await _chatApiService.getKnowledgeBaseFiles(projectId)).where(
+        (KnowledgeBaseFile entry) => entry.entryType == 'document',
+      ),
+    );
+    final Map<String, List<KnowledgeBaseFile>> remoteByRelativePath =
+        _groupRemoteEntriesByRelativePath(activeRemoteEntries.values);
+
+    final Set<String> needsPush = <String>{};
+    final Set<String> needsPull = <String>{};
+    final Set<String> needsReview = <String>{};
+    final Set<String> remoteUnavailable = <String>{};
+    int inSyncCount = 0;
+
+    final List<String> allRelativePaths = <String>{
+      ...manifest.entries.keys,
+      ...localFiles.keys,
+      ...remoteByRelativePath.keys,
+    }.toList()
+      ..sort();
+
+    for (final String relativePath in allRelativePaths) {
+      final _ScannedLocalFile? localFile = localFiles[relativePath];
+      final KbSyncManifestEntry? trackedEntry = manifest.entries[relativePath];
+      final List<KnowledgeBaseFile> remoteCandidates =
+          remoteByRelativePath[relativePath] ?? const <KnowledgeBaseFile>[];
+
+      if (remoteCandidates.length > 1) {
+        needsReview.add('$relativePath (multiple online docs)');
+        continue;
+      }
+
+      final KnowledgeBaseFile? remoteByPath =
+          remoteCandidates.isEmpty ? null : remoteCandidates.first;
+      final KnowledgeBaseFile? trackedRemote = _trackedRemoteEntry(
+        trackedEntry,
+        activeRemoteEntries,
+      );
+      final String? baselineHash = _baselineHash(trackedEntry);
+      final bool localExists = localFile != null;
+      final bool localChanged = localFile != null
+          ? baselineHash == null || localFile.hash != baselineHash
+          : false;
+
+      if (trackedEntry != null && trackedRemote == null) {
+        needsReview.add(relativePath);
+        continue;
+      }
+
+      if (trackedEntry == null) {
+        if (remoteByPath != null) {
+          if (!_isRemoteReady(remoteByPath)) {
+            remoteUnavailable.add(remoteByPath.documentName);
+          } else if (localExists) {
+            needsReview.add(relativePath);
+          } else {
+            needsPull.add(relativePath);
+          }
+        } else if (localExists) {
+          needsPush.add(relativePath);
+        }
+        continue;
+      }
+
+      final KnowledgeBaseFile remoteEntry = trackedRemote!;
+      final bool remoteChanged = !_remoteMatchesManifest(
+        trackedEntry,
+        remoteEntry,
+      );
+
+      if (!_isRemoteReady(remoteEntry)) {
+        if (localChanged && remoteChanged) {
+          needsReview.add(relativePath);
+        } else if (localExists && !localChanged && !remoteChanged) {
+          inSyncCount += 1;
+        } else {
+          remoteUnavailable.add(remoteEntry.documentName);
+        }
+        continue;
+      }
+
+      if (!localExists) {
+        needsPull.add(relativePath);
+        continue;
+      }
+
+      if (localChanged && remoteChanged) {
+        needsReview.add(relativePath);
+        continue;
+      }
+
+      if (localChanged) {
+        needsPush.add(relativePath);
+        continue;
+      }
+
+      if (remoteChanged) {
+        needsPull.add(relativePath);
+        continue;
+      }
+
+      inSyncCount += 1;
+    }
+
     return KbSyncStatus(
       workspacePath: workspacePath,
       kbDirectoryPath: _docsRootPath(workspacePath),
@@ -564,6 +696,17 @@ class KbDocsSyncService {
       projectName: manifest.projectName.isNotEmpty
           ? manifest.projectName
           : (projectName ?? ''),
+      localFiles: localFiles.length,
+      remoteActiveFiles: activeRemoteEntries.length,
+      inSyncCount: inSyncCount,
+      needsPushCount: needsPush.length,
+      needsPushExamples: _sortedExamples(needsPush),
+      needsPullCount: needsPull.length,
+      needsPullExamples: _sortedExamples(needsPull),
+      needsReviewCount: needsReview.length,
+      needsReviewExamples: _sortedExamples(needsReview),
+      remoteUnavailableCount: remoteUnavailable.length,
+      remoteUnavailableExamples: _sortedExamples(remoteUnavailable),
       lastPullAt: manifest.lastPullAt,
       lastPushAt: manifest.lastPushAt,
     );
@@ -723,6 +866,28 @@ class KbDocsSyncService {
     return active;
   }
 
+  Map<String, List<KnowledgeBaseFile>> _groupRemoteEntriesByRelativePath(
+    Iterable<KnowledgeBaseFile> entries,
+  ) {
+    final Map<String, List<KnowledgeBaseFile>> grouped =
+        <String, List<KnowledgeBaseFile>>{};
+    for (final KnowledgeBaseFile entry in entries) {
+      final String relativePath = _sanitizeDocumentNameToRelativePath(
+        entry.documentName,
+        fallbackId: entry.id,
+      );
+      grouped.putIfAbsent(relativePath, () => <KnowledgeBaseFile>[]).add(entry);
+    }
+
+    for (final List<KnowledgeBaseFile> bucket in grouped.values) {
+      bucket.sort((KnowledgeBaseFile a, KnowledgeBaseFile b) {
+        return _compareRecency(b, a);
+      });
+    }
+
+    return grouped;
+  }
+
   ({List<_PullTarget> targets, List<String> skippedCollision})
       _resolvePullTargets(
     List<KnowledgeBaseFile> entries,
@@ -783,6 +948,60 @@ class KbDocsSyncService {
       lastDownloadedAt: patch.lastDownloadedAt ?? existing?.lastDownloadedAt,
       lastUploadedAt: patch.lastUploadedAt ?? existing?.lastUploadedAt,
     );
+  }
+
+  KnowledgeBaseFile? _trackedRemoteEntry(
+    KbSyncManifestEntry? trackedEntry,
+    Map<String, KnowledgeBaseFile> activeRemoteEntries,
+  ) {
+    if (trackedEntry == null) {
+      return null;
+    }
+    final String documentName = trackedEntry.documentName.trim();
+    if (documentName.isEmpty) {
+      return null;
+    }
+    return activeRemoteEntries[documentName];
+  }
+
+  String? _baselineHash(KbSyncManifestEntry? trackedEntry) {
+    return trackedEntry?.lastUploadedHash ?? trackedEntry?.lastPulledHash;
+  }
+
+  bool _remoteMatchesManifest(
+    KbSyncManifestEntry manifestEntry,
+    KnowledgeBaseFile remoteEntry,
+  ) {
+    if (manifestEntry.remoteFileId != null &&
+        manifestEntry.remoteFileId != remoteEntry.id) {
+      return false;
+    }
+    if (manifestEntry.remoteCreatedAt != null &&
+        manifestEntry.remoteCreatedAt !=
+            remoteEntry.createdAt.toIso8601String()) {
+      return false;
+    }
+    if (manifestEntry.remoteAuthorityLevel != null &&
+        manifestEntry.remoteAuthorityLevel != remoteEntry.authorityLevel) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isRemoteReady(KnowledgeBaseFile entry) {
+    final String normalizedStatus = entry.status.trim().toLowerCase();
+    final bool statusReady =
+        normalizedStatus.isEmpty || normalizedStatus == 'completed';
+    return entry.hasStorage && statusReady;
+  }
+
+  List<String> _sortedExamples(Iterable<String> values) {
+    final List<String> sorted = values
+        .where((String value) => value.trim().isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return sorted.take(_statusExampleLimit).toList(growable: false);
   }
 
   int _compareRecency(KnowledgeBaseFile a, KnowledgeBaseFile b) {

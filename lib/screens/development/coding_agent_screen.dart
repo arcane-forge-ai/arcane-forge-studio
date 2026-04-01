@@ -51,8 +51,7 @@ class CodingAgentScreen extends StatefulWidget {
   @visibleForTesting
   final Uri? debugInitialUrl;
   @visibleForTesting
-  final CodingAgentEmbeddedBrowserHostFactory?
-      debugEmbeddedBrowserHostFactory;
+  final CodingAgentEmbeddedBrowserHostFactory? debugEmbeddedBrowserHostFactory;
   @visibleForTesting
   final OpencodeServerManager? debugServerManager;
   @visibleForTesting
@@ -316,7 +315,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
       );
       final CodingAgentEmbeddedBrowserHostFactory factory =
           widget.debugEmbeddedBrowserHostFactory ??
-          createDefaultCodingAgentEmbeddedBrowserHost;
+              createDefaultCodingAgentEmbeddedBrowserHost;
       host = factory(callbacks);
       await host.load(initialUrl);
 
@@ -1063,8 +1062,20 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
                           : status.projectId,
                     ),
                     _buildStatusLine(
+                      'Local Files',
+                      '${status.localFiles}',
+                    ),
+                    _buildStatusLine(
+                      'Online KB Docs',
+                      '${status.remoteActiveFiles}',
+                    ),
+                    _buildStatusLine(
                       'Tracked Files',
                       '${status.trackedFiles}',
+                    ),
+                    _buildStatusLine(
+                      'In Sync',
+                      '${status.inSyncCount}',
                     ),
                     _buildStatusLine(
                       'Last Pull',
@@ -1074,6 +1085,37 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
                       'Last Push',
                       _formatKbSyncTimestamp(status.lastPushAt),
                     ),
+                    const Divider(height: 24),
+                    const Text(
+                      'Heuristic comparison based on your last synced hashes and the current active online KB documents.',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildStatusSection(
+                      'Likely Safe to Push',
+                      status.needsPushCount,
+                      status.needsPushExamples,
+                      emptyMessage: 'No local-only changes detected.',
+                    ),
+                    _buildStatusSection(
+                      'Likely Safe to Pull',
+                      status.needsPullCount,
+                      status.needsPullExamples,
+                      emptyMessage: 'No remote-only changes detected.',
+                    ),
+                    _buildStatusSection(
+                      'Needs Review',
+                      status.needsReviewCount,
+                      status.needsReviewExamples,
+                      emptyMessage: 'No conflicts or ambiguous cases detected.',
+                    ),
+                    _buildStatusSection(
+                      'Online Not Ready',
+                      status.remoteUnavailableCount,
+                      status.remoteUnavailableExamples,
+                      emptyMessage:
+                          'No online KB documents are waiting on storage or processing.',
+                    ),
+                    const Divider(height: 24),
                     _buildStatusLine('Workspace', status.workspacePath),
                     _buildStatusLine('KB Directory', status.kbDirectoryPath),
                     _buildStatusLine('Manifest', status.manifestPath),
@@ -1132,6 +1174,38 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
           ),
           const SizedBox(height: 4),
           SelectableText(value),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusSection(
+    String label,
+    int count,
+    List<String> examples, {
+    required String emptyMessage,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          SelectableText('$count item${count == 1 ? '' : 's'}'),
+          const SizedBox(height: 4),
+          if (examples.isEmpty)
+            Text(emptyMessage)
+          else
+            ...examples.map(
+              (String example) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: SelectableText('• $example'),
+              ),
+            ),
         ],
       ),
     );
