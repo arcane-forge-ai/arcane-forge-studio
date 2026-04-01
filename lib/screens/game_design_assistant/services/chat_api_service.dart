@@ -167,6 +167,7 @@ class ChatApiService {
     String fileName, {
     String? filePath,
     Uint8List? bytes,
+    String? remoteDocumentName,
   }) async {
     if (_useMockMode) {
       await Future.delayed(const Duration(seconds: 2)); // Simulate upload
@@ -182,6 +183,10 @@ class ChatApiService {
           fileFieldName: 'file',
           bytes: bytes,
           fileName: fileName,
+          additionalData:
+              remoteDocumentName != null && remoteDocumentName.trim().isNotEmpty
+                  ? <String, dynamic>{'filename': remoteDocumentName.trim()}
+                  : null,
         );
       } else if (filePath != null) {
         response = await _apiClient.uploadFile(
@@ -189,6 +194,10 @@ class ChatApiService {
           fileFieldName: 'file',
           filePath: filePath,
           fileName: fileName,
+          additionalData:
+              remoteDocumentName != null && remoteDocumentName.trim().isNotEmpty
+                  ? <String, dynamic>{'filename': remoteDocumentName.trim()}
+                  : null,
         );
       } else {
         throw ArgumentError('Either filePath or bytes must be provided.');

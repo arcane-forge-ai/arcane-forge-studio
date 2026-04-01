@@ -9,9 +9,30 @@ import '../../projects/projects_dashboard_screen.dart';
 
 class SideMenu extends BaseSideMenu {
   const SideMenu({
-    Key? key,
+    super.key,
     String? projectName,
-  }) : super(key: key, subtitle: projectName);
+  }) : super(subtitle: projectName);
+
+  Widget _buildMenuTitleWithBadge(String title, MenuBadgeType badgeType) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        MenuBadge(badgeType),
+        Text(title),
+      ],
+    );
+  }
+
+  void _goToProjects(BuildContext context) {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => const ProjectsDashboardScreen(),
+      ),
+    );
+  }
 
   // Helper method to build a menu item with a "Coming Soon" badge
   Widget _buildComingSoonMenuItem(
@@ -21,24 +42,57 @@ class SideMenu extends BaseSideMenu {
     IconData? icon,
   }) {
     return ListTile(
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          const MenuBadge(MenuBadgeType.comingSoon),
-        ],
-      ),
+      title: _buildMenuTitleWithBadge(title, MenuBadgeType.comingSoon),
       leading: icon != null ? Icon(icon) : null,
       onTap: () {
         Provider.of<MenuAppController>(context, listen: false)
             .changeScreen(screenType);
       },
+    );
+  }
+
+  Widget _buildRailScreenButton(
+    BuildContext context, {
+    required ScreenType screenType,
+    required IconData icon,
+    required String tooltip,
+  }) {
+    return Consumer<MenuAppController>(
+      builder: (context, controller, child) {
+        return buildRailButton(
+          context,
+          icon: icon,
+          tooltip: tooltip,
+          selected: controller.currentScreen == screenType,
+          onTap: () {
+            Provider.of<MenuAppController>(context, listen: false)
+                .changeScreen(screenType);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildRailPopupMenu(
+    BuildContext context, {
+    required IconData icon,
+    required String tooltip,
+    required bool selected,
+    required List<PopupMenuEntry<Never>> items,
+  }) {
+    return buildRailPopupButton<Never>(
+      context,
+      icon: icon,
+      tooltip: tooltip,
+      selected: selected,
+      items: items,
+    );
+  }
+
+  Widget _buildRailDivider() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Divider(height: 1),
     );
   }
 
@@ -51,16 +105,7 @@ class SideMenu extends BaseSideMenu {
       ListTile(
         title: const Text("All Projects"),
         leading: const Icon(Icons.folder_open),
-        onTap: () {
-          // Clear focus to prevent keyboard issues
-          FocusScope.of(context).unfocus();
-
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => const ProjectsDashboardScreen(),
-            ),
-          );
-        },
+        onTap: () => _goToProjects(context),
       ),
 
       // Overview
@@ -101,18 +146,9 @@ class SideMenu extends BaseSideMenu {
         },
       ),
       ListTile(
-        title: Row(
-          children: [
-            const Expanded(
-              child: Text(
-                "Game Design Assistant v2",
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 8),
-            const MenuBadge(MenuBadgeType.alpha),
-          ],
+        title: _buildMenuTitleWithBadge(
+          "Game Design Assistant v2",
+          MenuBadgeType.alpha,
         ),
         leading: const Icon(Icons.psychology_alt),
         onTap: () {
@@ -133,19 +169,7 @@ class SideMenu extends BaseSideMenu {
       // Development - code editor, image generator, sound generator, music generator, web server
       buildSectionHeader(context, icon: Icons.code, title: "Development"),
       ExpansionTile(
-        title: Row(
-          children: [
-            const Expanded(
-              child: Text(
-                "Image Generation",
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 8),
-            const MenuBadge(MenuBadgeType.beta),
-          ],
-        ),
+        title: _buildMenuTitleWithBadge("Image Generation", MenuBadgeType.beta),
         leading: const Icon(Icons.image, color: iconColor),
         initiallyExpanded: true,
         children: [
@@ -232,11 +256,19 @@ class SideMenu extends BaseSideMenu {
         ],
       ),
       ListTile(
-        title: const Text("Code"),
+        title: const Text("Coding Agent (Beta)"),
         leading: const Icon(Icons.code),
         onTap: () {
           Provider.of<MenuAppController>(context, listen: false)
-              .changeScreen(ScreenType.codeEditor);
+              .changeScreen(ScreenType.codingAgent);
+        },
+      ),
+      ListTile(
+        title: const Text("Developer Toolkit"),
+        leading: const Icon(Icons.build_circle_outlined),
+        onTap: () {
+          Provider.of<MenuAppController>(context, listen: false)
+              .changeScreen(ScreenType.developerToolkit);
         },
       ),
       // ListTile(
@@ -273,16 +305,184 @@ class SideMenu extends BaseSideMenu {
       ),
     ];
   }
+
+  @override
+  List<Widget> buildCollapsedMenuItems(BuildContext context) {
+    return [
+      buildRailButton(
+        context,
+        icon: Icons.folder_open,
+        tooltip: 'All Projects',
+        onTap: () => _goToProjects(context),
+      ),
+      _buildRailDivider(),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.projectHome,
+        icon: Icons.home,
+        tooltip: 'Project Home',
+      ),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.knowledgeBase,
+        icon: Icons.library_books,
+        tooltip: 'Knowledge Base',
+      ),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.knowledgeBaseQA,
+        icon: Icons.question_answer,
+        tooltip: 'Knowledge Base Q&A',
+      ),
+      _buildRailDivider(),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.gameDesignAssistant,
+        icon: Icons.psychology,
+        tooltip: 'Game Design Assistant',
+      ),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.gameDesignAssistantV2,
+        icon: Icons.psychology_alt,
+        tooltip: 'Game Design Assistant v2',
+      ),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.evaluate,
+        icon: Icons.analytics,
+        tooltip: 'Design Evaluation',
+      ),
+      _buildRailDivider(),
+      Consumer<MenuAppController>(
+        builder: (context, controller, child) {
+          return _buildRailPopupMenu(
+            context,
+            icon: Icons.image,
+            tooltip: 'Image Generation',
+            selected: controller.currentScreen ==
+                    ScreenType.imageGenerationOverview ||
+                controller.currentScreen ==
+                    ScreenType.imageGenerationGeneration,
+            items: [
+              PopupMenuItem<Never>(
+                onTap: () {
+                  Provider.of<MenuAppController>(context, listen: false)
+                      .changeScreen(ScreenType.imageGenerationOverview);
+                },
+                child: const Text('Overview'),
+              ),
+              PopupMenuItem<Never>(
+                onTap: () {
+                  Provider.of<MenuAppController>(context, listen: false)
+                      .changeScreen(ScreenType.imageGenerationGeneration);
+                },
+                child: const Text('Generation'),
+              ),
+            ],
+          );
+        },
+      ),
+      Consumer<MenuAppController>(
+        builder: (context, controller, child) {
+          return _buildRailPopupMenu(
+            context,
+            icon: Icons.audiotrack,
+            tooltip: 'SFX Generation',
+            selected: controller.currentScreen ==
+                    ScreenType.sfxGenerationOverview ||
+                controller.currentScreen == ScreenType.sfxGenerationGeneration,
+            items: [
+              PopupMenuItem<Never>(
+                onTap: () {
+                  Provider.of<MenuAppController>(context, listen: false)
+                      .changeScreen(ScreenType.sfxGenerationOverview);
+                },
+                child: const Text('Overview'),
+              ),
+              PopupMenuItem<Never>(
+                onTap: () {
+                  Provider.of<MenuAppController>(context, listen: false)
+                      .changeScreen(ScreenType.sfxGenerationGeneration);
+                },
+                child: const Text('Generation'),
+              ),
+            ],
+          );
+        },
+      ),
+      Consumer<MenuAppController>(
+        builder: (context, controller, child) {
+          return _buildRailPopupMenu(
+            context,
+            icon: Icons.music_note,
+            tooltip: 'Music Generation',
+            selected: controller.currentScreen ==
+                    ScreenType.musicGenerationOverview ||
+                controller.currentScreen ==
+                    ScreenType.musicGenerationGeneration,
+            items: [
+              PopupMenuItem<Never>(
+                onTap: () {
+                  Provider.of<MenuAppController>(context, listen: false)
+                      .changeScreen(ScreenType.musicGenerationOverview);
+                },
+                child: const Text('Overview'),
+              ),
+              PopupMenuItem<Never>(
+                onTap: () {
+                  Provider.of<MenuAppController>(context, listen: false)
+                      .changeScreen(ScreenType.musicGenerationGeneration);
+                },
+                child: const Text('Generation'),
+              ),
+            ],
+          );
+        },
+      ),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.codingAgent,
+        icon: Icons.code,
+        tooltip: 'Coding Agent (Beta)',
+      ),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.developerToolkit,
+        icon: Icons.build_circle_outlined,
+        tooltip: 'Developer Toolkit',
+      ),
+      _buildRailDivider(),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.versions,
+        icon: Icons.rocket_launch,
+        tooltip: 'Release Info',
+      ),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.stats,
+        icon: Icons.analytics_outlined,
+        tooltip: 'Stats (Coming Soon)',
+      ),
+      _buildRailScreenButton(
+        context,
+        screenType: ScreenType.feedbacks,
+        icon: Icons.feedback,
+        tooltip: 'Feedbacks',
+      ),
+    ];
+  }
 }
 
 class DrawerListTile extends StatelessWidget {
   const DrawerListTile({
-    Key? key,
+    super.key,
     // For selecting those three line once press "Command+D"
     required this.title,
     required this.svgSrc,
     required this.press,
-  }) : super(key: key);
+  });
 
   final String title, svgSrc;
   final VoidCallback press;

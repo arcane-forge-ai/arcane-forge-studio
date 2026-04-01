@@ -4,6 +4,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from opencode_sidecar import verify_staged_sidecar
+
 
 ROOT = Path(__file__).resolve().parent.parent
 PUBSPEC = ROOT / "pubspec.yaml"
@@ -52,13 +54,24 @@ def copy_update_assets(build_dir: Path, version: str) -> None:
 
 def copy_release_dependencies(build_dir: Path) -> None:
     if not RELEASE_DEPENDENCIES_DIR.exists():
-        print(f"Warning: Release dependencies directory not found at {RELEASE_DEPENDENCIES_DIR}")
-        return
+        raise SystemExit(
+            f"Release dependencies not found at {RELEASE_DEPENDENCIES_DIR}. "
+            "Run `python utils/opencode_sidecar.py <platform>` first."
+        )
 
-    for file_path in RELEASE_DEPENDENCIES_DIR.iterdir():
-        if file_path.is_file():
-            shutil.copy2(file_path, build_dir / file_path.name)
-            print(f"Copied dependency: {file_path.name}")
+    sidecar_source = RELEASE_DEPENDENCIES_DIR / "opencode_sidecar"
+    verify_staged_sidecar(sidecar_source)
+
+    for child in RELEASE_DEPENDENCIES_DIR.iterdir():
+        dest = build_dir / child.name
+        if child.is_dir():
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(child, dest)
+            print(f"Copied dependency dir: {child.name}")
+        elif child.is_file():
+            shutil.copy2(child, dest)
+            print(f"Copied dependency: {child.name}")
 
 
 def create_archive(build_dir: Path, version: str) -> Path:

@@ -56,7 +56,10 @@ void main() async {
   FlutterError.onError = (FlutterErrorDetails details) {
     // Filter out the known Windows keyboard assertion error
     if (details.exception.toString().contains('KeyDownEvent is dispatched') ||
-        details.exception.toString().contains('_pressedKeys.containsKey')) {
+        details.exception.toString().contains('_pressedKeys.containsKey') ||
+        details.exception
+            .toString()
+            .contains('Attempted to send a key down event when no keys are in keysPressed')) {
       // Log the error but don't crash the app
       debugPrint('Filtered keyboard assertion error: ${details.exception}');
       return;
