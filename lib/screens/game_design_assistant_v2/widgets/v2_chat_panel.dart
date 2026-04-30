@@ -150,7 +150,7 @@ class _V2ChatPanelState extends State<V2ChatPanel> {
                   const Icon(Icons.error_outline, color: Colors.red, size: 16),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
+                    child: SelectableText(
                       provider.chatError!,
                       style: const TextStyle(color: Colors.red, fontSize: 12),
                     ),

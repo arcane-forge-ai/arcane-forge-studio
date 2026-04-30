@@ -1513,14 +1513,10 @@ class V2SessionProvider with ChangeNotifier {
     if (activePath != null && !knownPathSet.contains(activePath)) {
       if (sessionId != null) {
         try {
-          await _apiService.setActiveDocument(
-            sessionId: sessionId,
-            filePath: null,
-          );
           _currentSession = await _apiService.getSession(sessionId);
         } catch (e) {
           if (kDebugMode) {
-            print('Error clearing stale active document path: $e');
+            print('Error refreshing session after stale active document: $e');
           }
         }
       }

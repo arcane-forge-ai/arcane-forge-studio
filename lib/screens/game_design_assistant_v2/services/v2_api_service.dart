@@ -42,6 +42,13 @@ class V2ApiService {
   String get _projectBaseUrl => '$_baseUrl/api/v1/projects';
   String get _designBaseUrl => '$_baseUrl/api/v2/design-agent';
 
+  static String? _ensureMdExtension(String? path) {
+    if (path == null) return null;
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed.endsWith('.md') ? trimmed : '$trimmed.md';
+  }
+
   Map<String, dynamic> _asMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
@@ -213,8 +220,9 @@ class V2ApiService {
         selectionAnswer: selectionAnswer,
       );
       final payload = request.toJson();
-      if (documentPath != null && documentPath.trim().isNotEmpty) {
-        payload['document_path'] = documentPath.trim();
+      final normalizedDocPath = _ensureMdExtension(documentPath);
+      if (normalizedDocPath != null) {
+        payload['document_path'] = normalizedDocPath;
       }
       final response = await _apiClient.dio.post(
         '$_designBaseUrl/sessions/$sessionId/message',
@@ -296,10 +304,14 @@ class V2ApiService {
     required String sessionId,
     String? filePath,
   }) async {
+    final normalized = _ensureMdExtension(filePath);
+    if (normalized == null) {
+      return {'success': true, 'active_document_path': null};
+    }
     try {
       final response = await _apiClient.dio.patch(
         '$_designBaseUrl/sessions/$sessionId/active-document',
-        data: {'file_path': filePath},
+        data: {'file_path': normalized},
       );
       return _asMap(response.data);
     } catch (e) {

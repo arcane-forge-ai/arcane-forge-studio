@@ -131,6 +131,13 @@ class V2SSEService {
     cancelActiveStream();
   }
 
+  static String? _ensureMdExtension(String? path) {
+    if (path == null) return null;
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed.endsWith('.md') ? trimmed : '$trimmed.md';
+  }
+
   Map<String, String> _headers() {
     final userId = _authProvider.userId.trim();
     if (userId.isEmpty) {
@@ -164,8 +171,9 @@ class V2SSEService {
     final query = StringBuffer(
       '?content=${Uri.encodeComponent(content)}',
     );
-    if (documentPath != null && documentPath.trim().isNotEmpty) {
-      query.write('&document_path=${Uri.encodeComponent(documentPath.trim())}');
+    final normalizedDocPath = _ensureMdExtension(documentPath);
+    if (normalizedDocPath != null) {
+      query.write('&document_path=${Uri.encodeComponent(normalizedDocPath)}');
     }
     query.write('&stream_mode=delta_v1');
     final uri = Uri.parse(
