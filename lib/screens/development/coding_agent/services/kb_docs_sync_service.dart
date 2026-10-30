@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../../utils/kb_content_hash.dart';
 import '../../../game_design_assistant/models/api_models.dart';
 import '../../../game_design_assistant/services/chat_api_service.dart';
 
@@ -1051,16 +1052,7 @@ class KbDocsSyncService {
   }
 
   String _hashBytes(List<int> bytes) {
-    const int offsetBasis = 0xcbf29ce484222325;
-    const int prime = 0x100000001b3;
-    int hash = offsetBasis;
-
-    for (final int value in bytes) {
-      hash ^= value;
-      hash = (hash * prime) & 0xFFFFFFFFFFFFFFFF;
-    }
-
-    return hash.toRadixString(16).padLeft(16, '0');
+    return kbContentHash(bytes);
   }
 
   Future<List<int>> _downloadBytesForUrl(String downloadUrl) async {
