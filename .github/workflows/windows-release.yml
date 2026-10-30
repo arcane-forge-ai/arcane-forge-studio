@@ -1,0 +1,208 @@
+name: Prepare Windows release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-release:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      FLUTTER_REVISION: f6ff1529fd6d8af5f706051d9251ac9231c83407
+      ARCANE_FORGE_SKILL_REF: 2d52432aa65a8706a903d1f8d7b7e5426cf823bf
+      OPENCODE_DISABLE_AUTOUPDATE: "1"
+    steps:
+      - name: Check out selected release source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Flutter 3.38.5
+        shell: pwsh
+        run: |
+          $sdk = Join-Path $env:RUNNER_TEMP 'flutter-sdk'
+          git init $sdk
+          if ($LASTEXITCODE -ne 0) { throw 'Could not initialize Flutter checkout' }
+          git -C $sdk remote add origin https://github.com/flutter/flutter.git
+          git -C $sdk fetch --depth 1 origin tag 3.38.5
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch pinned Flutter revision' }
+          git -C $sdk checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Could not check out pinned Flutter revision' }
+          $actual = git -C $sdk rev-parse HEAD
+          if ($actual -ne $env:FLUTTER_REVISION) { throw 'Flutter revision mismatch' }
+          $bin = Join-Path $sdk 'bin'
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & (Join-Path $bin 'flutter.bat') --version
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter SDK bootstrap failed' }
+
+      - name: Prepare public production configuration and Windows runtime
+        shell: python {0}
+        run: |
+          import base64, json, os, re, shutil, struct
+          from pathlib import Path
+
+          assert struct.calcsize('P') == 8, 'Windows x64 Python is required'
+          makefile = Path('Makefile').read_text(encoding='utf-8')
+          config = {}
+          for name in ('SUPABASE_URL', 'SUPABASE_ANON_KEY'):
+              values = set(re.findall(r'--dart-define=' + name + r'=([^\s\\]+)', makefile))
+              assert len(values) == 1, f'Ambiguous production {name} in Makefile'
+              config[name] = values.pop()
+          payload = config['SUPABASE_ANON_KEY'].split('.')[1]
+          claims = json.loads(base64.urlsafe_b64decode(payload + '=' * (-len(payload) % 4)))
+          assert claims.get('role') == 'anon', 'Only the public Supabase anon key may be bundled'
+          config.update({
+              'API_BASE_URL': 'https://arcane-forge-service.dev.arcaneforge.ai',
+              'USE_API_SERVICE': 'true',
+              'A1111_MODE': 'online',
+          })
+          Path('.env').write_text(''.join(f'{key}={value}\n' for key, value in config.items()), encoding='utf-8')
+          output = Path('build/release')
+          output.mkdir(parents=True, exist_ok=True)
+          (output / 'production-defines.json').write_text(json.dumps(config), encoding='utf-8')
+          dependencies = Path('utils/release_dependencies')
+          dependencies.mkdir(parents=True, exist_ok=True)
+          dlls = list((Path(os.environ['SystemRoot']) / 'System32').glob('vcruntime140*.dll'))
+          assert {'vcruntime140.dll', 'vcruntime140_1.dll'} <= {file.name.lower() for file in dlls}, 'VC runtime DLLs missing'
+          for file in dlls:
+              data = file.read_bytes()
+              offset = struct.unpack_from('<I', data, 0x3c)[0]
+              assert data[offset:offset + 4] == b'PE\0\0'
+              assert struct.unpack_from('<H', data, offset + 4)[0] == 0x8664, f'Not x64: {file}'
+              shutil.copy2(file, dependencies / file.name)
+
+      - name: Resolve locked dependencies
+        shell: pwsh
+        run: |
+          flutter config --enable-windows-desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter configuration failed' }
+          flutter pub get --enforce-lockfile
+          if ($LASTEXITCODE -ne 0) { throw 'Locked dependency resolution failed' }
+
+      - name: Run packaging and Flutter tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s utils/tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging tests failed' }
+          flutter test --no-pub --reporter expanded
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter tests failed' }
+
+      - name: Build production Windows x64 app
+        shell: python {0}
+        run: |
+          import datetime, json, shutil, subprocess
+          from pathlib import Path
+
+          config = json.loads(Path('build/release/production-defines.json').read_text(encoding='utf-8'))
+          config['FLUTTER_ENV'] = 'production'
+          config['BUILD_TIME'] = datetime.datetime.now(datetime.timezone.utc).strftime('%y%m%d%H%M%S') + '_WINDOWS'
+          flutter = shutil.which('flutter')
+          assert flutter, 'Flutter executable unavailable'
+          subprocess.run([flutter, 'build', 'windows', '--release', '--no-pub',
+                          *[f'--dart-define={key}={value}' for key, value in config.items()]], check=True)
+
+      - name: Bundle pinned OpenCode and skill
+        shell: pwsh
+        run: |
+          python utils/opencode_sidecar.py windows-x64
+          if ($LASTEXITCODE -ne 0) { throw 'OpenCode staging failed' }
+          python utils/package_release.py
+          if ($LASTEXITCODE -ne 0) { throw 'Windows packaging failed' }
+
+      - name: Verify extracted archive and run offline helper checks
+        shell: python {0}
+        run: |
+          import hashlib, json, os, re, struct, subprocess, sys, zipfile
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path('utils').resolve()))
+          from game_agent_skill import verify_bundled_skill
+          from opencode_sidecar import load_manifest, verify_staged_sidecar
+
+          version = re.search(r'^version:\s*(\S+)', Path('pubspec.yaml').read_text(encoding='utf-8'), re.M)[1]
+          output = Path('build/release')
+          archive_path = output / f'arcane-forge-studio-windows-v{version}.zip'
+          extracted = Path(os.environ['RUNNER_TEMP']) / 'studio-release-smoke'
+          with zipfile.ZipFile(archive_path) as archive:
+              assert archive.testzip() is None, 'Archive CRC failure'
+              archive.extractall(extracted)
+          build = Path('build/windows/x64/runner/Release')
+          files = {file.relative_to(build).as_posix(): hashlib.sha256(file.read_bytes()).hexdigest()
+                   for file in build.rglob('*') if file.is_file()}
+          packaged = {file.relative_to(extracted).as_posix(): hashlib.sha256(file.read_bytes()).hexdigest()
+                      for file in extracted.rglob('*') if file.is_file()}
+          assert files == packaged, 'Extracted ZIP differs from packaged build'
+          assert (extracted / 'version.txt').read_text(encoding='utf-8').strip() == version
+          for name in ('arcane_forge.exe', 'vcruntime140.dll', 'vcruntime140_1.dll'):
+              data = (extracted / name).read_bytes()
+              offset = struct.unpack_from('<I', data, 0x3c)[0]
+              assert data[offset:offset + 4] == b'PE\0\0'
+              assert struct.unpack_from('<H', data, offset + 4)[0] == 0x8664, f'Not x64: {name}'
+          sidecar = extracted / 'opencode_sidecar'
+          verify_staged_sidecar(sidecar)
+          skill = verify_bundled_skill(sidecar)
+          assert skill['sourceCommit'] == os.environ['ARCANE_FORGE_SKILL_REF'], 'Skill source mismatch'
+          manifest = json.loads((sidecar / 'manifest.json').read_text(encoding='utf-8'))
+          assert manifest['platform'] == 'windows-x64'
+          assert manifest['version'] == load_manifest()['version']
+          isolated = Path(os.environ['RUNNER_TEMP']) / 'studio-offline-helper-smoke'
+          isolated.mkdir(exist_ok=True)
+          helper_env = dict(os.environ, HTTP_PROXY='http://127.0.0.1:9', HTTPS_PROXY='http://127.0.0.1:9', NO_PROXY='',
+                            XDG_CONFIG_HOME=str(isolated / 'config'), XDG_DATA_HOME=str(isolated / 'data'),
+                            XDG_CACHE_HOME=str(isolated / 'cache'))
+          cli = subprocess.run([str((sidecar / 'opencode.exe').resolve()), '--version'],
+                               env=helper_env, cwd=isolated, check=True, capture_output=True, text=True, timeout=60)
+          assert cli.stdout.strip() == manifest['version'], 'OpenCode version mismatch'
+          helper = sidecar / 'skills/arcane-forge-game-agent/scripts/arcane_forge.py'
+          subprocess.run([sys.executable, str(helper.resolve()), '--help'], env=helper_env, cwd=isolated,
+                         check=True, capture_output=True, text=True, timeout=30)
+          digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+          (output / 'SHA256SUMS').write_text(f'{digest}  {archive_path.name}\n', encoding='utf-8')
+          report = {
+              'version': version, 'sourceCommit': os.environ['GITHUB_SHA'],
+              'flutterRevision': os.environ['FLUTTER_REVISION'], 'platform': 'windows-x64',
+              'skillCommit': skill['sourceCommit'], 'skillFileCount': len(skill['files']),
+              'opencodeVersion': manifest['version'], 'archive': archive_path.name, 'sha256': digest,
+              'archiveFileCount': len(packaged), 'archiveMatchesBuild': True,
+              'packagingTestsPassed': True, 'flutterTestsPassed': True,
+              'offlineCliVersionPassed': True, 'offlineHelperHelpPassed': True,
+              'startupSmokePassed': False, 'embeddedAgentFlowTested': False,
+              'authenticatedApiFlowsTested': False, 'codeSigned': False,
+          }
+          (output / 'windows-verification.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+
+      - name: Smoke-test app startup and close its window
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'studio-release-smoke'
+          $app = Start-Process -FilePath (Join-Path $dir 'arcane_forge.exe') -WorkingDirectory $dir -PassThru
+          try {
+            Start-Sleep -Seconds 12
+            $app.Refresh()
+            if ($app.HasExited) { throw "App exited during startup: $($app.ExitCode)" }
+            if (-not $app.CloseMainWindow()) { throw 'App did not expose a window that could be closed' }
+            if (-not $app.WaitForExit(10000)) { throw 'App did not close within 10 seconds' }
+            if ($app.ExitCode -ne 0) { throw "App returned an error while closing: $($app.ExitCode)" }
+            $path = 'build/release/windows-verification.json'
+            $report = Get-Content $path -Raw | ConvertFrom-Json
+            $report.startupSmokePassed = $true
+            $report | ConvertTo-Json -Depth 10 | Set-Content $path -Encoding utf8
+          } finally {
+            $app.Refresh()
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+          }
+
+      - name: Upload verified release candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: arcane-forge-studio-windows-${{ github.sha }}
+          path: |
+            build/release/arcane-forge-studio-windows-v*.zip
+            build/release/SHA256SUMS
+            build/release/windows-verification.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

@@ -149,6 +149,51 @@ follow this exact pattern:
 arcane-forge-studio-windows-v<version>.zip
 ```
 
+### Manual Windows Build In GitHub Actions
+
+The **Prepare Windows release** workflow at
+`.github/workflows/windows-release.yml` builds a Windows x64 release candidate
+on `windows-2022`. Once the workflow is available on the repository's default
+branch, open **Actions → Prepare Windows release → Run workflow** and select
+the release source branch. Running it uploads a temporary Actions artifact;
+publishing that candidate to GitHub Releases remains a separate step.
+
+The workflow uses read-only repository permissions and immutable action
+revisions. It pins Flutter 3.38.5 to
+`f6ff1529fd6d8af5f706051d9251ac9231c83407` and the game-agent skill to
+`2d52432aa65a8706a903d1f8d7b7e5426cf823bf`. OpenCode remains pinned by
+`utils/opencode_sidecar_manifest.json`. Update these inputs deliberately when
+preparing a later release.
+
+The clean runner creates a sanitized `.env` asset using only the public
+Supabase settings from `Makefile`, the production API endpoint, and online
+mode settings. It omits `DEFAULT_USER_ID`. The Flutter build uses those same
+explicit production values and enforces `pubspec.lock`. The workflow copies
+x64 `vcruntime140*.dll` files from the runner's Windows system directory,
+because local ignored release dependencies are unavailable in a clean clone.
+
+Before upload, the job runs the Python packaging suite and full Flutter test
+suite, builds and packages the app, extracts the ZIP, compares every file hash
+with the packaged build, verifies skill provenance and all skill hashes, and
+runs the bundled OpenCode `--version` and Python helper `--help` using isolated
+configuration and HTTP(S) proxies pointing to a closed loopback port. It then
+confirms that the extracted app stays running for 12 seconds and closes when
+its window receives a close request. A failed check prevents candidate upload.
+
+Download the resulting Actions artifact and retain all three files:
+
+- `arcane-forge-studio-windows-v<version>.zip`
+- `SHA256SUMS`
+- `windows-verification.json`
+
+This is an unsigned ZIP candidate. The startup check does not exercise
+authentication, authenticated API calls, the embedded WebView, skill
+installation through the app, or a complete game-development session. Windows
+SmartScreen and additional runtime requirements still need verification on a
+normal Windows machine. Python 3 is required for the bundled skill helpers.
+Do not describe local workflow validation as a completed Windows build; check
+the actual Actions result and its verification report before publishing.
+
 ## macOS Packaging
 
 Build the macOS app first:
@@ -171,8 +216,29 @@ What the packaging script does:
 - copies the sidecar from `utils/release_dependencies/opencode_sidecar/` into
   `Arcane Forge Studio.app/Contents/Resources/opencode_sidecar/`
 - verifies that the sidecar manifest and binary are present
+- re-signs the outer app bundle after adding resources and requires deep,
+  strict code-signature verification to pass
 - creates a DMG at
   `build/release/Arcane-Forge-Studio-macOS-v<version>.dmg`
+
+Bundling resources changes the app's resource seal. The packaging script
+re-signs only the outer app and preserves its identifier, entitlements,
+requirements, flags, and runtime metadata. It leaves nested code signatures,
+including the bundled OpenCode executable's signature, intact.
+
+An already ad-hoc-signed app defaults to ad-hoc re-signing. An app with another
+signature requires an explicit `MACOS_CODESIGN_IDENTITY`; packaging stops
+instead of silently replacing that signature with an ad-hoc signature:
+
+```bash
+MACOS_CODESIGN_IDENTITY="Developer ID Application: Your Team (TEAMID)" \
+  python3 utils/package_release_macos.py
+```
+
+This step does not notarize the app or DMG. An ad-hoc signature supports local
+integrity verification but does not establish Developer ID trust for
+Gatekeeper. Verify the final DMG's architecture and distribution requirements
+before publishing; a `darwin-arm64` sidecar supports Apple Silicon only.
 
 ## Publishing Checklist
 

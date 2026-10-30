@@ -32,11 +32,11 @@ release artifacts now that the app ships a managed OpenCode sidecar.</p>
 first use and prefers that installed copy over any system <code>opencode</code>.</p>
 <h2>Bundled Game Agent Skill</h2>
 <p>Both desktop packaging scripts fetch <code>skills/arcane-forge-game-agent</code> from
-the public <code>arcane-forge-ai/arcane-forge-agent-kit</code> repository&#39;s <code>main</code> branch.
+the public <code>arcane-forge-ai/arcane-forge-agent-kit</code> repository's <code>main</code> branch.
 They resolve the branch to a commit first, then download that exact commit.
 The full skill directory, including scripts, references, and assets, is stored
 under <code>opencode_sidecar/skills/arcane-forge-game-agent/</code>. The adjacent
-<code>skill-manifest.json</code> records the source ref, full commit, and every file&#39;s
+<code>skill-manifest.json</code> records the source ref, full commit, and every file's
 SHA-256 hash. Packaging fails if fetching or verification fails.</p>
 <p>For a reproducible rebuild, set <code>ARCANE_FORGE_SKILL_REF</code> to the recorded commit
 before invoking either packaging script. A tag or branch is also accepted.</p>
@@ -48,8 +48,8 @@ before invoking either packaging script. A tag or branch is also accepted.</p>
 <p>At startup, Studio verifies and installs the shipped skill into its own
 application-support directory under <code>opencode_sidecar/skills/&lt;commit&gt;/</code>.
 It adds this path to its generated OpenCode configuration, then checks
-OpenCode&#39;s <code>/skill</code> response for the exact name and installed location.
-The embedded agent&#39;s Utilities drawer shows the status and a <strong>Repair skill</strong>
+OpenCode's <code>/skill</code> response for the exact name and installed location.
+The embedded agent's Utilities drawer shows the status and a <strong>Repair skill</strong>
 action. Repair uses the shipped copy and restarts the app-managed server.</p>
 <p>No download is needed at application startup. Studio does not install into
 global agent folders or game repositories. Missing or invalid skill files
@@ -116,6 +116,45 @@ into <code>build/windows/x64/runner/Release/</code></li>
 follow this exact pattern:</p>
 <pre><code class="language-text">arcane-forge-studio-windows-v&lt;version&gt;.zip
 </code></pre>
+<h3>Manual Windows Build In GitHub Actions</h3>
+<p>The <strong>Prepare Windows release</strong> workflow at
+<code>.github/workflows/windows-release.yml</code> builds a Windows x64 release candidate
+on <code>windows-2022</code>. Once the workflow is available on the repository's default
+branch, open <strong>Actions → Prepare Windows release → Run workflow</strong> and select
+the release source branch. Running it uploads a temporary Actions artifact;
+publishing that candidate to GitHub Releases remains a separate step.</p>
+<p>The workflow uses read-only repository permissions and immutable action
+revisions. It pins Flutter 3.38.5 to
+<code>f6ff1529fd6d8af5f706051d9251ac9231c83407</code> and the game-agent skill to
+<code>2d52432aa65a8706a903d1f8d7b7e5426cf823bf</code>. OpenCode remains pinned by
+<code>utils/opencode_sidecar_manifest.json</code>. Update these inputs deliberately when
+preparing a later release.</p>
+<p>The clean runner creates a sanitized <code>.env</code> asset using only the public
+Supabase settings from <code>Makefile</code>, the production API endpoint, and online
+mode settings. It omits <code>DEFAULT_USER_ID</code>. The Flutter build uses those same
+explicit production values and enforces <code>pubspec.lock</code>. The workflow copies
+x64 <code>vcruntime140*.dll</code> files from the runner's Windows system directory,
+because local ignored release dependencies are unavailable in a clean clone.</p>
+<p>Before upload, the job runs the Python packaging suite and full Flutter test
+suite, builds and packages the app, extracts the ZIP, compares every file hash
+with the packaged build, verifies skill provenance and all skill hashes, and
+runs the bundled OpenCode <code>--version</code> and Python helper <code>--help</code> using isolated
+configuration and HTTP(S) proxies pointing to a closed loopback port. It then
+confirms that the extracted app stays running for 12 seconds and closes when
+its window receives a close request. A failed check prevents candidate upload.</p>
+<p>Download the resulting Actions artifact and retain all three files:</p>
+<ul>
+<li><code>arcane-forge-studio-windows-v&lt;version&gt;.zip</code></li>
+<li><code>SHA256SUMS</code></li>
+<li><code>windows-verification.json</code></li>
+</ul>
+<p>This is an unsigned ZIP candidate. The startup check does not exercise
+authentication, authenticated API calls, the embedded WebView, skill
+installation through the app, or a complete game-development session. Windows
+SmartScreen and additional runtime requirements still need verification on a
+normal Windows machine. Python 3 is required for the bundled skill helpers.
+Do not describe local workflow validation as a completed Windows build; check
+the actual Actions result and its verification report before publishing.</p>
 <h2>macOS Packaging</h2>
 <p>Build the macOS app first:</p>
 <pre><code class="language-bash">flutter build macos --release
@@ -131,9 +170,25 @@ python3 utils/package_release_macos.py
 <li>copies the sidecar from <code>utils/release_dependencies/opencode_sidecar/</code> into
 <code>Arcane Forge Studio.app/Contents/Resources/opencode_sidecar/</code></li>
 <li>verifies that the sidecar manifest and binary are present</li>
+<li>re-signs the outer app bundle after adding resources and requires deep,
+strict code-signature verification to pass</li>
 <li>creates a DMG at
 <code>build/release/Arcane-Forge-Studio-macOS-v&lt;version&gt;.dmg</code></li>
 </ul>
+<p>Bundling resources changes the app's resource seal. The packaging script
+re-signs only the outer app and preserves its identifier, entitlements,
+requirements, flags, and runtime metadata. It leaves nested code signatures,
+including the bundled OpenCode executable's signature, intact.</p>
+<p>An already ad-hoc-signed app defaults to ad-hoc re-signing. An app with another
+signature requires an explicit <code>MACOS_CODESIGN_IDENTITY</code>; packaging stops
+instead of silently replacing that signature with an ad-hoc signature:</p>
+<pre><code class="language-bash">MACOS_CODESIGN_IDENTITY=&quot;Developer ID Application: Your Team (TEAMID)&quot; \
+  python3 utils/package_release_macos.py
+</code></pre>
+<p>This step does not notarize the app or DMG. An ad-hoc signature supports local
+integrity verification but does not establish Developer ID trust for
+Gatekeeper. Verify the final DMG's architecture and distribution requirements
+before publishing; a <code>darwin-arm64</code> sidecar supports Apple Silicon only.</p>
 <h2>Publishing Checklist</h2>
 <p>Use this checklist before publishing a release:</p>
 <ol>
@@ -147,7 +202,8 @@ and <code>python3 -m unittest discover -s utils/tests -v</code> for skill packag
 <li>Build the desktop artifact for the platform you are releasing.</li>
 <li>Run <code>python3 utils/opencode_sidecar.py &lt;platform&gt;</code> to stage the sidecar.</li>
 <li>Run the matching packaging script from <code>utils/</code>.</li>
-<li>Inspect the packaged artifact and confirm the sidecar exists:<ul>
+<li>Inspect the packaged artifact and confirm the sidecar exists:
+<ul>
 <li>Windows: <code>opencode_sidecar/manifest.json</code> and <code>opencode.exe</code></li>
 <li>macOS: <code>Contents/Resources/opencode_sidecar/manifest.json</code> and <code>opencode</code></li>
 <li>Both: <code>skill-manifest.json</code> and the full <code>skills/arcane-forge-game-agent/</code>
