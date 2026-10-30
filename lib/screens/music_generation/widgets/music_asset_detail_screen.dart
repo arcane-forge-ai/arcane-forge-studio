@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 import '../../../providers/music_generation_provider.dart';
 import '../../../models/music_generation_models.dart';
 import '../../../models/sfx_generation_models.dart'; // For GenerationStatus
+import '../../../models/resource_comment_models.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../responsive.dart';
+import '../../../widgets/resource_comments_panel.dart';
 import 'music_detail_dialog.dart';
 
 class MusicAssetDetailScreen extends StatefulWidget {
@@ -90,6 +93,16 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
             _buildAssetIdSection(),
             const SizedBox(height: 32),
             _buildGenerationsSection(),
+            const SizedBox(height: 32),
+            ResourceCommentsPanel(
+              projectId: _currentAsset.projectId,
+              target: ResourceCommentTarget.resource(
+                ResourceCommentType.musicAsset,
+                _currentAsset.id,
+              ),
+              title: 'Music asset discussion',
+              currentUserId: context.read<AuthProvider>().userId,
+            ),
           ],
         ),
       ),
@@ -418,8 +431,11 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
                   InkWell(
                     onTap: () => _toggleFavorite(generation),
                     child: Icon(
-                      generation.isFavorite ? Icons.favorite : Icons.favorite_border,
-                      color: generation.isFavorite ? Colors.red : Colors.white54,
+                      generation.isFavorite
+                          ? Icons.favorite
+                          : Icons.favorite_border,
+                      color:
+                          generation.isFavorite ? Colors.red : Colors.white54,
                       size: 20,
                     ),
                   ),
@@ -603,21 +619,22 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
 
   void _toggleFavorite(MusicGeneration generation) async {
     try {
-      final provider = Provider.of<MusicGenerationProvider>(context, listen: false);
+      final provider =
+          Provider.of<MusicGenerationProvider>(context, listen: false);
       await provider.setFavoriteMusicGeneration(
         generation.assetId,
         generation.id,
       );
-      
+
       // Refresh the asset to update the UI
       _refreshAsset();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              generation.isFavorite 
-                  ? 'Removed from favorites' 
+              generation.isFavorite
+                  ? 'Removed from favorites'
                   : 'Marked as favorite',
             ),
             backgroundColor: Colors.green,
@@ -650,4 +667,3 @@ class _MusicAssetDetailScreenState extends State<MusicAssetDetailScreen> {
     _refreshAsset();
   }
 }
-

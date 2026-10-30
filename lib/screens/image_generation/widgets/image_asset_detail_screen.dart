@@ -4,8 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/image_generation_provider.dart';
 import '../../../models/image_generation_models.dart';
+import '../../../models/resource_comment_models.dart';
 import '../../../responsive.dart';
 import '../../../controllers/menu_app_controller.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../widgets/image_provenance_badge.dart';
+import '../../../widgets/resource_comments_panel.dart';
 import 'image_detail_dialog.dart';
 import 'dart:async';
 import 'dart:io' show File;
@@ -13,7 +17,8 @@ import 'dart:io' show File;
 class ImageAssetDetailScreen extends StatefulWidget {
   final ImageAsset asset;
 
-  const ImageAssetDetailScreen({Key? key, required this.asset}) : super(key: key);
+  const ImageAssetDetailScreen({Key? key, required this.asset})
+      : super(key: key);
 
   @override
   State<ImageAssetDetailScreen> createState() => _ImageAssetDetailScreenState();
@@ -22,6 +27,7 @@ class ImageAssetDetailScreen extends StatefulWidget {
 class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
   late ImageAsset _asset;
   bool _isLoading = false;
+  bool _showComments = false;
   Timer? _generationPollTimer;
 
   @override
@@ -54,13 +60,14 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
 
   Future<void> _refreshAsset() async {
     if (_isLoading) return;
-    
+
     setState(() {
       _isLoading = true;
     });
-    
+
     try {
-      final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+      final provider =
+          Provider.of<ImageGenerationProvider>(context, listen: false);
       final updatedAsset = await provider.getAsset(_asset.id);
       if (updatedAsset != null && mounted) {
         setState(() {
@@ -94,8 +101,9 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
   void _navigateToGeneration() {
     // Navigate to generation screen with pre-selected asset
     Navigator.of(context).pop();
-    Provider.of<MenuAppController>(context, listen: false)
-        .changeScreen(ScreenType.imageGenerationGeneration, preSelectedAsset: _asset);
+    Provider.of<MenuAppController>(context, listen: false).changeScreen(
+        ScreenType.imageGenerationGeneration,
+        preSelectedAsset: _asset);
   }
 
   @override
@@ -160,6 +168,8 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
           ),
           const SizedBox(height: 16),
           _buildAssetStats(),
+          const SizedBox(height: 12),
+          _buildSectionSelector(),
         ],
       ),
     );
@@ -183,7 +193,7 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
         const SizedBox(width: 12),
         IconButton(
           onPressed: _isLoading ? null : _refreshAsset,
-          icon: _isLoading 
+          icon: _isLoading
               ? const SizedBox(
                   width: 16,
                   height: 16,
@@ -238,10 +248,18 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
 
   Widget _buildAssetStats() {
     final totalGenerations = _asset.generations.length;
-    final completedGenerations = _asset.generations.where((g) => g.status == GenerationStatus.completed).length;
+    final completedGenerations = _asset.generations
+        .where((g) => g.status == GenerationStatus.completed)
+        .length;
+    final historicalGenerations = _asset.generations.isEmpty
+        ? _asset.historicalGenerationCount
+        : _asset.generations.where((g) => g.isHistoricalImport).length;
     final favoriteGeneration = _asset.favoriteGenerationId != null
-        ? _asset.generations.where((g) => g.id == _asset.favoriteGenerationId).isNotEmpty
-            ? _asset.generations.firstWhere((g) => g.id == _asset.favoriteGenerationId)
+        ? _asset.generations
+                .where((g) => g.id == _asset.favoriteGenerationId)
+                .isNotEmpty
+            ? _asset.generations
+                .firstWhere((g) => g.id == _asset.favoriteGenerationId)
             : null
         : null;
 
@@ -267,6 +285,13 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
                 label: 'Completed',
                 value: '$completedGenerations',
                 color: Colors.green,
+              ),
+              const SizedBox(width: 24),
+              _buildStatItem(
+                icon: Icons.inventory_2_outlined,
+                label: 'Historical',
+                value: '$historicalGenerations',
+                color: const Color(0xFFFFC857),
               ),
               const SizedBox(width: 24),
               _buildStatItem(
@@ -328,6 +353,30 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
     );
   }
 
+  Widget _buildSectionSelector() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SegmentedButton<bool>(
+        segments: [
+          ButtonSegment<bool>(
+            value: false,
+            icon: const Icon(Icons.grid_view, size: 18),
+            label: Text('Images (${_asset.generations.length})'),
+          ),
+          const ButtonSegment<bool>(
+            value: true,
+            icon: Icon(Icons.forum_outlined, size: 18),
+            label: Text('Comments'),
+          ),
+        ],
+        selected: {_showComments},
+        onSelectionChanged: (selection) {
+          setState(() => _showComments = selection.first);
+        },
+      ),
+    );
+  }
+
   void _copyToClipboard(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -374,6 +423,21 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
   }
 
   Widget _buildContent() {
+    if (_showComments) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: ResourceCommentsPanel(
+          projectId: _asset.projectId,
+          target: ResourceCommentTarget.resource(
+            ResourceCommentType.imageAsset,
+            _asset.id,
+          ),
+          title: 'Asset discussion',
+          currentUserId: context.read<AuthProvider>().userId,
+        ),
+      );
+    }
+
     if (_asset.generations.isEmpty) {
       return _buildEmptyState();
     }
@@ -412,7 +476,8 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
               // Navigate to generation screen with pre-selected asset
               Navigator.of(context).pop();
               Provider.of<MenuAppController>(context, listen: false)
-                  .changeScreen(ScreenType.imageGenerationGeneration, preSelectedAsset: _asset);
+                  .changeScreen(ScreenType.imageGenerationGeneration,
+                      preSelectedAsset: _asset);
             },
             icon: const Icon(Icons.auto_awesome, color: Colors.white),
             label: const Text(
@@ -479,7 +544,21 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
                   borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                   color: Color(0xFF3A3A3A),
                 ),
-                child: _buildGenerationThumbnail(generation),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildGenerationThumbnail(generation),
+                    if (generation.isExternalSource)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: ImageProvenanceBadge(
+                          generation: generation,
+                          compact: true,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
             // Generation info
@@ -526,8 +605,12 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
                         InkWell(
                           onTap: () => _toggleFavorite(generation),
                           child: Icon(
-                            generation.isFavorite ? Icons.favorite : Icons.favorite_border,
-                            color: generation.isFavorite ? Colors.red : Colors.white54,
+                            generation.isFavorite
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: generation.isFavorite
+                                ? Colors.red
+                                : Colors.white54,
                             size: 16,
                           ),
                         ),
@@ -556,23 +639,27 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
     if (generation.status == GenerationStatus.completed) {
       // Priority: variants['original']['url'] -> imageUrl -> local file
       String? imageUrl;
-      
+
       // Try to get original variant URL first
-      if (generation.variants != null && generation.variants!.containsKey('original')) {
+      if (generation.variants != null &&
+          generation.variants!.containsKey('original')) {
         imageUrl = generation.variants!['original']!['url'] as String?;
       }
-      
+
       // Fallback to backward-compatible imageUrl
       imageUrl ??= generation.imageUrl;
-      
+
       final bool hasOnlineUrl = imageUrl != null && imageUrl.isNotEmpty;
-      final bool hasLocalFile = !kIsWeb && generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
-      
+      final bool hasLocalFile = !kIsWeb &&
+          generation.imagePath.isNotEmpty &&
+          File(generation.imagePath).existsSync();
+
       if (hasOnlineUrl || hasLocalFile) {
         return Stack(
           children: [
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
               child: hasOnlineUrl
                   ? Image.network(
                       imageUrl!,
@@ -619,7 +706,7 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
         );
       }
     }
-    
+
     if (generation.status == GenerationStatus.generating) {
       return _buildGeneratingThumbnail();
     } else if (generation.status == GenerationStatus.failed) {
@@ -771,9 +858,10 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
 
   void _showGenerationDetail(ImageGeneration generation) async {
     // Get fresh asset data for the dialog
-    final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+    final provider =
+        Provider.of<ImageGenerationProvider>(context, listen: false);
     final freshAsset = await provider.getAsset(_asset.id);
-    
+
     if (mounted) {
       showDialog(
         context: context,
@@ -856,7 +944,8 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
   }
 
   void _toggleFavorite(ImageGeneration generation) async {
-    final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+    final provider =
+        Provider.of<ImageGenerationProvider>(context, listen: false);
     try {
       if (generation.isFavorite) {
         // Remove from favorites using the DELETE endpoint
@@ -865,13 +954,13 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
         // Mark as favorite using the POST endpoint
         await provider.markGenerationAsFavorite(generation.id);
       }
-      
+
       _refreshAsset();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            generation.isFavorite 
-                ? 'Removed from favorites' 
+            generation.isFavorite
+                ? 'Removed from favorites'
                 : 'Marked as favorite',
           ),
           backgroundColor: Colors.green,
@@ -920,7 +1009,8 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+              final provider =
+                  Provider.of<ImageGenerationProvider>(context, listen: false);
               try {
                 await provider.deleteGeneration(generation.id);
                 Navigator.of(context).pop();
@@ -955,7 +1045,8 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
 
   void _showEditAssetDialog() {
     final nameController = TextEditingController(text: _asset.name);
-    final descriptionController = TextEditingController(text: _asset.description);
+    final descriptionController =
+        TextEditingController(text: _asset.description);
 
     showDialog(
       context: context,
@@ -1012,7 +1103,7 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
             onPressed: () async {
               final name = nameController.text.trim();
               final description = descriptionController.text.trim();
-              
+
               if (name.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -1023,7 +1114,8 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
                 return;
               }
 
-              final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+              final provider =
+                  Provider.of<ImageGenerationProvider>(context, listen: false);
               try {
                 final updatedAsset = _asset.copyWith(
                   name: name,
@@ -1083,7 +1175,8 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
+              final provider =
+                  Provider.of<ImageGenerationProvider>(context, listen: false);
               try {
                 await provider.deleteAsset(_asset.id);
                 Navigator.of(context).pop(); // Close dialog
@@ -1115,4 +1208,4 @@ class _ImageAssetDetailScreenState extends State<ImageAssetDetailScreen> {
       ),
     );
   }
-} 
+}

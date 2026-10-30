@@ -16,6 +16,7 @@ class ImageAsset {
   final String? favoriteGenerationId;
   final int?
       totalGenerations; // Total count from API when generations list is not included
+  final int historicalGenerationCount;
   final List<String> tags;
   final Map<String, dynamic> metadata;
   final String? createdByUserId; // User who created this asset
@@ -31,6 +32,7 @@ class ImageAsset {
     this.thumbnail,
     this.favoriteGenerationId,
     this.totalGenerations,
+    this.historicalGenerationCount = 0,
     this.tags = const [],
     this.metadata = const {},
     this.createdByUserId,
@@ -47,6 +49,7 @@ class ImageAsset {
     String? thumbnail,
     String? favoriteGenerationId,
     int? totalGenerations,
+    int? historicalGenerationCount,
     List<String>? tags,
     Map<String, dynamic>? metadata,
     String? createdByUserId,
@@ -62,6 +65,8 @@ class ImageAsset {
       thumbnail: thumbnail ?? this.thumbnail,
       favoriteGenerationId: favoriteGenerationId ?? this.favoriteGenerationId,
       totalGenerations: totalGenerations ?? this.totalGenerations,
+      historicalGenerationCount:
+          historicalGenerationCount ?? this.historicalGenerationCount,
       tags: tags ?? this.tags,
       metadata: metadata ?? this.metadata,
       createdByUserId: createdByUserId ?? this.createdByUserId,
@@ -93,6 +98,7 @@ class ImageGeneration {
       variants; // Image variants (original, background_removed, etc.)
   final Map<String, dynamic>
       metadata; // Additional generation metadata from API
+  final String? createdByUserId;
 
   ImageGeneration({
     required this.id,
@@ -106,7 +112,39 @@ class ImageGeneration {
     this.errorMessage,
     this.variants,
     this.metadata = const {},
+    this.createdByUserId,
   });
+
+  Map<String, dynamic> get provenance {
+    final value = metadata['provenance'];
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+    return const {};
+  }
+
+  String get origin => provenance['origin']?.toString() ?? 'arcane_forge';
+
+  bool get isHistoricalImport => origin == 'historical_import';
+
+  bool get isExternalSource => const {
+        'external_generated',
+        'user_authored',
+        'historical_import',
+      }.contains(origin);
+
+  String get originLabel {
+    switch (origin) {
+      case 'historical_import':
+        return 'Historical';
+      case 'external_generated':
+        return 'External';
+      case 'user_authored':
+        return 'User authored';
+      default:
+        return 'Arcane Forge';
+    }
+  }
 
   ImageGeneration copyWith({
     String? id,
@@ -120,6 +158,7 @@ class ImageGeneration {
     String? errorMessage,
     Map<String, Map<String, dynamic>>? variants,
     Map<String, dynamic>? metadata,
+    String? createdByUserId,
   }) {
     return ImageGeneration(
       id: id ?? this.id,
@@ -133,6 +172,7 @@ class ImageGeneration {
       errorMessage: errorMessage ?? this.errorMessage,
       variants: variants ?? this.variants,
       metadata: metadata ?? this.metadata,
+      createdByUserId: createdByUserId ?? this.createdByUserId,
     );
   }
 }

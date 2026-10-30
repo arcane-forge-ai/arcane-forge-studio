@@ -4,8 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:provider/provider.dart';
 import '../../../models/sfx_generation_models.dart';
+import '../../../models/resource_comment_models.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/sfx_generation_provider.dart';
 import '../../../services/file_download_service.dart';
+import '../../../widgets/resource_comments_panel.dart';
 
 class SfxDetailDialog extends StatefulWidget {
   final SfxGeneration generation;
@@ -36,7 +39,7 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   String? _errorMessage;
-  
+
   // Stream subscriptions to properly dispose of listeners
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<Duration>? _positionSubscription;
@@ -53,20 +56,21 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
 
   Future<void> _handleFavoriteToggle() async {
     if (_isTogglingFavorite) return;
-    
+
     setState(() {
       _isTogglingFavorite = true;
     });
 
     try {
-      final provider = Provider.of<SfxGenerationProvider>(context, listen: false);
-      
+      final provider =
+          Provider.of<SfxGenerationProvider>(context, listen: false);
+
       // First, make the API call
       await provider.setFavoriteSfxGeneration(
         _currentGeneration.assetId,
         _currentGeneration.id,
       );
-      
+
       // After API call succeeds, update the UI
       if (mounted) {
         setState(() {
@@ -76,7 +80,7 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
           _isTogglingFavorite = false;
         });
       }
-      
+
       // Call the callback if provided (for parent to refresh)
       if (widget.onFavoriteToggle != null) {
         widget.onFavoriteToggle!();
@@ -114,11 +118,13 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
       }
     });
 
-    _playerStateSubscription = _audioPlayer.onPlayerStateChanged.listen((state) {
+    _playerStateSubscription =
+        _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
         setState(() {
           _isPlaying = state == PlayerState.playing;
-          _isLoading = state == PlayerState.playing && _position == Duration.zero;
+          _isLoading =
+              state == PlayerState.playing && _position == Duration.zero;
         });
       }
     });
@@ -140,7 +146,7 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
     _positionSubscription?.cancel();
     _playerStateSubscription?.cancel();
     _playerCompleteSubscription?.cancel();
-    
+
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -198,7 +204,9 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFF404040)),
         ),
-        child: isLargeScreen ? _buildLargeScreenLayout(context) : _buildMobileLayout(context),
+        child: isLargeScreen
+            ? _buildLargeScreenLayout(context)
+            : _buildMobileLayout(context),
       ),
     );
   }
@@ -320,11 +328,12 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.fingerprint, size: 14, color: Colors.white54),
+                    const Icon(Icons.fingerprint,
+                        size: 14, color: Colors.white54),
                     const SizedBox(width: 4),
                     Text(
-                      widget.generation.id.length > 8 
-                          ? '${widget.generation.id.substring(0, 8)}...' 
+                      widget.generation.id.length > 8
+                          ? '${widget.generation.id.substring(0, 8)}...'
                           : widget.generation.id,
                       style: const TextStyle(
                         color: Colors.white54,
@@ -351,14 +360,20 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
                     ),
                   )
                 : Icon(
-                    _currentGeneration.isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: _currentGeneration.isFavorite ? Colors.red : Colors.white54,
+                    _currentGeneration.isFavorite
+                        ? Icons.favorite
+                        : Icons.favorite_border,
+                    color: _currentGeneration.isFavorite
+                        ? Colors.red
+                        : Colors.white54,
                   ),
-            tooltip: _currentGeneration.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+            tooltip: _currentGeneration.isFavorite
+                ? 'Remove from favorites'
+                : 'Mark as favorite',
           ),
           // Download button
           IconButton(
-            onPressed: widget.generation.status == GenerationStatus.completed 
+            onPressed: widget.generation.status == GenerationStatus.completed
                 ? (widget.onDownload ?? () => _downloadAudio(context))
                 : null,
             icon: const Icon(Icons.download, color: Colors.white54),
@@ -443,13 +458,15 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
                       ],
                     ),
             ),
-            
+
             const SizedBox(height: 24),
-            
+
             // Progress Slider
             if (_duration.inMilliseconds > 0) ...[
               Slider(
-                value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
+                value: _position.inMilliseconds
+                    .toDouble()
+                    .clamp(0.0, _duration.inMilliseconds.toDouble()),
                 max: _duration.inMilliseconds.toDouble(),
                 onChanged: (value) {
                   _seekTo(Duration(milliseconds: value.toInt()));
@@ -457,7 +474,7 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
                 activeColor: Colors.blue,
                 inactiveColor: Colors.white24,
               ),
-              
+
               // Time Display
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -466,16 +483,18 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
                   children: [
                     Text(
                       _formatDuration(_position),
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                     Text(
                       _formatDuration(_duration),
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 20),
             ] else if (widget.generation.duration != null) ...[
               Text(
@@ -484,7 +503,7 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
               ),
               const SizedBox(height: 20),
             ],
-            
+
             // Control Buttons
             if (widget.generation.audioUrl != null) ...[
               Row(
@@ -536,56 +555,74 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
             ),
           ),
           const SizedBox(height: 20),
-          
+
           // Basic Info
           _buildDetailSection('Basic Information', [
-            _buildDetailItem('Created', _formatDateTime(widget.generation.createdAt)),
-            _buildDetailItem('Status', widget.generation.status.name.toUpperCase()),
-            _buildDetailItem('Favorite', _currentGeneration.isFavorite ? 'Yes' : 'No'),
-            if (widget.asset != null) _buildDetailItem('Asset', widget.asset!.name),
-            if (widget.generation.duration != null) 
-              _buildDetailItem('Duration', '${widget.generation.duration!.toStringAsFixed(1)}s'),
+            _buildDetailItem(
+                'Created', _formatDateTime(widget.generation.createdAt)),
+            _buildDetailItem(
+                'Status', widget.generation.status.name.toUpperCase()),
+            _buildDetailItem(
+                'Favorite', _currentGeneration.isFavorite ? 'Yes' : 'No'),
+            if (widget.asset != null)
+              _buildDetailItem('Asset', widget.asset!.name),
+            if (widget.generation.duration != null)
+              _buildDetailItem('Duration',
+                  '${widget.generation.duration!.toStringAsFixed(1)}s'),
             if (widget.generation.fileSize != null)
-              _buildDetailItem('File Size', _formatFileSize(widget.generation.fileSize!)),
+              _buildDetailItem(
+                  'File Size', _formatFileSize(widget.generation.fileSize!)),
             if (widget.generation.format != null)
-              _buildDetailItem('Format', widget.generation.format!.toUpperCase()),
+              _buildDetailItem(
+                  'Format', widget.generation.format!.toUpperCase()),
           ]),
-          
+
           const SizedBox(height: 20),
-          
+
           // Technical Details
           _buildDetailSection('Technical Details', [
             _buildCopyableDetailItem('Generation ID', widget.generation.id),
             _buildCopyableDetailItem('Asset ID', widget.generation.assetId),
-            if (widget.generation.audioPath != null && widget.generation.audioPath!.isNotEmpty)
-              _buildCopyableDetailItem('Audio Path', widget.generation.audioPath!),
-            if (widget.generation.audioUrl != null && widget.generation.audioUrl!.isNotEmpty)
-              _buildCopyableDetailItem('Audio URL', widget.generation.audioUrl!),
+            if (widget.generation.audioPath != null &&
+                widget.generation.audioPath!.isNotEmpty)
+              _buildCopyableDetailItem(
+                  'Audio Path', widget.generation.audioPath!),
+            if (widget.generation.audioUrl != null &&
+                widget.generation.audioUrl!.isNotEmpty)
+              _buildCopyableDetailItem(
+                  'Audio URL', widget.generation.audioUrl!),
           ]),
-          
+
           const SizedBox(height: 20),
-          
+
           // Generation Parameters
           _buildDetailSection('Generation Parameters', [
-            _buildDetailItem('Model', widget.generation.parameters['model'] ?? 'Unknown'),
+            _buildDetailItem(
+                'Model', widget.generation.parameters['model'] ?? 'Unknown'),
             if (widget.generation.parameters['duration_seconds'] != null)
-              _buildDetailItem('Target Duration', '${widget.generation.parameters['duration_seconds']}s'),
+              _buildDetailItem('Target Duration',
+                  '${widget.generation.parameters['duration_seconds']}s'),
             if (widget.generation.parameters['prompt_influence'] != null)
-              _buildDetailItem('Prompt Influence', '${(widget.generation.parameters['prompt_influence'] * 100).toInt()}%'),
+              _buildDetailItem('Prompt Influence',
+                  '${(widget.generation.parameters['prompt_influence'] * 100).toInt()}%'),
           ]),
-          
+
           const SizedBox(height: 20),
-          
+
           // Prompts
           _buildDetailSection('Prompts', [
-            _buildTextDetailItem('Prompt', widget.generation.parameters['prompt'] ?? 'No prompt'),
-            if (widget.generation.parameters['negative_prompt'] != null && 
-                widget.generation.parameters['negative_prompt'].toString().isNotEmpty)
-              _buildTextDetailItem('Negative Prompt', widget.generation.parameters['negative_prompt']),
+            _buildTextDetailItem('Prompt',
+                widget.generation.parameters['prompt'] ?? 'No prompt'),
+            if (widget.generation.parameters['negative_prompt'] != null &&
+                widget.generation.parameters['negative_prompt']
+                    .toString()
+                    .isNotEmpty)
+              _buildTextDetailItem('Negative Prompt',
+                  widget.generation.parameters['negative_prompt']),
           ]),
-          
+
           const SizedBox(height: 20),
-          
+
           // Copy Details Button
           Center(
             child: ElevatedButton.icon(
@@ -598,6 +635,18 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
               ),
             ),
           ),
+          if (widget.asset != null) ...[
+            const SizedBox(height: 24),
+            ResourceCommentsPanel(
+              projectId: widget.asset!.projectId,
+              target: ResourceCommentTarget.resource(
+                ResourceCommentType.sfxGeneration,
+                widget.generation.id,
+              ),
+              title: 'SFX generation discussion',
+              currentUserId: context.read<AuthProvider>().userId,
+            ),
+          ],
         ],
       ),
     );
@@ -773,30 +822,42 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
     details.writeln('SFX Generation Details:');
     details.writeln('Created: ${_formatDateTime(widget.generation.createdAt)}');
     details.writeln('Status: ${widget.generation.status.name.toUpperCase()}');
-    details.writeln('Favorite: ${_currentGeneration.isFavorite ? 'Yes' : 'No'}');
+    details
+        .writeln('Favorite: ${_currentGeneration.isFavorite ? 'Yes' : 'No'}');
     if (widget.asset != null) details.writeln('Asset: ${widget.asset!.name}');
-    if (widget.generation.duration != null) details.writeln('Duration: ${widget.generation.duration!.toStringAsFixed(1)}s');
-    if (widget.generation.fileSize != null) details.writeln('File Size: ${_formatFileSize(widget.generation.fileSize!)}');
-    if (widget.generation.format != null) details.writeln('Format: ${widget.generation.format!.toUpperCase()}');
+    if (widget.generation.duration != null)
+      details.writeln(
+          'Duration: ${widget.generation.duration!.toStringAsFixed(1)}s');
+    if (widget.generation.fileSize != null)
+      details.writeln(
+          'File Size: ${_formatFileSize(widget.generation.fileSize!)}');
+    if (widget.generation.format != null)
+      details.writeln('Format: ${widget.generation.format!.toUpperCase()}');
     details.writeln();
     details.writeln('Generation Parameters:');
-    details.writeln('Model: ${widget.generation.parameters['model'] ?? 'Unknown'}');
+    details.writeln(
+        'Model: ${widget.generation.parameters['model'] ?? 'Unknown'}');
     if (widget.generation.parameters['duration_seconds'] != null) {
-      details.writeln('Target Duration: ${widget.generation.parameters['duration_seconds']}s');
+      details.writeln(
+          'Target Duration: ${widget.generation.parameters['duration_seconds']}s');
     }
     if (widget.generation.parameters['prompt_influence'] != null) {
-      details.writeln('Prompt Influence: ${(widget.generation.parameters['prompt_influence'] * 100).toInt()}%');
+      details.writeln(
+          'Prompt Influence: ${(widget.generation.parameters['prompt_influence'] * 100).toInt()}%');
     }
     details.writeln();
-    details.writeln('Prompt: ${widget.generation.parameters['prompt'] ?? 'No prompt'}');
-    if (widget.generation.parameters['negative_prompt'] != null && 
+    details.writeln(
+        'Prompt: ${widget.generation.parameters['prompt'] ?? 'No prompt'}');
+    if (widget.generation.parameters['negative_prompt'] != null &&
         widget.generation.parameters['negative_prompt'].toString().isNotEmpty) {
-      details.writeln('Negative Prompt: ${widget.generation.parameters['negative_prompt']}');
+      details.writeln(
+          'Negative Prompt: ${widget.generation.parameters['negative_prompt']}');
     }
-    
+
     Clipboard.setData(ClipboardData(text: details.toString()));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('SFX generation details copied to clipboard!')),
+      const SnackBar(
+          content: Text('SFX generation details copied to clipboard!')),
     );
   }
 
@@ -813,7 +874,7 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
     }
 
     final defaultFileName = _generateDefaultFileName();
-    
+
     await FileDownloadService.downloadFile(
       url: audioUrl,
       defaultFileName: defaultFileName,
@@ -832,27 +893,29 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
   String _generateDefaultFileName() {
     // Generate a filename based on the prompt or asset name
     String baseName = 'sfx_audio';
-    
+
     if (widget.asset != null && widget.asset!.name.isNotEmpty) {
-      baseName = widget.asset!.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      baseName = widget.asset!.name
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .replaceAll(' ', '_');
     } else if (widget.generation.parameters['prompt'] != null) {
       final prompt = widget.generation.parameters['prompt'].toString();
       if (prompt.isNotEmpty) {
         // Take first few words of prompt and sanitize
         final words = prompt.split(' ').take(3).join('_');
-        baseName = words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+        baseName =
+            words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
       }
     }
-    
+
     // Add timestamp to make filename unique
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    
+
     // Use the format from generation parameters or default to mp3
     final format = widget.generation.format ?? 'mp3';
-    
+
     return '${baseName}_$timestamp.$format';
   }
-
 
   void _deleteGeneration(BuildContext context) {
     showDialog(
@@ -882,7 +945,8 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
               // TODO: Implement actual deletion logic
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Delete functionality will be implemented soon'),
+                  content:
+                      Text('Delete functionality will be implemented soon'),
                   backgroundColor: Colors.orange,
                 ),
               );
@@ -899,4 +963,4 @@ class _SfxDetailDialogState extends State<SfxDetailDialog> {
       ),
     );
   }
-} 
+}

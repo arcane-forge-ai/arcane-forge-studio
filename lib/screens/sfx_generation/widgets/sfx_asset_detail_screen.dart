@@ -3,7 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../providers/sfx_generation_provider.dart';
 import '../../../models/sfx_generation_models.dart';
+import '../../../models/resource_comment_models.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../responsive.dart';
+import '../../../widgets/resource_comments_panel.dart';
 import 'sfx_detail_dialog.dart';
 
 class SfxAssetDetailScreen extends StatefulWidget {
@@ -59,7 +62,8 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
+        backgroundColor:
+            isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade100,
         title: Text(_currentAsset.name),
         actions: [
           IconButton(
@@ -88,6 +92,16 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
             _buildAssetIdSection(),
             const SizedBox(height: 32),
             _buildGenerationsSection(),
+            const SizedBox(height: 32),
+            ResourceCommentsPanel(
+              projectId: _currentAsset.projectId,
+              target: ResourceCommentTarget.resource(
+                ResourceCommentType.sfxAsset,
+                _currentAsset.id,
+              ),
+              title: 'SFX asset discussion',
+              currentUserId: context.read<AuthProvider>().userId,
+            ),
           ],
         ),
       ),
@@ -417,8 +431,11 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
                   InkWell(
                     onTap: () => _toggleFavorite(generation),
                     child: Icon(
-                      generation.isFavorite ? Icons.favorite : Icons.favorite_border,
-                      color: generation.isFavorite ? Colors.red : Colors.white54,
+                      generation.isFavorite
+                          ? Icons.favorite
+                          : Icons.favorite_border,
+                      color:
+                          generation.isFavorite ? Colors.red : Colors.white54,
                       size: 20,
                     ),
                   ),
@@ -593,21 +610,22 @@ class _SfxAssetDetailScreenState extends State<SfxAssetDetailScreen> {
 
   void _toggleFavorite(SfxGeneration generation) async {
     try {
-      final provider = Provider.of<SfxGenerationProvider>(context, listen: false);
+      final provider =
+          Provider.of<SfxGenerationProvider>(context, listen: false);
       await provider.setFavoriteSfxGeneration(
         generation.assetId,
         generation.id,
       );
-      
+
       // Refresh the asset to update the UI
       _refreshAsset();
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              generation.isFavorite 
-                  ? 'Removed from favorites' 
+              generation.isFavorite
+                  ? 'Removed from favorites'
                   : 'Marked as favorite',
             ),
             backgroundColor: Colors.green,

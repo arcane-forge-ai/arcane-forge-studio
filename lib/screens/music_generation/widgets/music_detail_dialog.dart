@@ -4,9 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:provider/provider.dart';
 import '../../../models/music_generation_models.dart';
+import '../../../models/resource_comment_models.dart';
 import '../../../models/sfx_generation_models.dart'; // For GenerationStatus
+import '../../../providers/auth_provider.dart';
 import '../../../providers/music_generation_provider.dart';
 import '../../../services/file_download_service.dart';
+import '../../../widgets/resource_comments_panel.dart';
 
 class MusicDetailDialog extends StatefulWidget {
   final MusicGeneration generation;
@@ -33,7 +36,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   String? _errorMessage;
-  
+
   // Stream subscriptions to properly dispose of listeners
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<Duration>? _positionSubscription;
@@ -50,20 +53,21 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
 
   Future<void> _handleFavoriteToggle() async {
     if (_isTogglingFavorite) return;
-    
+
     setState(() {
       _isTogglingFavorite = true;
     });
 
     try {
-      final provider = Provider.of<MusicGenerationProvider>(context, listen: false);
-      
+      final provider =
+          Provider.of<MusicGenerationProvider>(context, listen: false);
+
       // First, make the API call
       await provider.setFavoriteMusicGeneration(
         _currentGeneration.assetId,
         _currentGeneration.id,
       );
-      
+
       // After API call succeeds, update the UI
       if (mounted) {
         setState(() {
@@ -73,7 +77,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
           _isTogglingFavorite = false;
         });
       }
-      
+
       // Call the callback if provided (for parent to refresh)
       if (widget.onFavoriteToggle != null) {
         widget.onFavoriteToggle!();
@@ -111,11 +115,13 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
       }
     });
 
-    _playerStateSubscription = _audioPlayer.onPlayerStateChanged.listen((state) {
+    _playerStateSubscription =
+        _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) {
         setState(() {
           _isPlaying = state == PlayerState.playing;
-          _isLoading = state == PlayerState.playing && _position == Duration.zero;
+          _isLoading =
+              state == PlayerState.playing && _position == Duration.zero;
         });
       }
     });
@@ -137,7 +143,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
     _positionSubscription?.cancel();
     _playerStateSubscription?.cancel();
     _playerCompleteSubscription?.cancel();
-    
+
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -192,7 +198,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
           children: [
             // Header
             _buildHeader(context),
-            
+
             // Content
             Flexible(
               child: SingleChildScrollView(
@@ -210,6 +216,18 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                     if (widget.generation.metadata.isNotEmpty) ...[
                       const SizedBox(height: 24),
                       _buildMetadataSection(),
+                    ],
+                    if (widget.asset != null) ...[
+                      const SizedBox(height: 24),
+                      ResourceCommentsPanel(
+                        projectId: widget.asset!.projectId,
+                        target: ResourceCommentTarget.resource(
+                          ResourceCommentType.musicGeneration,
+                          widget.generation.id,
+                        ),
+                        title: 'Music generation discussion',
+                        currentUserId: context.read<AuthProvider>().userId,
+                      ),
                     ],
                   ],
                 ),
@@ -270,11 +288,12 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.fingerprint, size: 14, color: Colors.white54),
+                    const Icon(Icons.fingerprint,
+                        size: 14, color: Colors.white54),
                     const SizedBox(width: 4),
                     Text(
-                      widget.generation.id.length > 8 
-                          ? '${widget.generation.id.substring(0, 8)}...' 
+                      widget.generation.id.length > 8
+                          ? '${widget.generation.id.substring(0, 8)}...'
                           : widget.generation.id,
                       style: const TextStyle(
                         color: Colors.white54,
@@ -300,14 +319,20 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                     ),
                   )
                 : Icon(
-                    _currentGeneration.isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: _currentGeneration.isFavorite ? Colors.red : Colors.white54,
+                    _currentGeneration.isFavorite
+                        ? Icons.favorite
+                        : Icons.favorite_border,
+                    color: _currentGeneration.isFavorite
+                        ? Colors.red
+                        : Colors.white54,
                   ),
-            tooltip: _currentGeneration.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+            tooltip: _currentGeneration.isFavorite
+                ? 'Remove from favorites'
+                : 'Mark as favorite',
           ),
           // Download button
           IconButton(
-            onPressed: widget.generation.status == GenerationStatus.completed 
+            onPressed: widget.generation.status == GenerationStatus.completed
                 ? () => _downloadAudio(context)
                 : null,
             icon: const Icon(Icons.download, color: Colors.white54),
@@ -368,19 +393,23 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                         children: [
                           Icon(
                             Icons.music_note,
-                            color: _isPlaying ? Colors.orange : Colors.white.withOpacity(0.8),
+                            color: _isPlaying
+                                ? Colors.orange
+                                : Colors.white.withOpacity(0.8),
                             size: 64,
                           ),
                           const SizedBox(height: 12),
                           if (_isLoading)
                             const CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.orange),
                             )
                           else if (widget.generation.audioUrl != null)
                             Text(
                               _isPlaying ? 'Playing...' : 'Ready to play',
                               style: TextStyle(
-                                color: _isPlaying ? Colors.orange : Colors.white54,
+                                color:
+                                    _isPlaying ? Colors.orange : Colors.white54,
                                 fontSize: 16,
                               ),
                             )
@@ -395,15 +424,17 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                         ],
                       ),
                     ),
-                    
+
                     // Status badge
                     Positioned(
                       top: 12,
                       left: 12,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: _getStatusColor(widget.generation.status).withOpacity(0.2),
+                          color: _getStatusColor(widget.generation.status)
+                              .withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: _getStatusColor(widget.generation.status),
@@ -422,7 +453,8 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                             Text(
                               widget.generation.status.name,
                               style: TextStyle(
-                                color: _getStatusColor(widget.generation.status),
+                                color:
+                                    _getStatusColor(widget.generation.status),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -431,7 +463,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                         ),
                       ),
                     ),
-                    
+
                     // Favorite badge
                     if (widget.generation.isFavorite)
                       const Positioned(
@@ -446,13 +478,15 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
                   ],
                 ),
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // Progress Slider
         if (_duration.inMilliseconds > 0) ...[
           Slider(
-            value: _position.inMilliseconds.toDouble().clamp(0.0, _duration.inMilliseconds.toDouble()),
+            value: _position.inMilliseconds
+                .toDouble()
+                .clamp(0.0, _duration.inMilliseconds.toDouble()),
             max: _duration.inMilliseconds.toDouble(),
             onChanged: (value) {
               _seekTo(Duration(milliseconds: value.toInt()));
@@ -460,7 +494,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
             activeColor: Colors.orange,
             inactiveColor: Colors.white24,
           ),
-          
+
           // Time Display
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -484,9 +518,9 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
             style: const TextStyle(color: Colors.white54, fontSize: 14),
           ),
         ],
-        
+
         const SizedBox(height: 16),
-        
+
         // Control Buttons
         if (widget.generation.audioUrl != null) ...[
           Row(
@@ -529,28 +563,31 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFF404040)),
       ),
-      child:                     Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Information',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildInfoRow('Asset', widget.asset?.name ?? 'Unknown'),
-                  _buildInfoRow('Created', _formatDetailedDateTime(widget.generation.createdAt)),
-                  if (widget.generation.duration != null)
-                    _buildInfoRow('Duration', _formatDuration(widget.generation.duration!)),
-                  if (widget.generation.fileSize != null)
-                    _buildInfoRow('File Size', '${(widget.generation.fileSize! / 1024).toStringAsFixed(2)} KB'),
-                  if (widget.generation.format != null)
-                    _buildInfoRow('Format', widget.generation.format!.toUpperCase()),
-                ],
-              ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Information',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildInfoRow('Asset', widget.asset?.name ?? 'Unknown'),
+          _buildInfoRow(
+              'Created', _formatDetailedDateTime(widget.generation.createdAt)),
+          if (widget.generation.duration != null)
+            _buildInfoRow(
+                'Duration', _formatDuration(widget.generation.duration!)),
+          if (widget.generation.fileSize != null)
+            _buildInfoRow('File Size',
+                '${(widget.generation.fileSize! / 1024).toStringAsFixed(2)} KB'),
+          if (widget.generation.format != null)
+            _buildInfoRow('Format', widget.generation.format!.toUpperCase()),
+        ],
+      ),
     );
   }
 
@@ -576,9 +613,11 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
           const SizedBox(height: 12),
           _buildCopyablePathRow('Generation ID', widget.generation.id),
           _buildCopyablePathRow('Asset ID', widget.generation.assetId),
-          if (widget.generation.audioPath != null && widget.generation.audioPath!.isNotEmpty)
+          if (widget.generation.audioPath != null &&
+              widget.generation.audioPath!.isNotEmpty)
             _buildCopyablePathRow('Audio Path', widget.generation.audioPath!),
-          if (widget.generation.audioUrl != null && widget.generation.audioUrl!.isNotEmpty)
+          if (widget.generation.audioUrl != null &&
+              widget.generation.audioUrl!.isNotEmpty)
             _buildCopyablePathRow('Audio URL', widget.generation.audioUrl!),
         ],
       ),
@@ -670,9 +709,8 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
             ),
           ),
           const SizedBox(height: 12),
-          ...widget.generation.metadata.entries.map((e) =>
-            _buildInfoRow(e.key, e.value.toString())
-          ),
+          ...widget.generation.metadata.entries
+              .map((e) => _buildInfoRow(e.key, e.value.toString())),
         ],
       ),
     );
@@ -835,7 +873,7 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
     }
 
     final defaultFileName = _generateDefaultFileName();
-    
+
     await FileDownloadService.downloadFile(
       url: audioUrl,
       defaultFileName: defaultFileName,
@@ -854,25 +892,27 @@ class _MusicDetailDialogState extends State<MusicDetailDialog> {
   String _generateDefaultFileName() {
     // Generate a filename based on the prompt or asset name
     String baseName = 'music';
-    
+
     if (widget.asset != null && widget.asset!.name.isNotEmpty) {
-      baseName = widget.asset!.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      baseName = widget.asset!.name
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .replaceAll(' ', '_');
     } else if (widget.generation.parameters['prompt'] != null) {
       final prompt = widget.generation.parameters['prompt'].toString();
       if (prompt.isNotEmpty) {
         // Take first few words of prompt and sanitize
         final words = prompt.split(' ').take(3).join('_');
-        baseName = words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+        baseName =
+            words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
       }
     }
-    
+
     // Add timestamp to make filename unique
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    
+
     // Use the format from generation parameters or default to mp3
     final format = widget.generation.format ?? 'mp3';
-    
+
     return '${baseName}_$timestamp.$format';
   }
 }
-

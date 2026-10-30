@@ -18,15 +18,20 @@ import 'a1111_online_service.dart';
 abstract class ImageAssetService {
   Future<List<ImageAsset>> getProjectAssets(String projectId);
   Future<ImageAsset> getAsset(String assetId);
-  Future<ImageAsset> createAsset(String projectId, String name, String description);
+  Future<ImageAsset> createAsset(
+      String projectId, String name, String description);
   Future<ImageAsset> updateAsset(ImageAsset asset);
   Future<void> deleteAsset(String assetId);
   Future<void> deleteGeneration(String generationId);
-  Future<ImageGeneration> addGeneration(String assetId, Map<String, dynamic> parameters, {GenerationStatus status = GenerationStatus.pending});
+  Future<ImageGeneration> addGeneration(
+      String assetId, Map<String, dynamic> parameters,
+      {GenerationStatus status = GenerationStatus.pending});
   Future<ImageGeneration> updateGeneration(ImageGeneration generation);
   Future<ImageGeneration> getGeneration(String generationId);
-  Future<Map<String, dynamic>> uploadGenerationImage(String generationId, Uint8List imageData, String filename);
-  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo);
+  Future<Map<String, dynamic>> uploadGenerationImage(
+      String generationId, Uint8List imageData, String filename);
+  Future<String> generateAutoPrompt(String projectId,
+      Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo);
 }
 
 abstract class ModelService {
@@ -60,7 +65,7 @@ class ImageAssetServiceFactory {
 // API implementation using FastAPI backend
 class ApiImageAssetService implements ImageAssetService {
   late final ApiClient _apiClient;
-  
+
   ApiImageAssetService({
     String? baseUrl,
     SettingsProvider? settingsProvider,
@@ -71,7 +76,7 @@ class ApiImageAssetService implements ImageAssetService {
       authProvider: authProvider,
     );
   }
-  
+
   /// Get the current base URL from ApiClient
   String get _baseUrl => _apiClient.baseUrl;
 
@@ -86,13 +91,16 @@ class ApiImageAssetService implements ImageAssetService {
           'sort_order': 'desc',
         },
       );
-      
+
       final data = response.data as Map<String, dynamic>;
       final assetsData = data['assets'] as List<dynamic>;
-      
-      return assetsData.map((assetJson) => _parseImageAsset(assetJson)).toList();
+
+      return assetsData
+          .map((assetJson) => _parseImageAsset(assetJson))
+          .toList();
     } catch (e) {
-      throw Exception('Failed to get project assets: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to get project assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -119,27 +127,32 @@ class ApiImageAssetService implements ImageAssetService {
 
       if (search != null) queryParams['search'] = search;
       if (tags != null && tags.isNotEmpty) queryParams['tags'] = tags.join(',');
-      if (hasGenerations != null) queryParams['has_generations'] = hasGenerations;
-      if (createdAfter != null) queryParams['created_after'] = createdAfter.toIso8601String();
-      if (createdBefore != null) queryParams['created_before'] = createdBefore.toIso8601String();
+      if (hasGenerations != null)
+        queryParams['has_generations'] = hasGenerations;
+      if (createdAfter != null)
+        queryParams['created_after'] = createdAfter.toIso8601String();
+      if (createdBefore != null)
+        queryParams['created_before'] = createdBefore.toIso8601String();
 
       final response = await _apiClient.get(
         '/$projectId/assets',
         queryParameters: queryParams,
       );
-      
+
       final data = response.data as Map<String, dynamic>;
       final assetsData = data['assets'] as List<dynamic>;
-      
+
       return {
-        'assets': assetsData.map((assetJson) => _parseImageAsset(assetJson)).toList(),
+        'assets':
+            assetsData.map((assetJson) => _parseImageAsset(assetJson)).toList(),
         'total': data['total'],
         'has_more': data['has_more'],
         'limit': data['limit'],
         'offset': data['offset'],
       };
     } catch (e) {
-      throw Exception('Failed to get filtered project assets: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to get filtered project assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -150,10 +163,11 @@ class ApiImageAssetService implements ImageAssetService {
         '/assets/$assetId',
         queryParameters: {'include_generations': true},
       );
-      
+
       return _parseImageAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to get asset: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to get asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -178,23 +192,27 @@ class ApiImageAssetService implements ImageAssetService {
         '/assets/$assetId/generations',
         queryParameters: queryParams,
       );
-      
+
       final data = response.data as Map<String, dynamic>;
       final generationsData = data['generations'] as List<dynamic>;
-      
+
       return {
-        'generations': generationsData.map((genJson) => _parseImageGeneration(genJson)).toList(),
+        'generations': generationsData
+            .map((genJson) => _parseImageGeneration(genJson))
+            .toList(),
         'total': data['total'],
         'limit': data['limit'],
         'offset': data['offset'],
       };
     } catch (e) {
-      throw Exception('Failed to get asset generations: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to get asset generations: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
-  Future<ImageAsset> createAsset(String projectId, String name, String description) async {
+  Future<ImageAsset> createAsset(
+      String projectId, String name, String description) async {
     try {
       final response = await _apiClient.post(
         '/$projectId/assets',
@@ -205,10 +223,11 @@ class ApiImageAssetService implements ImageAssetService {
           'metadata': <String, dynamic>{},
         },
       );
-      
+
       return _parseImageAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to create asset: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to create asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -222,17 +241,20 @@ class ApiImageAssetService implements ImageAssetService {
         '/$projectId/assets/bulk',
         data: {'assets': assetsData},
       );
-      
+
       final data = response.data as Map<String, dynamic>;
       final createdData = data['created'] as List<dynamic>;
       final failedData = data['failed'] as List<dynamic>;
-      
+
       return {
-        'created': createdData.map((assetJson) => _parseImageAsset(assetJson)).toList(),
+        'created': createdData
+            .map((assetJson) => _parseImageAsset(assetJson))
+            .toList(),
         'failed': failedData,
       };
     } catch (e) {
-      throw Exception('Failed to create bulk assets: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to create bulk assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -248,10 +270,11 @@ class ApiImageAssetService implements ImageAssetService {
           'metadata': <String, dynamic>{},
         },
       );
-      
+
       return _parseImageAsset(response.data);
     } catch (e) {
-      throw Exception('Failed to update asset: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to update asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -263,7 +286,8 @@ class ApiImageAssetService implements ImageAssetService {
         queryParameters: {'force': true},
       );
     } catch (e) {
-      throw Exception('Failed to delete asset: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to delete asset: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -281,10 +305,11 @@ class ApiImageAssetService implements ImageAssetService {
           'force': force,
         },
       );
-      
+
       return response.data as Map<String, dynamic>;
     } catch (e) {
-      throw Exception('Failed to delete bulk assets: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to delete bulk assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -293,7 +318,8 @@ class ApiImageAssetService implements ImageAssetService {
     try {
       await _apiClient.delete('/generations/$generationId');
     } catch (e) {
-      throw Exception('Failed to delete generation: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to delete generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -303,12 +329,15 @@ class ApiImageAssetService implements ImageAssetService {
       final response = await _apiClient.get('/generations/$generationId');
       return _parseImageGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to get generation: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to get generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
-  Future<ImageGeneration> addGeneration(String assetId, Map<String, dynamic> parameters, {GenerationStatus status = GenerationStatus.pending}) async {
+  Future<ImageGeneration> addGeneration(
+      String assetId, Map<String, dynamic> parameters,
+      {GenerationStatus status = GenerationStatus.pending}) async {
     try {
       final response = await _apiClient.post(
         '/assets/$assetId/generations',
@@ -317,10 +346,11 @@ class ApiImageAssetService implements ImageAssetService {
           'status': status.name,
         },
       );
-      
+
       return _parseImageGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to add generation: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to add generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -336,35 +366,41 @@ class ApiImageAssetService implements ImageAssetService {
           'metadata': <String, dynamic>{},
         },
       );
-      
+
       return _parseImageGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to update generation: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to update generation: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   /// Mark a generation as favorite
   Future<ImageGeneration> markGenerationFavorite(String generationId) async {
     try {
-      final response = await _apiClient.post('/generations/$generationId/favorite');
+      final response =
+          await _apiClient.post('/generations/$generationId/favorite');
       return _parseImageGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to mark generation as favorite: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to mark generation as favorite: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   /// Remove favorite status from a generation
   Future<ImageGeneration> removeGenerationFavorite(String generationId) async {
     try {
-      final response = await _apiClient.delete('/generations/$generationId/favorite');
+      final response =
+          await _apiClient.delete('/generations/$generationId/favorite');
       return _parseImageGeneration(response.data);
     } catch (e) {
-      throw Exception('Failed to remove generation favorite: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to remove generation favorite: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   /// Upload an image file for a generation
-  Future<Map<String, dynamic>> uploadGenerationImage(String generationId, Uint8List imageData, String filename) async {
+  Future<Map<String, dynamic>> uploadGenerationImage(
+      String generationId, Uint8List imageData, String filename) async {
     try {
       // Create multipart file with proper content type
       final multipartFile = MultipartFile.fromBytes(
@@ -372,7 +408,7 @@ class ApiImageAssetService implements ImageAssetService {
         filename: filename,
         contentType: MediaType('image', 'png'),
       );
-      
+
       final formData = FormData.fromMap({
         'file': multipartFile,
       });
@@ -385,12 +421,16 @@ class ApiImageAssetService implements ImageAssetService {
 
       return response.data as Map<String, dynamic>;
     } catch (e) {
-      throw Exception('Failed to upload generation image: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to upload generation image: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   @override
-  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo) async {
+  Future<String> generateAutoPrompt(
+      String projectId,
+      Map<String, dynamic> assetInfo,
+      Map<String, dynamic> generatorInfo) async {
     try {
       final response = await _apiClient.post(
         '/$projectId/assets/generate-prompt',
@@ -406,7 +446,8 @@ class ApiImageAssetService implements ImageAssetService {
       }
       return prompt;
     } catch (e) {
-      throw Exception('Failed to generate image prompt: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to generate image prompt: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -419,11 +460,13 @@ class ApiImageAssetService implements ImageAssetService {
   ) async {
     try {
       // 1. Create generation (server generates ID)
-      final generation = await addGeneration(assetId, parameters, status: GenerationStatus.generating);
-      
+      final generation = await addGeneration(assetId, parameters,
+          status: GenerationStatus.generating);
+
       // 2. Upload image
-      final uploadResult = await uploadGenerationImage(generation.id, imageData, filename);
-      
+      final uploadResult =
+          await uploadGenerationImage(generation.id, imageData, filename);
+
       // 3. Update generation with completed status and image path
       final updatedGeneration = await updateGeneration(
         generation.copyWith(
@@ -431,10 +474,11 @@ class ApiImageAssetService implements ImageAssetService {
           imagePath: uploadResult['image_path'],
         ),
       );
-      
+
       return updatedGeneration;
     } catch (e) {
-      throw Exception('Failed to complete generation workflow: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to complete generation workflow: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -444,7 +488,8 @@ class ApiImageAssetService implements ImageAssetService {
       final response = await _apiClient.get('/$projectId/stats');
       return response.data as Map<String, dynamic>;
     } catch (e) {
-      throw Exception('Failed to get project stats: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to get project stats: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -455,7 +500,8 @@ class ApiImageAssetService implements ImageAssetService {
       final data = response.data as Map<String, dynamic>;
       return List<Map<String, dynamic>>.from(data['tags']);
     } catch (e) {
-      throw Exception('Failed to get project tags: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to get project tags: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
@@ -480,7 +526,8 @@ class ApiImageAssetService implements ImageAssetService {
   }
 
   /// Extract assets from document content
-  Future<List<ExtractedAsset>> extractAssetsFromContent(String projectId, String content) async {
+  Future<List<ExtractedAsset>> extractAssetsFromContent(
+      String projectId, String content) async {
     try {
       final response = await _apiClient.post(
         '/$projectId/assets/extract',
@@ -495,14 +542,14 @@ class ApiImageAssetService implements ImageAssetService {
       return assetsData.map((assetJson) {
         // Create a copy of the original JSON for metadata
         final originalJson = Map<String, dynamic>.from(assetJson);
-        
+
         // Create the asset with original JSON in metadata
         final asset = ExtractedAsset.fromJson(assetJson);
-        
+
         // Merge original JSON with existing metadata (original JSON takes precedence)
         final updatedMetadata = Map<String, dynamic>.from(asset.metadata);
         updatedMetadata.addAll(originalJson);
-        
+
         return ExtractedAsset(
           name: asset.name,
           description: asset.description,
@@ -511,19 +558,23 @@ class ApiImageAssetService implements ImageAssetService {
         );
       }).toList();
     } catch (e) {
-      throw Exception('Failed to extract assets from content: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to extract assets from content: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   /// Batch create assets from extracted data
-  Future<List<ImageAsset>> batchCreateAssets(String projectId, List<ExtractedAsset> extractedAssets) async {
+  Future<List<ImageAsset>> batchCreateAssets(
+      String projectId, List<ExtractedAsset> extractedAssets) async {
     try {
-      final assetsData = extractedAssets.map((asset) => {
-        'name': asset.name,
-        'description': asset.description,
-        'tags': asset.tags,
-        'metadata': asset.metadata,
-      }).toList();
+      final assetsData = extractedAssets
+          .map((asset) => {
+                'name': asset.name,
+                'description': asset.description,
+                'tags': asset.tags,
+                'metadata': asset.metadata,
+              })
+          .toList();
 
       final response = await _apiClient.post(
         '/$projectId/assets/batch-create',
@@ -535,16 +586,19 @@ class ApiImageAssetService implements ImageAssetService {
       final data = response.data as Map<String, dynamic>;
       final createdAssetsData = data['created'] as List<dynamic>;
 
-      return createdAssetsData.map((assetJson) => _parseImageAsset(assetJson)).toList();
+      return createdAssetsData
+          .map((assetJson) => _parseImageAsset(assetJson))
+          .toList();
     } catch (e) {
-      throw Exception('Failed to batch create assets: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to batch create assets: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
 
   /// Parse API response to ImageAsset model
   ImageAsset _parseImageAsset(Map<String, dynamic> json) {
     final generations = <ImageGeneration>[];
-    
+
     if (json['generations'] != null) {
       final generationsData = json['generations'] as List<dynamic>;
       generations.addAll(
@@ -567,7 +621,8 @@ class ApiImageAssetService implements ImageAssetService {
     // Parse metadata
     Map<String, dynamic> metadata = {};
     if (json['metadata'] != null) {
-      metadata = Map<String, dynamic>.from(json['metadata'] as Map<String, dynamic>);
+      metadata =
+          Map<String, dynamic>.from(json['metadata'] as Map<String, dynamic>);
     }
 
     return ImageAsset(
@@ -580,38 +635,42 @@ class ApiImageAssetService implements ImageAssetService {
       thumbnail: json['thumbnail'] as String?,
       favoriteGenerationId: json['favorite_generation_id'] as String?,
       totalGenerations: totalGenerations,
+      historicalGenerationCount:
+          (json['historical_generation_count'] as num?)?.toInt() ?? 0,
       tags: tags,
       metadata: metadata,
+      createdByUserId: json['created_by_user_id']?.toString(),
+      createdByUsername: json['created_by_username'] as String?,
     );
   }
 
   /// Parse API response to ImageGeneration model
   ImageGeneration _parseImageGeneration(Map<String, dynamic> json) {
     // Parse parameters and merge top-level fields that should be in parameters
-    final parameters = Map<String, dynamic>.from(json['parameters'] as Map? ?? {});
-    
+    final parameters =
+        Map<String, dynamic>.from(json['parameters'] as Map? ?? {});
+
     // Add model_name from top level if not in parameters
     if (json['model_name'] != null && !parameters.containsKey('model_name')) {
       parameters['model_name'] = json['model_name'];
     }
-    
+
     // Add provider from top level if not in parameters
     if (json['provider'] != null && !parameters.containsKey('provider')) {
       parameters['provider'] = json['provider'];
     }
-    
+
     // Parse variants if present
     Map<String, Map<String, dynamic>>? variants;
     if (json['variants'] != null) {
       final variantsJson = json['variants'] as Map<String, dynamic>;
-      variants = variantsJson.map((key, value) => 
-        MapEntry(key, Map<String, dynamic>.from(value as Map))
-      );
+      variants = variantsJson.map((key, value) =>
+          MapEntry(key, Map<String, dynamic>.from(value as Map)));
     }
-    
+
     // Parse metadata
     final metadata = Map<String, dynamic>.from(json['metadata'] as Map? ?? {});
-    
+
     return ImageGeneration(
       id: json['id'] as String,
       assetId: json['asset_id'] as String,
@@ -624,6 +683,7 @@ class ApiImageAssetService implements ImageAssetService {
       errorMessage: json['error_message'] as String?,
       variants: variants,
       metadata: metadata,
+      createdByUserId: json['created_by_user_id']?.toString(),
     );
   }
 
@@ -653,11 +713,11 @@ class MockImageAssetService implements ImageAssetService {
   Future<List<ImageAsset>> getProjectAssets(String projectId) async {
     // Simulate network delay
     await Future.delayed(Duration(milliseconds: 300));
-    
+
     if (_mockAssets.isEmpty) {
       _generateMockAssets(projectId);
     }
-    
+
     return _mockAssets.where((asset) => asset.projectId == projectId).toList();
   }
 
@@ -668,9 +728,10 @@ class MockImageAssetService implements ImageAssetService {
   }
 
   @override
-  Future<ImageAsset> createAsset(String projectId, String name, String description) async {
+  Future<ImageAsset> createAsset(
+      String projectId, String name, String description) async {
     await Future.delayed(Duration(milliseconds: 500));
-    
+
     final asset = ImageAsset(
       id: 'asset_${DateTime.now().millisecondsSinceEpoch}',
       projectId: projectId,
@@ -679,7 +740,7 @@ class MockImageAssetService implements ImageAssetService {
       createdAt: DateTime.now(),
       generations: [],
     );
-    
+
     _mockAssets.add(asset);
     return asset;
   }
@@ -687,12 +748,12 @@ class MockImageAssetService implements ImageAssetService {
   @override
   Future<ImageAsset> updateAsset(ImageAsset asset) async {
     await Future.delayed(Duration(milliseconds: 300));
-    
+
     final index = _mockAssets.indexWhere((a) => a.id == asset.id);
     if (index != -1) {
       _mockAssets[index] = asset;
     }
-    
+
     return asset;
   }
 
@@ -705,16 +766,18 @@ class MockImageAssetService implements ImageAssetService {
   @override
   Future<void> deleteGeneration(String generationId) async {
     await Future.delayed(Duration(milliseconds: 300));
-    
+
     for (var asset in _mockAssets) {
       asset.generations.removeWhere((gen) => gen.id == generationId);
     }
   }
 
   @override
-  Future<ImageGeneration> addGeneration(String assetId, Map<String, dynamic> parameters, {GenerationStatus status = GenerationStatus.pending}) async {
+  Future<ImageGeneration> addGeneration(
+      String assetId, Map<String, dynamic> parameters,
+      {GenerationStatus status = GenerationStatus.pending}) async {
     await Future.delayed(Duration(milliseconds: 300));
-    
+
     // Create a new generation with server-generated ID
     final generation = ImageGeneration(
       id: 'gen_${DateTime.now().millisecondsSinceEpoch}', // Mock server-generated ID
@@ -727,25 +790,25 @@ class MockImageAssetService implements ImageAssetService {
       errorMessage: null,
       metadata: const {},
     );
-    
+
     final assetIndex = _mockAssets.indexWhere((a) => a.id == assetId);
     if (assetIndex != -1) {
       final asset = _mockAssets[assetIndex];
       final updatedGenerations = [...asset.generations, generation];
-      
+
       _mockAssets[assetIndex] = asset.copyWith(
         generations: updatedGenerations,
         thumbnail: asset.thumbnail ?? generation.imagePath,
       );
     }
-    
+
     return generation;
   }
 
   @override
   Future<ImageGeneration> getGeneration(String generationId) async {
     await Future.delayed(Duration(milliseconds: 300));
-    
+
     // Find the asset that contains the generation
     for (var asset in _mockAssets) {
       for (var generation in asset.generations) {
@@ -754,7 +817,7 @@ class MockImageAssetService implements ImageAssetService {
         }
       }
     }
-    
+
     // If generation not found, throw an exception
     throw Exception('Generation not found: $generationId');
   }
@@ -762,30 +825,33 @@ class MockImageAssetService implements ImageAssetService {
   @override
   Future<ImageGeneration> updateGeneration(ImageGeneration generation) async {
     await Future.delayed(Duration(milliseconds: 300));
-    
+
     for (var asset in _mockAssets) {
-      final genIndex = asset.generations.indexWhere((g) => g.id == generation.id);
+      final genIndex =
+          asset.generations.indexWhere((g) => g.id == generation.id);
       if (genIndex != -1) {
         asset.generations[genIndex] = generation;
-        
+
         // Update favorite generation ID if this generation is marked as favorite
         if (generation.isFavorite) {
-          final updatedAsset = asset.copyWith(favoriteGenerationId: generation.id);
+          final updatedAsset =
+              asset.copyWith(favoriteGenerationId: generation.id);
           final assetIndex = _mockAssets.indexWhere((a) => a.id == asset.id);
           _mockAssets[assetIndex] = updatedAsset;
         }
-        
+
         break;
       }
     }
-    
+
     return generation;
   }
 
   @override
-  Future<Map<String, dynamic>> uploadGenerationImage(String generationId, Uint8List imageData, String filename) async {
+  Future<Map<String, dynamic>> uploadGenerationImage(
+      String generationId, Uint8List imageData, String filename) async {
     await Future.delayed(Duration(milliseconds: 500));
-    
+
     // Mock implementation - just return a mock response
     return {
       'image_path': 'mock/$generationId/$filename',
@@ -796,15 +862,21 @@ class MockImageAssetService implements ImageAssetService {
   }
 
   @override
-  Future<String> generateAutoPrompt(String projectId, Map<String, dynamic> assetInfo, Map<String, dynamic> generatorInfo) async {
+  Future<String> generateAutoPrompt(
+      String projectId,
+      Map<String, dynamic> assetInfo,
+      Map<String, dynamic> generatorInfo) async {
     await Future.delayed(Duration(milliseconds: 300));
     final name = (assetInfo['name'] ?? 'game asset').toString();
-    final model = (generatorInfo['model'] ?? generatorInfo['checkpoint'] ?? 'a quality model').toString();
+    final model = (generatorInfo['model'] ??
+            generatorInfo['checkpoint'] ??
+            'a quality model')
+        .toString();
     final width = generatorInfo['width'] ?? 512;
     final height = generatorInfo['height'] ?? 512;
-    return 'Highly detailed concept art of ' 
-      '$name, cinematic lighting, intricate details, sharp focus, ' 
-      'rendered with $model, ${width}x$height, masterpiece, trending on artstation.';
+    return 'Highly detailed concept art of '
+        '$name, cinematic lighting, intricate details, sharp focus, '
+        'rendered with $model, ${width}x$height, masterpiece, trending on artstation.';
   }
 
   void _generateMockAssets(String projectId) {
@@ -839,7 +911,7 @@ class MockImageAssetService implements ImageAssetService {
         createdAt: DateTime.now().subtract(Duration(days: _random.nextInt(30))),
         generations: _generateMockGenerations('asset_$i'),
       );
-      
+
       _mockAssets.add(asset);
     }
   }
@@ -853,7 +925,8 @@ class MockImageAssetService implements ImageAssetService {
         imagePath: 'mock_image_$index.png',
         parameters: {
           'model': 'Realistic_Vision_V5.1',
-          'positive_prompt': 'Epic fantasy artwork, highly detailed, masterpiece',
+          'positive_prompt':
+              'Epic fantasy artwork, highly detailed, masterpiece',
           'negative_prompt': 'low quality, blurry, distorted',
           'width': 512,
           'height': 768,
@@ -863,7 +936,8 @@ class MockImageAssetService implements ImageAssetService {
           'seed': _random.nextInt(1000000),
           'loras': [],
         },
-        createdAt: DateTime.now().subtract(Duration(hours: _random.nextInt(48))),
+        createdAt:
+            DateTime.now().subtract(Duration(hours: _random.nextInt(48))),
         status: GenerationStatus.completed,
         isFavorite: index == 0, // First generation is favorite
         errorMessage: null,
@@ -873,19 +947,17 @@ class MockImageAssetService implements ImageAssetService {
   }
 }
 
-
-
 class MockModelService implements ModelService {
   static final List<AIModel> _mockModels = [];
 
   @override
   Future<List<AIModel>> getAvailableModels() async {
     await Future.delayed(Duration(milliseconds: 300));
-    
+
     if (_mockModels.isEmpty) {
       _generateMockModels();
     }
-    
+
     return List.from(_mockModels);
   }
 
@@ -925,7 +997,8 @@ class MockModelService implements ModelService {
         type: 'checkpoint',
         path: 'models/checkpoints/$name.safetensors',
         description: 'High-quality checkpoint model for $name',
-        lastModified: DateTime.now().subtract(Duration(days: Random().nextInt(30))),
+        lastModified:
+            DateTime.now().subtract(Duration(days: Random().nextInt(30))),
       ));
     }
 
@@ -945,17 +1018,18 @@ class MockModelService implements ModelService {
         type: 'lora',
         path: 'models/loras/$name.safetensors',
         description: 'Enhancement LoRA for $name',
-        lastModified: DateTime.now().subtract(Duration(days: Random().nextInt(30))),
+        lastModified:
+            DateTime.now().subtract(Duration(days: Random().nextInt(30))),
       ));
     }
   }
-} 
+}
 
 class A1111ImageGenerationService {
   final SettingsProvider _settingsProvider;
   final Dio _dio;
   final A1111OnlineService? _onlineService;
-  
+
   A1111ImageGenerationService(
     this._settingsProvider, {
     A1111OnlineService? onlineService,
@@ -964,12 +1038,13 @@ class A1111ImageGenerationService {
     _dio.options.connectTimeout = const Duration(seconds: 30);
     _dio.options.receiveTimeout = const Duration(seconds: 60);
   }
-  
+
   /// Check if currently in online mode
   bool get _isOnlineMode => _settingsProvider.a1111Mode == A1111Mode.online;
-  
+
   /// Generate image using online mode - returns full result with generation ID
-  Future<OnlineGenerationResult> generateImageOnline(GenerationRequest request) async {
+  Future<OnlineGenerationResult> generateImageOnline(
+      GenerationRequest request) async {
     if (_onlineService == null) {
       throw Exception('Online service not initialized');
     }
@@ -983,7 +1058,7 @@ class A1111ImageGenerationService {
     }
     return await _onlineService.submitGeneration(request);
   }
-  
+
   /// Generate image using A1111 API with checkpoint switching
   Future<Uint8List> generateImage(GenerationRequest request) async {
     // Online mode: delegate to online service
@@ -993,29 +1068,29 @@ class A1111ImageGenerationService {
       }
       return await _onlineService.generateImage(request);
     }
-    
+
     // Local mode: use direct API calls
     final backend = _settingsProvider.defaultGenerationServer;
     final apiEndpoint = _settingsProvider.getEndpoint(backend);
-    
+
     if (apiEndpoint.isEmpty) {
       throw Exception('API endpoint not configured for ${backend.displayName}');
     }
-    
+
     // Check and switch checkpoint if needed
     await _ensureCorrectCheckpoint(request.model);
 
     // Load the request template
     final payload = await _loadRequestTemplate();
-    
+
     // Update the payload with our request parameters
     _updatePayload(payload, request);
 
     print(jsonEncode(payload));
-    
+
     // Make the API call
     final url = '$apiEndpoint/sdapi/v1/txt2img';
-    
+
     try {
       final response = await _dio.post(
         url,
@@ -1024,20 +1099,21 @@ class A1111ImageGenerationService {
           headers: {'Content-Type': 'application/json'},
         ),
       );
-      
+
       if (response.statusCode != 200) {
-        throw Exception('API request failed with status ${response.statusCode}');
+        throw Exception(
+            'API request failed with status ${response.statusCode}');
       }
-      
+
       final responseData = response.data;
       if (responseData['images'] == null || responseData['images'].isEmpty) {
         throw Exception('No images returned from API');
       }
-      
+
       // Decode the Base64 image
       final base64Image = responseData['images'][0];
       final imageData = base64Decode(base64Image);
-      
+
       return imageData;
     } catch (e) {
       if (e is DioException) {
@@ -1055,20 +1131,22 @@ class A1111ImageGenerationService {
         throw Exception('Online service not initialized');
       }
       // Get checkpoints with model_type=checkpoint filter
-      final models = await _onlineService.getAvailableModels(modelType: 'checkpoint');
-      
+      final models =
+          await _onlineService.getAvailableModels(modelType: 'checkpoint');
+
       // Check for duplicate display names
       final displayNameCounts = <String, int>{};
       for (final model in models) {
         final displayName = model.displayName ?? model.name;
-        displayNameCounts[displayName] = (displayNameCounts[displayName] ?? 0) + 1;
+        displayNameCounts[displayName] =
+            (displayNameCounts[displayName] ?? 0) + 1;
       }
-      
+
       return models.map((model) {
         final displayName = model.displayName ?? model.name;
         // Use filename if duplicate display name found
         final shouldUseFilename = displayNameCounts[displayName]! > 1;
-        
+
         return A1111Checkpoint(
           title: shouldUseFilename ? model.name : displayName,
           modelName: model.name,
@@ -1079,33 +1157,35 @@ class A1111ImageGenerationService {
         );
       }).toList();
     }
-    
+
     // Local mode: get from local API
     final backend = _settingsProvider.defaultGenerationServer;
     final apiEndpoint = _settingsProvider.getEndpoint(backend);
-    
+
     if (apiEndpoint.isEmpty) {
       throw Exception('API endpoint not configured for ${backend.displayName}');
     }
-    
+
     final url = '$apiEndpoint/sdapi/v1/sd-models';
-    
+
     try {
       final response = await _dio.get(url);
-      
+
       if (response.statusCode != 200) {
         throw Exception('Failed to get checkpoints: ${response.statusCode}');
       }
-      
+
       final List<dynamic> data = response.data;
-      final checkpoints = data.map((json) => A1111Checkpoint.fromJson(json)).toList();
-      
+      final checkpoints =
+          data.map((json) => A1111Checkpoint.fromJson(json)).toList();
+
       // Check for duplicate titles
       final titleCounts = <String, int>{};
       for (final checkpoint in checkpoints) {
-        titleCounts[checkpoint.title] = (titleCounts[checkpoint.title] ?? 0) + 1;
+        titleCounts[checkpoint.title] =
+            (titleCounts[checkpoint.title] ?? 0) + 1;
       }
-      
+
       // If duplicates found, recreate checkpoints with filename as title
       if (titleCounts.values.any((count) => count > 1)) {
         return checkpoints.map((checkpoint) {
@@ -1123,7 +1203,7 @@ class A1111ImageGenerationService {
           return checkpoint;
         }).toList();
       }
-      
+
       return checkpoints;
     } catch (e) {
       if (e is DioException) {
@@ -1143,19 +1223,20 @@ class A1111ImageGenerationService {
       try {
         // Get loras with model_type=lora filter
         final models = await _onlineService.getAvailableLoras();
-        
+
         // Check for duplicate display names
         final displayNameCounts = <String, int>{};
         for (final model in models) {
           final displayName = model.displayName ?? model.name;
-          displayNameCounts[displayName] = (displayNameCounts[displayName] ?? 0) + 1;
+          displayNameCounts[displayName] =
+              (displayNameCounts[displayName] ?? 0) + 1;
         }
-        
+
         return models.map((model) {
           final displayName = model.displayName ?? model.name;
           // Use filename if duplicate display name found
           final shouldUseFilename = displayNameCounts[displayName]! > 1;
-          
+
           return A1111Lora(
             name: shouldUseFilename ? model.name : displayName,
             alias: shouldUseFilename ? model.name : displayName,
@@ -1169,34 +1250,34 @@ class A1111ImageGenerationService {
         return [];
       }
     }
-    
+
     // Local mode: get from local API
     final backend = _settingsProvider.defaultGenerationServer;
     final apiEndpoint = _settingsProvider.getEndpoint(backend);
-    
+
     if (apiEndpoint.isEmpty) {
       throw Exception('API endpoint not configured for ${backend.displayName}');
     }
-    
+
     final url = '$apiEndpoint/sdapi/v1/loras';
-    
+
     try {
       final response = await _dio.get(url);
-      
+
       if (response.statusCode != 200) {
         throw Exception('Failed to get LoRAs: ${response.statusCode}');
       }
-      
+
       final List<dynamic> data = response.data;
       final loras = data.map((json) => A1111Lora.fromJson(json)).toList();
-      
+
       // Check for duplicate names (display names)
       final nameCounts = <String, int>{};
       for (final lora in loras) {
         final displayName = lora.alias ?? lora.name;
         nameCounts[displayName] = (nameCounts[displayName] ?? 0) + 1;
       }
-      
+
       // If duplicates found, recreate LoRAs with path as name
       if (nameCounts.values.any((count) => count > 1)) {
         return loras.map((lora) {
@@ -1213,7 +1294,7 @@ class A1111ImageGenerationService {
           return lora;
         }).toList();
       }
-      
+
       return loras;
     } catch (e) {
       if (e is DioException) {
@@ -1227,20 +1308,21 @@ class A1111ImageGenerationService {
   Future<Map<String, dynamic>> getCurrentOptions() async {
     final backend = _settingsProvider.defaultGenerationServer;
     final apiEndpoint = _settingsProvider.getEndpoint(backend);
-    
+
     if (apiEndpoint.isEmpty) {
       throw Exception('API endpoint not configured for ${backend.displayName}');
     }
-    
+
     final url = '$apiEndpoint/sdapi/v1/options';
-    
+
     try {
       final response = await _dio.get(url);
-      
+
       if (response.statusCode != 200) {
-        throw Exception('Failed to get current options: ${response.statusCode}');
+        throw Exception(
+            'Failed to get current options: ${response.statusCode}');
       }
-      
+
       return response.data as Map<String, dynamic>;
     } catch (e) {
       if (e is DioException) {
@@ -1257,7 +1339,7 @@ class A1111ImageGenerationService {
     if (_isOnlineMode) {
       return null;
     }
-    
+
     try {
       final options = await getCurrentOptions();
       return options['sd_model_checkpoint'] as String?;
@@ -1270,16 +1352,16 @@ class A1111ImageGenerationService {
   Future<void> switchCheckpoint(String checkpointTitle) async {
     final backend = _settingsProvider.defaultGenerationServer;
     final apiEndpoint = _settingsProvider.getEndpoint(backend);
-    
+
     if (apiEndpoint.isEmpty) {
       throw Exception('API endpoint not configured for ${backend.displayName}');
     }
-    
+
     final url = '$apiEndpoint/sdapi/v1/options';
     final payload = {
       'sd_model_checkpoint': checkpointTitle,
     };
-    
+
     try {
       final response = await _dio.post(
         url,
@@ -1288,7 +1370,7 @@ class A1111ImageGenerationService {
           headers: {'Content-Type': 'application/json'},
         ),
       );
-      
+
       if (response.statusCode != 200) {
         throw Exception('Failed to switch checkpoint: ${response.statusCode}');
       }
@@ -1309,15 +1391,15 @@ class A1111ImageGenerationService {
       }
       return await _onlineService.isServerReachable();
     }
-    
+
     // Local mode: check local A1111 endpoint
     final backend = _settingsProvider.defaultGenerationServer;
     final apiEndpoint = _settingsProvider.getEndpoint(backend);
-    
+
     if (apiEndpoint.isEmpty) {
       return false;
     }
-    
+
     try {
       final response = await _dio.get(
         '$apiEndpoint/sdapi/v1/options',
@@ -1336,31 +1418,32 @@ class A1111ImageGenerationService {
   Future<void> _ensureCorrectCheckpoint(String selectedCheckpointTitle) async {
     try {
       final currentCheckpoint = await getCurrentCheckpoint();
-      
+
       if (currentCheckpoint != selectedCheckpointTitle) {
         await switchCheckpoint(selectedCheckpointTitle);
       }
     } catch (e) {
       final currentCheckpoint = await getCurrentCheckpoint();
       throw Exception(
-        'Failed to switch checkpoint to "$selectedCheckpointTitle". '
-        'Current checkpoint: "${currentCheckpoint ?? "Unknown"}". '
-        'Error: ${e.toString()}'
-      );
+          'Failed to switch checkpoint to "$selectedCheckpointTitle". '
+          'Current checkpoint: "${currentCheckpoint ?? "Unknown"}". '
+          'Error: ${e.toString()}');
     }
   }
-  
+
   /// Load the request template from the JSON file
   Future<Map<String, dynamic>> _loadRequestTemplate() async {
     try {
       // Load the asset using rootBundle
-      final jsonString = await rootBundle.loadString('assets/requests/a1111_request.json');
+      final jsonString =
+          await rootBundle.loadString('assets/requests/a1111_request.json');
       return jsonDecode(jsonString) as Map<String, dynamic>;
     } catch (e) {
-      throw Exception('Failed to load request template: ${ErrorHandler.getErrorMessage(e)}');
+      throw Exception(
+          'Failed to load request template: ${ErrorHandler.getErrorMessage(e)}');
     }
   }
-  
+
   /// Update the payload with our generation parameters
   void _updatePayload(Map<String, dynamic> payload, GenerationRequest request) {
     // Update main parameters
@@ -1373,19 +1456,20 @@ class A1111ImageGenerationService {
     payload['seed'] = request.seed;
     payload['sampler_name'] = request.sampler;
     payload['scheduler'] = request.scheduler;
-    
+
     // Update alwayson_scripts parameters
     final alwaysonScripts = payload['alwayson_scripts'] as Map<String, dynamic>;
-    
+
     // Update Dynamic Thresholding (CFG Scale Fix) - 2nd value in args array
     if (alwaysonScripts.containsKey('Dynamic Thresholding (CFG Scale Fix)')) {
-      final dynamicThresholding = alwaysonScripts['Dynamic Thresholding (CFG Scale Fix)'];
+      final dynamicThresholding =
+          alwaysonScripts['Dynamic Thresholding (CFG Scale Fix)'];
       final args = dynamicThresholding['args'] as List;
       if (args.length > 1) {
         args[1] = request.cfgScale;
       }
     }
-    
+
     // Update Sampler - contains 3 args: steps, sampler, and scheduler
     if (alwaysonScripts.containsKey('Sampler')) {
       final sampler = alwaysonScripts['Sampler'];
@@ -1396,7 +1480,7 @@ class A1111ImageGenerationService {
         args[2] = request.scheduler;
       }
     }
-    
+
     // Update Seed - 1st value in args array
     if (alwaysonScripts.containsKey('Seed')) {
       final seed = alwaysonScripts['Seed'];
@@ -1406,4 +1490,4 @@ class A1111ImageGenerationService {
       }
     }
   }
-} 
+}

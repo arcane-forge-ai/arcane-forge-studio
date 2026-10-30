@@ -11,6 +11,8 @@ import '../../../models/project_overview_models.dart';
 import '../../../models/evaluate_models.dart';
 import '../../../widgets/project_flow_chart.dart';
 import '../../../widgets/evaluate_result_card.dart';
+import '../../../widgets/resource_comments_panel.dart';
+import '../../../models/resource_comment_models.dart';
 import '../../../utils/error_handler.dart';
 import '../../../controllers/menu_app_controller.dart';
 import '../../evaluate/evaluate_screen.dart';
@@ -361,6 +363,17 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
           // Team Members Card
           _buildTeamMembersCard(),
 
+          const SizedBox(height: defaultPadding),
+
+          ResourceCommentsPanel(
+            projectId: widget.projectId,
+            target: const ResourceCommentTarget.project(),
+            title: 'Project discussion',
+            currentUserId: context.read<AuthProvider>().userId,
+            canModerate:
+                _project!.userId == context.read<AuthProvider>().userId,
+          ),
+
           // Project Flow Chart
           if (_overview != null) ...[
             const SizedBox(height: defaultPadding),
@@ -694,7 +707,6 @@ class _ProjectHomeScreenState extends State<ProjectHomeScreen> {
       },
     );
   }
-
 
   @override
   void dispose() {

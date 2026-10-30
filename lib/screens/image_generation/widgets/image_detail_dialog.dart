@@ -3,8 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io' show File;
 import '../../../models/image_generation_models.dart';
+import '../../../models/resource_comment_models.dart';
 import '../../../providers/image_generation_provider.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../services/file_download_service.dart';
+import '../../../widgets/image_provenance_badge.dart';
+import '../../../widgets/resource_comments_panel.dart';
 import 'package:provider/provider.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 
@@ -33,7 +37,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
   bool _isTogglingFavorite = false;
   bool _isLoadingGeneration = true;
   String? _loadError;
-  final CarouselSliderController _carouselController = CarouselSliderController();
+  final CarouselSliderController _carouselController =
+      CarouselSliderController();
   int _currentCarouselPage = 0;
 
   @override
@@ -45,15 +50,17 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
 
   Future<void> _refreshGenerationData() async {
     if (!mounted) return;
-    
+
     setState(() {
       _isLoadingGeneration = true;
       _loadError = null;
     });
 
     try {
-      final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
-      final updatedGeneration = await provider.getGeneration(widget.generation.id);
+      final provider =
+          Provider.of<ImageGenerationProvider>(context, listen: false);
+      final updatedGeneration =
+          await provider.getGeneration(widget.generation.id);
       if (updatedGeneration != null && mounted) {
         setState(() {
           _currentGeneration = updatedGeneration;
@@ -77,23 +84,25 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
 
   Future<void> _handleFavoriteToggle() async {
     if (_isTogglingFavorite || _currentGeneration == null) return;
-    
+
     setState(() {
       _isTogglingFavorite = true;
     });
 
     try {
-      final provider = Provider.of<ImageGenerationProvider>(context, listen: false);
-      
+      final provider =
+          Provider.of<ImageGenerationProvider>(context, listen: false);
+
       // First, make the API call
       if (_currentGeneration!.isFavorite) {
         await provider.removeGenerationFavorite(_currentGeneration!.id);
       } else {
         await provider.markGenerationAsFavorite(_currentGeneration!.id);
       }
-      
+
       // After API call succeeds, fetch updated generation
-      final updatedGeneration = await provider.getGeneration(_currentGeneration!.id);
+      final updatedGeneration =
+          await provider.getGeneration(_currentGeneration!.id);
       if (updatedGeneration != null && mounted) {
         setState(() {
           _currentGeneration = updatedGeneration;
@@ -104,7 +113,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
           _isTogglingFavorite = false;
         });
       }
-      
+
       // Call the callback if provided (for parent to refresh)
       if (widget.onFavoriteToggle != null) {
         widget.onFavoriteToggle!();
@@ -147,7 +156,9 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
             ? _buildLoadingState(context)
             : _loadError != null
                 ? _buildErrorState(context)
-                : (isLargeScreen ? _buildLargeScreenLayout(context) : _buildMobileLayout(context)),
+                : (isLargeScreen
+                    ? _buildLargeScreenLayout(context)
+                    : _buildMobileLayout(context)),
       ),
     );
   }
@@ -282,7 +293,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
   Widget _buildLargeScreenLayout(BuildContext context) {
     // This method is only called when _currentGeneration is not null
     final generation = _currentGeneration!;
-    
+
     return Column(
       children: [
         // Header with action buttons
@@ -326,7 +337,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
   Widget _buildMobileLayout(BuildContext context) {
     // This method is only called when _currentGeneration is not null
     final generation = _currentGeneration!;
-    
+
     return Column(
       children: [
         // Header with action buttons
@@ -384,6 +395,10 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          if (generation.isExternalSource) ...[
+            const SizedBox(width: 12),
+            ImageProvenanceBadge(generation: generation),
+          ],
           const Spacer(),
           // Copy Generation ID button
           Tooltip(
@@ -410,11 +425,12 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.fingerprint, size: 14, color: Colors.white54),
+                    const Icon(Icons.fingerprint,
+                        size: 14, color: Colors.white54),
                     const SizedBox(width: 4),
                     Text(
-                      generation.id.length > 8 
-                          ? '${generation.id.substring(0, 8)}...' 
+                      generation.id.length > 8
+                          ? '${generation.id.substring(0, 8)}...'
                           : generation.id,
                       style: const TextStyle(
                         color: Colors.white54,
@@ -441,15 +457,20 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                     ),
                   )
                 : Icon(
-                    generation.isFavorite ? Icons.favorite : Icons.favorite_border,
+                    generation.isFavorite
+                        ? Icons.favorite
+                        : Icons.favorite_border,
                     color: generation.isFavorite ? Colors.red : Colors.white54,
                   ),
-            tooltip: generation.isFavorite ? 'Remove from favorites' : 'Mark as favorite',
+            tooltip: generation.isFavorite
+                ? 'Remove from favorites'
+                : 'Mark as favorite',
           ),
           // Download button
           IconButton(
-            onPressed: generation.status == GenerationStatus.completed 
-                ? (widget.onDownload ?? () => _downloadImage(context, generation))
+            onPressed: generation.status == GenerationStatus.completed
+                ? (widget.onDownload ??
+                    () => _downloadImage(context, generation))
                 : null,
             icon: const Icon(Icons.download, color: Colors.white54),
             tooltip: 'Download image',
@@ -481,11 +502,11 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     if (generation.parameters.containsKey('height')) {
       height = generation.parameters['height'] ?? 512;
     }
-    
+
     // Check if variants exist with background_removed
-    final hasVariants = generation.variants != null && 
-                       generation.variants!.containsKey('background_removed');
-    
+    final hasVariants = generation.variants != null &&
+        generation.variants!.containsKey('background_removed');
+
     if (hasVariants) {
       // Build carousel with variants
       return _buildCarouselView(generation, width, height);
@@ -494,43 +515,45 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       return _buildSingleImageView(generation, width, height);
     }
   }
-  
-  Widget _buildSingleImageView(ImageGeneration generation, int width, int height) {
+
+  Widget _buildSingleImageView(
+      ImageGeneration generation, int width, int height) {
     // Use online URL if available, otherwise use local file
-    final Widget imageWidget = generation.imageUrl != null && generation.imageUrl!.isNotEmpty
-        ? Image.network(
-            generation.imageUrl!,
-            width: width.toDouble(),
-            height: height.toDouble(),
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              // Fallback to local file if network image fails
-              if (!kIsWeb && generation.imagePath.isNotEmpty) {
-                return Image.file(
-                  File(generation.imagePath),
-                  width: width.toDouble(),
-                  height: height.toDouble(),
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return _buildErrorImage(width, height);
-                  },
-                );
-              }
-              return _buildErrorImage(width, height);
-            },
-          )
-        : !kIsWeb && generation.imagePath.isNotEmpty
-            ? Image.file(
-                File(generation.imagePath),
+    final Widget imageWidget =
+        generation.imageUrl != null && generation.imageUrl!.isNotEmpty
+            ? Image.network(
+                generation.imageUrl!,
                 width: width.toDouble(),
                 height: height.toDouble(),
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
+                  // Fallback to local file if network image fails
+                  if (!kIsWeb && generation.imagePath.isNotEmpty) {
+                    return Image.file(
+                      File(generation.imagePath),
+                      width: width.toDouble(),
+                      height: height.toDouble(),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return _buildErrorImage(width, height);
+                      },
+                    );
+                  }
                   return _buildErrorImage(width, height);
                 },
               )
-            : _buildErrorImage(width, height);
-    
+            : !kIsWeb && generation.imagePath.isNotEmpty
+                ? Image.file(
+                    File(generation.imagePath),
+                    width: width.toDouble(),
+                    height: height.toDouble(),
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return _buildErrorImage(width, height);
+                    },
+                  )
+                : _buildErrorImage(width, height);
+
     return Center(
       child: SingleChildScrollView(
         scrollDirection: Axis.vertical,
@@ -541,11 +564,11 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       ),
     );
   }
-  
+
   Widget _buildCarouselView(ImageGeneration generation, int width, int height) {
     // Build list of variant images
     final List<Map<String, dynamic>> variantsList = [];
-    
+
     // Add original variant
     if (generation.variants!.containsKey('original')) {
       variantsList.add({
@@ -559,7 +582,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
         'data': {'url': generation.imageUrl ?? ''},
       });
     }
-    
+
     // Add background_removed variant
     if (generation.variants!.containsKey('background_removed')) {
       variantsList.add({
@@ -567,7 +590,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
         'data': generation.variants!['background_removed']!,
       });
     }
-    
+
     return Stack(
       children: [
         Center(
@@ -588,7 +611,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
               final label = variant['label'] as String;
               final data = variant['data'] as Map<String, dynamic>;
               final url = data['url'] as String?;
-              
+
               return Builder(
                 builder: (BuildContext context) {
                   return Stack(
@@ -611,7 +634,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                         top: 16,
                         left: 16,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: Colors.black.withOpacity(0.7),
                             borderRadius: BorderRadius.circular(20),
@@ -647,8 +671,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
                     : null,
                 icon: Icon(
                   Icons.arrow_back_ios,
-                  color: _currentCarouselPage > 0 
-                      ? Colors.white 
+                  color: _currentCarouselPage > 0
+                      ? Colors.white
                       : Colors.white.withOpacity(0.3),
                 ),
                 style: IconButton.styleFrom(
@@ -686,7 +710,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(20),
@@ -706,7 +731,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       ],
     );
   }
-  
+
   Widget _buildErrorImage(int width, int height) {
     return Container(
       width: width.toDouble(),
@@ -735,24 +760,32 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
             ),
           ),
           const SizedBox(height: 20),
-          
+
           // Error Message (if failed)
-          if (generation.status == GenerationStatus.failed)
-            ...[
-              _buildErrorSection(generation),
-              const SizedBox(height: 20),
-            ],
-          
+          if (generation.status == GenerationStatus.failed) ...[
+            _buildErrorSection(generation),
+            const SizedBox(height: 20),
+          ],
+
           // Basic Info
           _buildDetailSection('Basic Information', [
             _buildDetailItem('Created', _formatDateTime(generation.createdAt)),
             _buildDetailItem('Status', generation.status.name.toUpperCase()),
             _buildDetailItem('Favorite', generation.isFavorite ? 'Yes' : 'No'),
-            if (widget.asset != null) _buildDetailItem('Asset', widget.asset!.name),
+            if (widget.asset != null)
+              _buildDetailItem('Asset', widget.asset!.name),
+            if (generation.createdByUserId != null)
+              _buildDetailItem(
+                  'Uploader', _shortId(generation.createdByUserId!)),
           ]),
-          
+
+          if (generation.isExternalSource) ...[
+            const SizedBox(height: 20),
+            _buildProvenanceSection(generation),
+          ],
+
           const SizedBox(height: 20),
-          
+
           // Technical Details (Debug Info)
           _buildDetailSection('Technical Details', [
             _buildCopyableDetailItem('Generation ID', generation.id),
@@ -762,46 +795,154 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
             if (generation.imageUrl != null && generation.imageUrl!.isNotEmpty)
               _buildCopyableDetailItem('Image URL', generation.imageUrl!),
           ]),
-          
+
           const SizedBox(height: 20),
-          
+
           // Prompts
           _buildDetailSection('Prompts', [
-            _buildTextDetailItem('Positive Prompt', generation.parameters['positive_prompt'] ?? generation.parameters['prompt'] ?? 'No prompt'),
-            if ((generation.parameters['negative_prompt'] ?? '').toString().isNotEmpty)
-              _buildTextDetailItem('Negative Prompt', generation.parameters['negative_prompt']),
+            _buildTextDetailItem(
+                'Positive Prompt',
+                generation.parameters['positive_prompt'] ??
+                    generation.parameters['prompt'] ??
+                    'No prompt'),
+            if ((generation.parameters['negative_prompt'] ?? '')
+                .toString()
+                .isNotEmpty)
+              _buildTextDetailItem(
+                  'Negative Prompt', generation.parameters['negative_prompt']),
           ]),
-          
+
           // LoRAs if any
-          if (generation.parameters['loras'] != null && (generation.parameters['loras'] as List).isNotEmpty)
-            ...[
-              const SizedBox(height: 20),
-              _buildDetailSection('LoRAs', [
-                for (final lora in generation.parameters['loras'] as List)
-                  _buildDetailItem(lora['name'], 'Strength: ${lora['strength']}'),
-              ]),
-            ],
-          
+          if (generation.parameters['loras'] != null &&
+              (generation.parameters['loras'] as List).isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _buildDetailSection('LoRAs', [
+              for (final lora in generation.parameters['loras'] as List)
+                _buildDetailItem(lora['name'], 'Strength: ${lora['strength']}'),
+            ]),
+          ],
+
           // Generation Parameters (from metadata) - only show if metadata is not empty
-          if (generation.metadata.isNotEmpty)
-            ...[
-              const SizedBox(height: 20),
-              _buildDetailSection('Generation Parameters', [
-                for (final entry in generation.metadata.entries)
-                  _buildDetailItem(
-                    _formatMetadataKey(entry.key),
-                    entry.value?.toString() ?? 'N/A',
-                  ),
-              ]),
-            ],
+          if (generation.metadata.keys.any((key) => key != 'provenance')) ...[
+            const SizedBox(height: 20),
+            _buildDetailSection('Generation Parameters', [
+              for (final entry in generation.metadata.entries
+                  .where((entry) => entry.key != 'provenance'))
+                _buildDetailItem(
+                  _formatMetadataKey(entry.key),
+                  entry.value?.toString() ?? 'N/A',
+                ),
+            ]),
+          ],
+
+          if (widget.asset != null) ...[
+            const SizedBox(height: 24),
+            ResourceCommentsPanel(
+              projectId: widget.asset!.projectId,
+              target: ResourceCommentTarget.resource(
+                ResourceCommentType.imageGeneration,
+                generation.id,
+              ),
+              title: 'Image discussion',
+              currentUserId: context.read<AuthProvider>().userId,
+            ),
+          ],
         ],
       ),
     );
   }
 
+  Widget _buildProvenanceSection(ImageGeneration generation) {
+    final provenance = generation.provenance;
+    final provider = generation.parameters['provider']?.toString();
+    final model =
+        (generation.parameters['model_name'] ?? generation.parameters['model'])
+            ?.toString();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: generation.isHistoricalImport
+            ? const Color(0xFF3E2A10)
+            : const Color(0xFF243442),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: generation.isHistoricalImport
+              ? const Color(0x99FFC857)
+              : const Color(0x996FD3FF),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                generation.isHistoricalImport
+                    ? Icons.inventory_2_outlined
+                    : Icons.info_outline,
+                color: generation.isHistoricalImport
+                    ? const Color(0xFFFFC857)
+                    : const Color(0xFF6FD3FF),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                generation.isHistoricalImport
+                    ? 'Historical image provenance'
+                    : 'External image provenance',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildDetailItem('Origin', generation.originLabel),
+          if (provenance['source_timestamp'] != null)
+            _buildDetailItem(
+              'Source date',
+              _formatProvenanceTimestamp(provenance['source_timestamp']),
+            ),
+          if (provider != null && provider.isNotEmpty)
+            _buildDetailItem('Provider', provider),
+          if (model != null && model.isNotEmpty)
+            _buildDetailItem('Model', model),
+          if (provenance['original_filename'] != null)
+            _buildDetailItem(
+              'Filename',
+              provenance['original_filename'].toString(),
+            ),
+          if (provenance['uploaded_at'] != null)
+            _buildDetailItem(
+              'Uploaded',
+              _formatProvenanceTimestamp(provenance['uploaded_at']),
+            ),
+          if (provenance['sha256'] != null)
+            _buildCopyableDetailItem(
+                'SHA-256', provenance['sha256'].toString()),
+        ],
+      ),
+    );
+  }
+
+  String _formatProvenanceTimestamp(dynamic value) {
+    final parsed = DateTime.tryParse(value.toString());
+    return parsed == null
+        ? value.toString()
+        : _formatDateTime(parsed.toLocal());
+  }
+
+  String _shortId(String value) {
+    return value.length > 12 ? '${value.substring(0, 12)}…' : value;
+  }
+
   Widget _buildErrorSection(ImageGeneration generation) {
-    final errorMessage = generation.errorMessage ?? 'Unknown error. Some mysterious cosmic event has occurred...';
-    
+    final errorMessage = generation.errorMessage ??
+        'Unknown error. Some mysterious cosmic event has occurred...';
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1026,27 +1167,30 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     // Convert snake_case or camelCase to Title Case
     // e.g., "cfg_scale" -> "Cfg Scale", "samplerName" -> "Sampler Name"
     return key
-        .replaceAllMapped(RegExp(r'_([a-z])'), (match) => ' ${match.group(1)!.toUpperCase()}')
-        .replaceAllMapped(RegExp(r'([a-z])([A-Z])'), (match) => '${match.group(1)} ${match.group(2)}')
+        .replaceAllMapped(
+            RegExp(r'_([a-z])'), (match) => ' ${match.group(1)!.toUpperCase()}')
+        .replaceAllMapped(RegExp(r'([a-z])([A-Z])'),
+            (match) => '${match.group(1)} ${match.group(2)}')
         .split(' ')
-        .map((word) => word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1))
+        .map((word) =>
+            word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1))
         .join(' ');
   }
 
-
-  Future<void> _downloadImage(BuildContext context, ImageGeneration generation) async {
+  Future<void> _downloadImage(
+      BuildContext context, ImageGeneration generation) async {
     // Get the URL of the currently displayed variant
     String? imageUrl;
     String? variantType;
-    
+
     // Check if we have variants and carousel is active
-    final hasVariants = generation.variants != null && 
-                       generation.variants!.containsKey('background_removed');
-    
+    final hasVariants = generation.variants != null &&
+        generation.variants!.containsKey('background_removed');
+
     if (hasVariants) {
       // Build the same variants list to match carousel order
       final List<Map<String, dynamic>> variantsList = [];
-      
+
       if (generation.variants!.containsKey('original')) {
         variantsList.add({
           'label': 'Original',
@@ -1058,14 +1202,14 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
           'data': {'url': generation.imageUrl ?? ''},
         });
       }
-      
+
       if (generation.variants!.containsKey('background_removed')) {
         variantsList.add({
           'label': 'No Background',
           'data': generation.variants!['background_removed']!,
         });
       }
-      
+
       // Get the URL from the current carousel page
       if (_currentCarouselPage < variantsList.length) {
         final currentVariant = variantsList[_currentCarouselPage];
@@ -1078,7 +1222,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       imageUrl = generation.imageUrl;
       variantType = 'Original';
     }
-    
+
     if (imageUrl == null || imageUrl.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1089,8 +1233,9 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       return;
     }
 
-    final defaultFileName = _generateDefaultFileName(generation, variantType: variantType);
-    
+    final defaultFileName =
+        _generateDefaultFileName(generation, variantType: variantType);
+
     await FileDownloadService.downloadFile(
       url: imageUrl,
       defaultFileName: defaultFileName,
@@ -1106,31 +1251,37 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
     );
   }
 
-  String _generateDefaultFileName(ImageGeneration generation, {String? variantType}) {
+  String _generateDefaultFileName(ImageGeneration generation,
+      {String? variantType}) {
     // Generate a filename based on the prompt or asset name
     String baseName = 'generated_image';
-    
+
     if (widget.asset != null && widget.asset!.name.isNotEmpty) {
-      baseName = widget.asset!.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+      baseName = widget.asset!.name
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .replaceAll(' ', '_');
     } else {
       // Try both 'positive_prompt' and 'prompt' field names
-      final prompt = (generation.parameters['positive_prompt'] ?? generation.parameters['prompt'])?.toString();
+      final prompt = (generation.parameters['positive_prompt'] ??
+              generation.parameters['prompt'])
+          ?.toString();
       if (prompt != null && prompt.isNotEmpty) {
         // Take first few words of prompt and sanitize
         final words = prompt.split(' ').take(3).join('_');
-        baseName = words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
+        baseName =
+            words.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
       }
     }
-    
+
     // Add variant type suffix if not original
     if (variantType != null && variantType != 'Original') {
       final variantSuffix = variantType.replaceAll(' ', '_').toLowerCase();
       baseName = '${baseName}_$variantSuffix';
     }
-    
+
     // Add timestamp to make filename unique
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    
+
     // Determine file extension from imageUrl or default to png
     String extension = 'png';
     if (generation.imageUrl != null && generation.imageUrl!.isNotEmpty) {
@@ -1141,7 +1292,7 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
         extension = 'webp';
       }
     }
-    
+
     return '${baseName}_$timestamp.$extension';
   }
 
@@ -1173,7 +1324,8 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
               // TODO: Implement actual deletion logic
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Delete functionality will be implemented soon'),
+                  content:
+                      Text('Delete functionality will be implemented soon'),
                   backgroundColor: Colors.orange,
                 ),
               );
@@ -1190,4 +1342,4 @@ class _ImageDetailDialogState extends State<ImageDetailDialog> {
       ),
     );
   }
-} 
+}

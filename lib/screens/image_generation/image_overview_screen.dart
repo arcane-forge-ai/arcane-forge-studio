@@ -9,6 +9,7 @@ import '../../controllers/menu_app_controller.dart';
 import '../../widgets/create_assets_from_doc_dialog.dart';
 import '../../widgets/quota_status_widget.dart';
 import '../../services/file_download_service.dart';
+import '../../widgets/image_provenance_badge.dart';
 import 'widgets/image_asset_detail_screen.dart';
 
 class ImageOverviewScreen extends StatefulWidget {
@@ -89,9 +90,9 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               Text(
                 'Image Assets',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
               ),
               const SizedBox(width: 16),
               QuotaStatusWidget.compact('image_generation'),
@@ -228,6 +229,10 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           DropdownMenuItem(value: 'Favorites', child: Text('Has Favorite')),
           DropdownMenuItem(value: 'Empty', child: Text('Empty Assets')),
           DropdownMenuItem(value: 'Recent', child: Text('Recent')),
+          DropdownMenuItem(
+            value: 'Historical',
+            child: Text('Historical imports'),
+          ),
         ],
         onChanged: (value) {
           setState(() {
@@ -295,6 +300,11 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
         filtered = filtered
             .where((asset) =>
                 DateTime.now().difference(asset.createdAt).inDays < 7)
+            .toList();
+        break;
+      case 'Historical':
+        filtered = filtered
+            .where((asset) => asset.historicalGenerationCount > 0)
             .toList();
         break;
       case 'All':
@@ -399,10 +409,26 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  color: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(12)),
+                  color:
+                      isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade200,
                 ),
-                child: _buildAssetThumbnailWithFuture(asset, provider),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildAssetThumbnailWithFuture(asset, provider),
+                    if (asset.historicalGenerationCount > 0)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: HistoricalImageCountBadge(
+                          count: asset.historicalGenerationCount,
+                          compact: true,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
             // Asset Info
@@ -427,7 +453,10 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
                     Text(
                       asset.description,
                       style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.7),
                         fontSize: 11,
                       ),
                       maxLines: 2,
@@ -469,19 +498,23 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     );
   }
 
-  Widget _buildAssetThumbnailWithFuture(ImageAsset asset, ImageGenerationProvider provider) {
+  Widget _buildAssetThumbnailWithFuture(
+      ImageAsset asset, ImageGenerationProvider provider) {
     // First check if asset has a thumbnail URL (from backend)
     if (asset.thumbnail != null && asset.thumbnail!.isNotEmpty) {
       // Check if it's a URL (starts with http/https) or a local path
-      if (asset.thumbnail!.startsWith('http://') || asset.thumbnail!.startsWith('https://')) {
+      if (asset.thumbnail!.startsWith('http://') ||
+          asset.thumbnail!.startsWith('https://')) {
         // It's a URL, use it directly
         return _buildThumbnailFromUrl(asset.thumbnail!, asset);
-      } else if (!kIsWeb && asset.thumbnail!.isNotEmpty && File(asset.thumbnail!).existsSync()) {
+      } else if (!kIsWeb &&
+          asset.thumbnail!.isNotEmpty &&
+          File(asset.thumbnail!).existsSync()) {
         // It's a local file path, use it
         return _buildThumbnailFromFile(asset.thumbnail!, asset);
       }
     }
-    
+
     // Fallback: try to get favorite generation
     if (asset.favoriteGenerationId != null) {
       return FutureBuilder<ImageGeneration?>(
@@ -535,22 +568,25 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
       return _buildEmptyThumbnail(asset);
     }
   }
-  
+
   Widget _buildGenerationImage(ImageGeneration generation, ImageAsset asset) {
     // Priority: variants['original']['url'] -> imageUrl -> local file
     String? imageUrl;
-    
+
     // Try to get original variant URL first
-    if (generation.variants != null && generation.variants!.containsKey('original')) {
+    if (generation.variants != null &&
+        generation.variants!.containsKey('original')) {
       imageUrl = generation.variants!['original']!['url'] as String?;
     }
-    
+
     // Fallback to backward-compatible imageUrl
     imageUrl ??= generation.imageUrl;
-    
+
     final bool hasOnlineUrl = imageUrl != null && imageUrl.isNotEmpty;
-    final bool hasLocalFile = !kIsWeb && generation.imagePath.isNotEmpty && File(generation.imagePath).existsSync();
-    
+    final bool hasLocalFile = !kIsWeb &&
+        generation.imagePath.isNotEmpty &&
+        File(generation.imagePath).existsSync();
+
     if (hasOnlineUrl) {
       return Image.network(
         imageUrl!,
@@ -728,8 +764,7 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  Widget _buildFavoriteDownloadAction(
-      BuildContext context, ImageAsset asset) {
+  Widget _buildFavoriteDownloadAction(BuildContext context, ImageAsset asset) {
     if (asset.favoriteGenerationId == null) {
       return const SizedBox.shrink();
     }
@@ -855,8 +890,9 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
           asset.name.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
     } else {
       // Try both 'positive_prompt' and 'prompt' field names (API may return either)
-      final prompt = (favoriteGeneration.parameters['positive_prompt'] ?? 
-                     favoriteGeneration.parameters['prompt'])?.toString();
+      final prompt = (favoriteGeneration.parameters['positive_prompt'] ??
+              favoriteGeneration.parameters['prompt'])
+          ?.toString();
       if (prompt != null && prompt.isNotEmpty) {
         final words = prompt.split(' ').take(3).join('_');
         baseName =
@@ -908,7 +944,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               ),
               title: Text(
                 'View Details',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                style:
+                    TextStyle(color: Theme.of(context).colorScheme.onSurface),
               ),
               onTap: () {
                 Navigator.of(context).pop();
@@ -922,7 +959,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               ),
               title: Text(
                 'Edit Asset',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                style:
+                    TextStyle(color: Theme.of(context).colorScheme.onSurface),
               ),
               onTap: () {
                 Navigator.of(context).pop();
@@ -936,7 +974,8 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               ),
               title: Text(
                 'Generate Images',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                style:
+                    TextStyle(color: Theme.of(context).colorScheme.onSurface),
               ),
               onTap: () {
                 Navigator.of(context).pop();
@@ -992,14 +1031,17 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               decoration: InputDecoration(
                 labelText: 'Asset Name',
                 labelStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
                 hintText: 'e.g., Main Character Portrait',
                 hintStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                 ),
                 filled: true,
-                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
+                fillColor:
+                    isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -1014,14 +1056,17 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               decoration: InputDecoration(
                 labelText: 'Description',
                 labelStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
                 hintText: 'Describe what this asset represents...',
                 hintStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                 ),
                 filled: true,
-                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
+                fillColor:
+                    isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -1108,10 +1153,12 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               decoration: InputDecoration(
                 labelText: 'Asset Name',
                 labelStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
                 filled: true,
-                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
+                fillColor:
+                    isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -1126,10 +1173,12 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
               decoration: InputDecoration(
                 labelText: 'Description',
                 labelStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                 ),
                 filled: true,
-                fillColor: isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
+                fillColor:
+                    isDark ? const Color(0xFF3A3A3A) : Colors.grey.shade100,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                   borderSide: BorderSide.none,
@@ -1340,4 +1389,3 @@ class _ImageOverviewScreenState extends State<ImageOverviewScreen> {
     super.dispose();
   }
 }
-
