@@ -6,6 +6,8 @@ enum OpencodeBinarySource { override, bundledInstalled, systemPath, missing }
 
 enum OpencodeConfigSyncState { idle, applied, failed }
 
+enum GameAgentSkillState { unavailable, installed, ready, failed }
+
 @immutable
 class OpencodeEventEnvelope {
   const OpencodeEventEnvelope({
@@ -48,6 +50,11 @@ class OpencodeDiagnostics {
     this.selectedProviderLabel,
     this.selectedModel,
     this.configSyncMessage,
+    this.gameAgentSkillState = GameAgentSkillState.unavailable,
+    this.gameAgentSkillMessage =
+        'Arcane Forge skill is not bundled in this build.',
+    this.gameAgentSkillCommit,
+    this.gameAgentSkillPath,
   });
 
   final ServerLifecycleStatus status;
@@ -74,6 +81,10 @@ class OpencodeDiagnostics {
   final bool credentialsPresent;
   final OpencodeConfigSyncState configSyncState;
   final String? configSyncMessage;
+  final GameAgentSkillState gameAgentSkillState;
+  final String gameAgentSkillMessage;
+  final String? gameAgentSkillCommit;
+  final String? gameAgentSkillPath;
 
   OpencodeDiagnostics copyWith({
     ServerLifecycleStatus? status,
@@ -100,6 +111,10 @@ class OpencodeDiagnostics {
     String? selectedProviderLabel,
     String? selectedModel,
     String? configSyncMessage,
+    GameAgentSkillState? gameAgentSkillState,
+    String? gameAgentSkillMessage,
+    String? gameAgentSkillCommit,
+    String? gameAgentSkillPath,
   }) {
     return OpencodeDiagnostics(
       status: status ?? this.status,
@@ -127,6 +142,11 @@ class OpencodeDiagnostics {
           selectedProviderLabel ?? this.selectedProviderLabel,
       selectedModel: selectedModel ?? this.selectedModel,
       configSyncMessage: configSyncMessage ?? this.configSyncMessage,
+      gameAgentSkillState: gameAgentSkillState ?? this.gameAgentSkillState,
+      gameAgentSkillMessage:
+          gameAgentSkillMessage ?? this.gameAgentSkillMessage,
+      gameAgentSkillCommit: gameAgentSkillCommit ?? this.gameAgentSkillCommit,
+      gameAgentSkillPath: gameAgentSkillPath ?? this.gameAgentSkillPath,
     );
   }
 }

@@ -243,6 +243,42 @@ void main() {
       expect(find.text('Utilities'), findsOneWidget);
     });
 
+    testWidgets('shows skill readiness and repairs through the managed server',
+        (
+      WidgetTester tester,
+    ) async {
+      final _TestOpencodeServerManager serverManager =
+          _TestOpencodeServerManager(
+        startResult: 'http://127.0.0.1:4102',
+        managed: true,
+        skillState: GameAgentSkillState.failed,
+      );
+      await tester.pumpWidget(
+        _buildHarness(
+          CodingAgentScreen(
+            projectId: 'project-1',
+            projectName: 'Project One',
+            debugIsSupportedPlatformOverride: true,
+            debugServerManager: serverManager,
+            debugWorkspacePathOverride: workspaceDirectory.path,
+            debugConfigService: configService,
+            debugEmbeddedBrowserHostFactory: (
+              CodingAgentEmbeddedBrowserCallbacks callbacks,
+            ) =>
+                _FakeEmbeddedBrowserHost()..callbacks = callbacks,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _openUtilitiesDrawer(tester);
+      await tester.ensureVisible(find.text('Repair skill'));
+      await tester.tap(find.text('Repair skill'));
+      await tester.pumpAndSettle();
+      expect(serverManager.repairCalls, 1);
+      expect(serverManager.startCalls, 2);
+      expect(find.text('Arcane Forge skill ready'), findsWidgets);
+    });
+
     testWidgets('shows KB sync actions and the sync status dialog', (
       WidgetTester tester,
     ) async {
@@ -575,6 +611,7 @@ class _TestOpencodeServerManager extends OpencodeServerManager {
     this.fakeLastError,
     this.managed = false,
     this.startCompleter,
+    this.skillState = GameAgentSkillState.unavailable,
     List<String> initialLogs = const <String>[],
   }) {
     _recentLogs.addAll(initialLogs);
@@ -584,6 +621,8 @@ class _TestOpencodeServerManager extends OpencodeServerManager {
   String? startResult;
   String? fakeLastError;
   bool managed;
+  GameAgentSkillState skillState;
+  int repairCalls = 0;
   int startCalls = 0;
   int stopCalls = 0;
   int detachCalls = 0;
@@ -626,6 +665,10 @@ class _TestOpencodeServerManager extends OpencodeServerManager {
       recentLogs: List<String>.from(_recentLogs),
       sidecarManaged: managed,
       credentialsPresent: true,
+      gameAgentSkillState: skillState,
+      gameAgentSkillMessage: skillState == GameAgentSkillState.ready
+          ? 'Arcane Forge skill ready'
+          : 'Arcane Forge skill needs attention.',
       configSyncState: _status == ServerLifecycleStatus.running
           ? OpencodeConfigSyncState.applied
           : OpencodeConfigSyncState.idle,
@@ -656,6 +699,12 @@ class _TestOpencodeServerManager extends OpencodeServerManager {
         ? ServerLifecycleStatus.failed
         : ServerLifecycleStatus.running;
     return result;
+  }
+
+  @override
+  Future<void> repairGameAgentSkill() async {
+    repairCalls += 1;
+    skillState = GameAgentSkillState.ready;
   }
 
   @override

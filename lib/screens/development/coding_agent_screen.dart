@@ -112,6 +112,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
   _KbSyncOperation _kbSyncOperation = _KbSyncOperation.idle;
   List<String> _serverLogs = <String>[];
   OpencodeDiagnostics? _diagnostics;
+  bool _isRepairingSkill = false;
 
   bool get _supportsCodingAgentPlatform =>
       widget.debugIsSupportedPlatformOverride ??
@@ -393,6 +394,7 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
   }
 
   Future<void> _refreshDiagnostics() async {
+    await _serverManager.verifyGameAgentSkill(workspacePath: _workspacePath);
     final OpencodeDiagnostics diagnostics = await _serverManager.diagnostics();
     _opencodeApiClient.setBaseUrl(diagnostics.serverUrl);
     if (!mounted) {
@@ -1372,6 +1374,24 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
     await launchUrl(target, mode: LaunchMode.externalApplication);
   }
 
+  Future<void> _repairGameAgentSkill() async {
+    setState(() => _isRepairingSkill = true);
+    try {
+      await _serverManager.repairGameAgentSkill();
+      if (!mounted) return;
+      await _connectToOpencode(
+          loadingMessage: 'Reloading the Arcane Forge skill...');
+      if (mounted) {
+        _showNotice(
+            _diagnostics?.gameAgentSkillMessage ?? 'Skill repair finished.');
+      }
+    } catch (error) {
+      if (mounted) _showNotice('Unable to repair Arcane Forge skill: $error');
+    } finally {
+      if (mounted) setState(() => _isRepairingSkill = false);
+    }
+  }
+
   Future<void> _restartManagedServer() async {
     if (!_showsManagedServerActions) {
       return;
@@ -1493,6 +1513,13 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
                 ),
               ],
             ),
+            if (supported && _diagnostics != null) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                _diagnostics!.gameAgentSkillMessage,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),
@@ -1595,6 +1622,56 @@ class _CodingAgentScreenState extends State<CodingAgentScreen> {
                             style: bodySmallStyle,
                           ),
                         ],
+                        const SizedBox(height: 16),
+                        Text('Arcane Forge Skill', style: titleMediumStyle),
+                        const SizedBox(height: 8),
+                        Text(
+                          _diagnostics?.gameAgentSkillMessage ??
+                              'Skill status is available after OpenCode starts.',
+                          style: bodySmallStyle,
+                        ),
+                        if (_diagnostics?.gameAgentSkillCommit !=
+                            null) ...<Widget>[
+                          const SizedBox(height: 8),
+                          Tooltip(
+                            message: _diagnostics!.gameAgentSkillCommit!,
+                            child: SelectableText(
+                              'Bundled commit: ${_diagnostics!.gameAgentSkillCommit!.substring(0, 12)}',
+                              style: bodySmallStyle,
+                            ),
+                          ),
+                        ],
+                        if (_diagnostics?.gameAgentSkillPath !=
+                            null) ...<Widget>[
+                          const SizedBox(height: 8),
+                          _buildCopyableField(
+                            context,
+                            label: 'Skill folder',
+                            value: _diagnostics!.gameAgentSkillPath!,
+                            singleLineValue: true,
+                            onCopy: () => _copyValue(
+                              'Skill folder',
+                              _diagnostics!.gameAgentSkillPath!,
+                            ),
+                            labelColor: drawerSecondaryTextColor,
+                            valueColor: drawerPrimaryTextColor,
+                            iconColor: drawerSecondaryTextColor,
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: supported &&
+                                  !_isRepairingSkill &&
+                                  _state != _OpencodeViewState.loading &&
+                                  (_serverManager.ownsManagedServer ||
+                                      _serverManager.serverUrl == null)
+                              ? _repairGameAgentSkill
+                              : null,
+                          icon: const Icon(Icons.build_outlined),
+                          label: Text(_isRepairingSkill
+                              ? 'Repairing skill...'
+                              : 'Repair skill'),
+                        ),
                         const SizedBox(height: 16),
                         if (_diagnostics?.binaryPath?.trim().isNotEmpty == true)
                           _buildCopyableField(

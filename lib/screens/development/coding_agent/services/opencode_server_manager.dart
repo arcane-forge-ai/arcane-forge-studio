@@ -10,11 +10,13 @@ import 'package:path_provider/path_provider.dart';
 import '../models/coding_agent_config.dart';
 import '../models/opencode_models.dart';
 import 'coding_agent_config_service.dart';
+import 'game_agent_skill_service.dart';
 
 class OpencodeServerManager {
   OpencodeServerManager({
     http.Client? httpClient,
     CodingAgentConfigService? configService,
+    GameAgentSkillService? gameAgentSkillService,
     Future<Directory> Function()? supportDirectoryProvider,
     Map<String, String> Function()? environmentProvider,
     String Function()? resolvedExecutablePathProvider,
@@ -31,6 +33,10 @@ class OpencodeServerManager {
         _systemBinaryPathResolver = systemBinaryPathResolver,
         _executableFileChecker = executableFileChecker,
         _binaryVersionReader = binaryVersionReader,
+        _gameAgentSkillService = gameAgentSkillService ??
+            GameAgentSkillService(
+              supportDirectoryProvider: supportDirectoryProvider,
+            ),
         _configService = configService ??
             CodingAgentConfigService(
               supportDirectoryProvider:
@@ -49,6 +55,7 @@ class OpencodeServerManager {
 
   final http.Client _httpClient;
   final CodingAgentConfigService _configService;
+  final GameAgentSkillService _gameAgentSkillService;
   final Future<Directory> Function() _supportDirectoryProvider;
   final Map<String, String> Function() _environmentProvider;
   final String Function() _resolvedExecutablePathProvider;
@@ -72,6 +79,11 @@ class OpencodeServerManager {
   String? _selectedProviderLabel;
   String? _selectedModel;
   String? _configSyncMessage;
+  InstalledGameAgentSkill? _gameAgentSkill;
+  bool _forceSkillRepair = false;
+  GameAgentSkillState _gameAgentSkillState = GameAgentSkillState.unavailable;
+  String _gameAgentSkillMessage =
+      'Arcane Forge skill is not bundled in this build.';
   int? _managedPid;
   bool _ownsManagedProcess = false;
   bool _credentialsPresent = false;
@@ -193,6 +205,7 @@ class OpencodeServerManager {
     if (_serverUrl != null) {
       final Map<String, dynamic>? health = await _safeGetJson('/global/health');
       if (health != null) {
+        await verifyGameAgentSkill();
         return _serverUrl;
       }
     }
@@ -206,9 +219,15 @@ class OpencodeServerManager {
       return null;
     }
 
+    await _prepareGameAgentSkill();
+
     final PreparedCodingAgentConfig preparedConfig;
     try {
-      preparedConfig = await _configService.prepareRuntimeConfig();
+      preparedConfig = await _configService.prepareRuntimeConfig(
+        skillPaths: _gameAgentSkill == null
+            ? const <String>[]
+            : <String>[_gameAgentSkill!.searchDirectory],
+      );
       _selectedProviderId = preparedConfig.runtimeConfig.selectedProviderId;
       _selectedProviderLabel =
           preparedConfig.runtimeConfig.selectedProviderLabel;
@@ -238,6 +257,7 @@ class OpencodeServerManager {
       );
       if (started) {
         await _verifyRuntimeConfig(preparedConfig);
+        await verifyGameAgentSkill();
         return _serverUrl;
       }
     }
@@ -349,6 +369,60 @@ class OpencodeServerManager {
     return false;
   }
 
+  Future<void> _prepareGameAgentSkill() async {
+    _gameAgentSkill = null;
+    try {
+      _gameAgentSkill = await _gameAgentSkillService.ensureInstalled(
+        bundledSidecarDirectory: _packagedSidecarDirectory(),
+        force: _forceSkillRepair,
+      );
+      _gameAgentSkillState = _gameAgentSkill == null
+          ? GameAgentSkillState.unavailable
+          : GameAgentSkillState.installed;
+      _gameAgentSkillMessage = _gameAgentSkill == null
+          ? 'Arcane Forge skill is not bundled in this build.'
+          : 'Arcane Forge skill installed; checking OpenCode discovery.';
+    } catch (error) {
+      _gameAgentSkillState = GameAgentSkillState.failed;
+      _gameAgentSkillMessage = 'Arcane Forge skill setup failed: $error';
+    } finally {
+      _forceSkillRepair = false;
+    }
+    _appendLog(_gameAgentSkillMessage);
+  }
+
+  /// Verifies the active workspace, since project configs can change discovery.
+  Future<void> verifyGameAgentSkill({String? workspacePath}) async {
+    final InstalledGameAgentSkill? skill = _gameAgentSkill;
+    if (skill == null || _serverUrl == null) return;
+    final String query = workspacePath == null
+        ? ''
+        : '?directory=${Uri.encodeQueryComponent(workspacePath)}';
+    dynamic skills;
+    try {
+      skills = await _safeGet('/skill$query').timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      _gameAgentSkillState = GameAgentSkillState.failed;
+      _gameAgentSkillMessage = 'Arcane Forge skill discovery timed out. Try Repair skill.';
+      return;
+    }
+    final bool discovered = GameAgentSkillService.isDiscovered(skills, skill);
+    _gameAgentSkillState =
+        discovered ? GameAgentSkillState.ready : GameAgentSkillState.failed;
+    _gameAgentSkillMessage = discovered
+        ? 'Arcane Forge skill ready'
+        : 'Arcane Forge skill is installed, but OpenCode has not discovered the bundled copy. Try Repair skill.';
+  }
+
+  Future<void> repairGameAgentSkill() async {
+    if (_serverUrl != null && !_ownsManagedProcess) {
+      throw StateError('Repair requires the app-managed OpenCode server.');
+    }
+    _forceSkillRepair = true;
+    await stop();
+    await start();
+  }
+
   Future<void> _verifyRuntimeConfig(
     PreparedCodingAgentConfig preparedConfig,
   ) async {
@@ -431,6 +505,12 @@ class OpencodeServerManager {
     _serverUrl = null;
     _managedPid = null;
     _ownsManagedProcess = false;
+    if (_gameAgentSkill != null &&
+        _gameAgentSkillState == GameAgentSkillState.ready) {
+      _gameAgentSkillState = GameAgentSkillState.installed;
+      _gameAgentSkillMessage =
+          'Arcane Forge skill installed; OpenCode is stopped.';
+    }
     if (_status != ServerLifecycleStatus.failed) {
       _status = ServerLifecycleStatus.stopped;
     }
@@ -515,6 +595,10 @@ class OpencodeServerManager {
       credentialsPresent: _credentialsPresent,
       configSyncState: _configSyncState,
       configSyncMessage: _configSyncMessage,
+      gameAgentSkillState: _gameAgentSkillState,
+      gameAgentSkillMessage: _gameAgentSkillMessage,
+      gameAgentSkillCommit: _gameAgentSkill?.sourceCommit,
+      gameAgentSkillPath: _gameAgentSkill?.skillDirectory.path,
     );
   }
 

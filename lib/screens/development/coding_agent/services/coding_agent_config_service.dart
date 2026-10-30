@@ -129,12 +129,19 @@ class CodingAgentConfigService {
     await _applyFilePermissions(secretsFileRef, executable: false);
   }
 
-  Future<PreparedCodingAgentConfig> prepareRuntimeConfig() async {
+  Future<PreparedCodingAgentConfig> prepareRuntimeConfig({
+    List<String> skillPaths = const <String>[],
+  }) async {
     final CodingAgentConfigBundle bundle = await loadBundle();
     final CodingAgentRuntimeConfig runtimeConfig = buildRuntimeConfig(
       bundle.config,
       bundle.secrets,
     );
+    if (skillPaths.isNotEmpty) {
+      runtimeConfig.opencodeConfig['skills'] = <String, dynamic>{
+        'paths': List<String>.from(skillPaths),
+      };
+    }
     final File configFile = await resolvedConfigFile();
     await configFile.writeAsString(
       _prettyEncoder.convert(runtimeConfig.opencodeConfig),

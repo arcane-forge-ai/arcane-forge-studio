@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
 
 from opencode_sidecar import verify_staged_sidecar
+from game_agent_skill import SkillBundleError, stage_game_agent_skill, verify_bundled_skill
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -61,6 +63,7 @@ def copy_release_dependencies(build_dir: Path) -> None:
 
     sidecar_source = RELEASE_DEPENDENCIES_DIR / "opencode_sidecar"
     verify_staged_sidecar(sidecar_source)
+    verify_bundled_skill(sidecar_source)
 
     for child in RELEASE_DEPENDENCIES_DIR.iterdir():
         dest = build_dir / child.name
@@ -84,6 +87,12 @@ def create_archive(build_dir: Path, version: str) -> Path:
 def main() -> int:
     version = read_version()
     build_dir = ensure_build_directory()
+    sidecar_source = RELEASE_DEPENDENCIES_DIR / "opencode_sidecar"
+    verify_staged_sidecar(sidecar_source)
+    try:
+        stage_game_agent_skill(sidecar_source, os.environ.get("ARCANE_FORGE_SKILL_REF", "main"))
+    except SkillBundleError as exc:
+        raise SystemExit(f"Skill packaging failed: {exc}") from exc
     copy_update_assets(build_dir, version)
     copy_release_dependencies(build_dir)
     archive = create_archive(build_dir, version)

@@ -106,7 +106,9 @@ void main() {
 
         await service.saveBundle(config, secrets);
         final PreparedCodingAgentConfig prepared =
-            await service.prepareRuntimeConfig();
+            await service.prepareRuntimeConfig(
+          skillPaths: <String>[p.join(supportDirectory.path, 'managed-skills')],
+        );
 
         expect(prepared.runtimeConfig.environment['AF_OPENCODE_API_KEY'],
             isNotEmpty);
@@ -124,6 +126,8 @@ void main() {
         final Map<String, dynamic> options =
             provider['options'] as Map<String, dynamic>;
 
+        expect((decoded['skills'] as Map<String, dynamic>)['paths'],
+            <String>[p.join(supportDirectory.path, 'managed-skills')]);
         expect(options['baseURL'], 'https://proxy.example/v1');
         expect(options['apiKey'], '{env:AF_OPENCODE_API_KEY}');
         expect(rawConfig.contains('sk-secret-do-not-inline'), isFalse);

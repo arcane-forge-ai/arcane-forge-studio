@@ -19,10 +19,48 @@ Arcane Forge release artifacts now include:
 - the Flutter desktop app build
 - a pinned OpenCode CLI sidecar
 - a small sidecar `manifest.json` next to the bundled binary
+- the complete Arcane Forge game-agent skill and a hashed `skill-manifest.json`
 - Windows updater scripts for the Windows zip release
 
 Arcane Forge installs the bundled OpenCode sidecar into app-managed storage on
 first use and prefers that installed copy over any system `opencode`.
+
+## Bundled Game Agent Skill
+
+Both desktop packaging scripts fetch `skills/arcane-forge-game-agent` from
+the public `arcane-forge-ai/arcane-forge-agent-kit` repository's `main` branch.
+They resolve the branch to a commit first, then download that exact commit.
+The full skill directory, including scripts, references, and assets, is stored
+under `opencode_sidecar/skills/arcane-forge-game-agent/`. The adjacent
+`skill-manifest.json` records the source ref, full commit, and every file's
+SHA-256 hash. Packaging fails if fetching or verification fails.
+
+For a reproducible rebuild, set `ARCANE_FORGE_SKILL_REF` to the recorded commit
+before invoking either packaging script. A tag or branch is also accepted.
+
+```bash
+ARCANE_FORGE_SKILL_REF=<recorded-commit> python3 utils/package_release_macos.py
+```
+
+To stage or inspect the skill separately without creating a release artifact:
+
+```bash
+python3 utils/game_agent_skill.py utils/release_dependencies/opencode_sidecar
+```
+
+At startup, Studio verifies and installs the shipped skill into its own
+application-support directory under `opencode_sidecar/skills/<commit>/`.
+It adds this path to its generated OpenCode configuration, then checks
+OpenCode's `/skill` response for the exact name and installed location.
+The embedded agent's Utilities drawer shows the status and a **Repair skill**
+action. Repair uses the shipped copy and restarts the app-managed server.
+
+No download is needed at application startup. Studio does not install into
+global agent folders or game repositories. Missing or invalid skill files
+produce a status message without disabling the coding agent. Skill
+installation does not configure Arcane Forge authentication or authorize game
+building or asset generation. The Python helpers require a local Python 3
+runtime; Python is not bundled by this change.
 
 ## Source Of Truth
 
@@ -145,13 +183,16 @@ Use this checklist before publishing a release:
 3. Run local validation:
    `dart analyze lib/screens/development/coding_agent test`
 4. Run targeted sidecar tests:
-   `flutter test test/opencode_server_manager_test.dart test/coding_agent_config_service_test.dart test/coding_agent_screen_widget_test.dart`
+   `flutter test test/opencode_server_manager_test.dart test/coding_agent_config_service_test.dart test/game_agent_skill_service_test.dart test/coding_agent_screen_widget_test.dart`
+   and `python3 -m unittest discover -s utils/tests -v` for skill packaging.
 5. Build the desktop artifact for the platform you are releasing.
 6. Run `python3 utils/opencode_sidecar.py <platform>` to stage the sidecar.
 7. Run the matching packaging script from `utils/`.
 8. Inspect the packaged artifact and confirm the sidecar exists:
    - Windows: `opencode_sidecar/manifest.json` and `opencode.exe`
    - macOS: `Contents/Resources/opencode_sidecar/manifest.json` and `opencode`
+   - Both: `skill-manifest.json` and the full `skills/arcane-forge-game-agent/`
+     directory; retain the recorded source commit for rebuilds.
 9. Smoke-test on a machine without a system `opencode` installed.
 10. Publish the artifact to GitHub Releases.
 

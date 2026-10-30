@@ -30,6 +30,16 @@ class DeveloperToolkitScreen extends StatefulWidget {
 }
 
 class _DeveloperToolkitScreenState extends State<DeveloperToolkitScreen> {
+  static const _gameAgentSkillUrl =
+      'https://github.com/arcane-forge-ai/arcane-forge-agent-kit';
+  static const _gameAgentSetupPrompt =
+      'Install the arcane-forge-game-agent skill from $_gameAgentSkillUrl, '
+      'including its supporting files under skills/arcane-forge-game-agent. '
+      "Follow this agent's installation conventions, then guide me through "
+      'Arcane Forge setup and verify that the skill is available. '
+      'Keep this task limited to installation and setup; do not build a game '
+      'or generate chargeable assets.';
+
   final TextEditingController _codeMapController = TextEditingController();
 
   bool _isEditingCodeMap = false;
@@ -263,6 +273,11 @@ class _DeveloperToolkitScreenState extends State<DeveloperToolkitScreen> {
                       // Repository Info Section
                       _buildRepositoryInfoSection(),
                       
+                      const SizedBox(height: defaultPadding * 2),
+
+                      // Game Agent Skill Section
+                      _buildGameAgentSkillSection(),
+
                       const SizedBox(height: defaultPadding * 2),
 
                       // Install MCPs Section
@@ -511,6 +526,64 @@ class _DeveloperToolkitScreenState extends State<DeveloperToolkitScreen> {
                     ),
                   ),
                 
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGameAgentSkillSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.auto_awesome_outlined, size: 22, color: Colors.grey[700]),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Arcane Forge Game Agent Skill',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: defaultPadding),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(defaultPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Use Arcane Forge's game-development workflows and asset "
+                  'services through your own coding agent.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: defaultPadding),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () => _openUrl(_gameAgentSkillUrl),
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      label: const Text('Get skill'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _copyToClipboard(
+                        _gameAgentSetupPrompt,
+                        label: 'Setup prompt',
+                      ),
+                      icon: const Icon(Icons.copy, size: 18),
+                      label: const Text('Copy setup prompt'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),

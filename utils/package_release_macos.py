@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from opencode_sidecar import RELEASE_DEPS_SIDECAR_DIR, verify_staged_sidecar
+from game_agent_skill import SkillBundleError, stage_game_agent_skill, verify_bundled_skill
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,6 +44,7 @@ def ensure_build_directory() -> Path:
 
 def copy_opencode_sidecar(app_path: Path) -> None:
     verify_staged_sidecar(RELEASE_DEPS_SIDECAR_DIR)
+    verify_bundled_skill(RELEASE_DEPS_SIDECAR_DIR)
 
     sidecar_dir = app_path / SIDECAR_RESOURCE_DIR
     if sidecar_dir.exists():
@@ -97,6 +100,11 @@ def main() -> int:
 
     app_path = ensure_build_directory()
     print(f"Found app bundle at: {app_path}")
+    verify_staged_sidecar(RELEASE_DEPS_SIDECAR_DIR)
+    try:
+        stage_game_agent_skill(RELEASE_DEPS_SIDECAR_DIR, os.environ.get("ARCANE_FORGE_SKILL_REF", "main"))
+    except SkillBundleError as exc:
+        raise SystemExit(f"Skill packaging failed: {exc}") from exc
     copy_opencode_sidecar(app_path)
 
     dmg_path = create_dmg(app_path, version)

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: http: file:; media-src https: http: file:"><title>Release Packaging and Publishing</title><style>
+:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#0b1020;color:#e8edff}
+body{margin:0;line-height:1.65}main{max-width:1000px;margin:32px auto;padding:32px;background:#131c30;border:1px solid #2b3954;border-radius:16px}
+h1,h2,h3{line-height:1.25}h2{margin-top:2em;border-top:1px solid #2b3954;padding-top:1em}a{color:#94c7ff}
+pre{overflow:auto;padding:16px;background:#090e1b;border-radius:8px}code{background:#090e1b;color:#bbd6f8;padding:.1em .3em}pre code{padding:0}p,li{overflow-wrap:anywhere}
+table{display:block;overflow:auto;border-collapse:collapse}th,td{border:1px solid #354561;padding:10px;text-align:left}th{background:#1b2b44}
+img,video{max-width:100%}blockquote{border-left:3px solid #70aaf0;margin-left:0;padding-left:18px;color:#bdcce4}
+@media(max-width:700px){main{margin:0;padding:20px;border-radius:0}}
+</style></head><body><main><h1>Release Packaging and Publishing</h1>
+<p>This document explains how Arcane Forge packages, verifies, and publishes
+release artifacts now that the app ships a managed OpenCode sidecar.</p>
+<p>The current release tooling lives in this folder:</p>
+<ul>
+<li><code>utils/opencode_sidecar_manifest.json</code></li>
+<li><code>utils/opencode_sidecar.py</code></li>
+<li><code>utils/package_release.py</code></li>
+<li><code>utils/package_release_macos.py</code></li>
+<li><code>utils/update.py</code></li>
+<li><code>utils/update.bat</code></li>
+</ul>
+<h2>What We Ship</h2>
+<p>Arcane Forge release artifacts now include:</p>
+<ul>
+<li>the Flutter desktop app build</li>
+<li>a pinned OpenCode CLI sidecar</li>
+<li>a small sidecar <code>manifest.json</code> next to the bundled binary</li>
+<li>the complete Arcane Forge game-agent skill and a hashed <code>skill-manifest.json</code></li>
+<li>Windows updater scripts for the Windows zip release</li>
+</ul>
+<p>Arcane Forge installs the bundled OpenCode sidecar into app-managed storage on
+first use and prefers that installed copy over any system <code>opencode</code>.</p>
+<h2>Bundled Game Agent Skill</h2>
+<p>Both desktop packaging scripts fetch <code>skills/arcane-forge-game-agent</code> from
+the public <code>arcane-forge-ai/arcane-forge-agent-kit</code> repository&#39;s <code>main</code> branch.
+They resolve the branch to a commit first, then download that exact commit.
+The full skill directory, including scripts, references, and assets, is stored
+under <code>opencode_sidecar/skills/arcane-forge-game-agent/</code>. The adjacent
+<code>skill-manifest.json</code> records the source ref, full commit, and every file&#39;s
+SHA-256 hash. Packaging fails if fetching or verification fails.</p>
+<p>For a reproducible rebuild, set <code>ARCANE_FORGE_SKILL_REF</code> to the recorded commit
+before invoking either packaging script. A tag or branch is also accepted.</p>
+<pre><code class="language-bash">ARCANE_FORGE_SKILL_REF=&lt;recorded-commit&gt; python3 utils/package_release_macos.py
+</code></pre>
+<p>To stage or inspect the skill separately without creating a release artifact:</p>
+<pre><code class="language-bash">python3 utils/game_agent_skill.py utils/release_dependencies/opencode_sidecar
+</code></pre>
+<p>At startup, Studio verifies and installs the shipped skill into its own
+application-support directory under <code>opencode_sidecar/skills/&lt;commit&gt;/</code>.
+It adds this path to its generated OpenCode configuration, then checks
+OpenCode&#39;s <code>/skill</code> response for the exact name and installed location.
+The embedded agent&#39;s Utilities drawer shows the status and a <strong>Repair skill</strong>
+action. Repair uses the shipped copy and restarts the app-managed server.</p>
+<p>No download is needed at application startup. Studio does not install into
+global agent folders or game repositories. Missing or invalid skill files
+produce a status message without disabling the coding agent. Skill
+installation does not configure Arcane Forge authentication or authorize game
+building or asset generation. The Python helpers require a local Python 3
+runtime; Python is not bundled by this change.</p>
+<h2>Source Of Truth</h2>
+<p>The OpenCode version is pinned in <code>utils/opencode_sidecar_manifest.json</code>.
+The manifest contains a single <code>version</code> field and a <code>urlTemplate</code> that
+constructs download URLs at runtime. Bumping the version is a single edit.</p>
+<p>If you want to upgrade the bundled OpenCode version:</p>
+<ol>
+<li>Update <code>version</code> in <code>utils/opencode_sidecar_manifest.json</code>.</li>
+<li>Rebuild and smoke-test Arcane Forge with that pinned version.</li>
+<li>Only then package and publish release artifacts.</li>
+</ol>
+<p>Do not commit raw OpenCode binaries into this repo. The sidecar prep script
+stages them into <code>utils/release_dependencies/</code> (which is gitignored).</p>
+<h2>Sidecar Prep Step</h2>
+<p>Before running either packaging script, stage the sidecar binary:</p>
+<pre><code class="language-bash">python3 utils/opencode_sidecar.py &lt;platform&gt;
+</code></pre>
+<p>Available platforms: <code>darwin-arm64</code>, <code>darwin-x64</code>, <code>windows-x64</code>.</p>
+<p>This downloads the pinned archive from GitHub and extracts the binary into
+<code>utils/release_dependencies/opencode_sidecar/</code>.</p>
+<h2>Sidecar Asset Resolution</h2>
+<p><code>utils/opencode_sidecar.py</code> resolves the sidecar binary in this order:</p>
+<ol>
+<li>If <code>OPENCODE_LOCAL_REPO</code> is set, look for the binary or archive there.</li>
+<li>Otherwise, download the pinned archive from the GitHub release URL.</li>
+</ol>
+<h2>Local OpenCode Build Inputs</h2>
+<p>If you want to package from a local OpenCode checkout instead of downloading
+release assets, set the <code>OPENCODE_LOCAL_REPO</code> environment variable to point at
+your local checkout. Make sure it has already produced a matching standalone CLI
+build under <code>dist/</code>.</p>
+<pre><code class="language-bash">export OPENCODE_LOCAL_REPO=/path/to/your/opencode
+</code></pre>
+<p>The script looks for platform builds such as:</p>
+<pre><code class="language-text">$OPENCODE_LOCAL_REPO/dist/opencode-darwin-arm64/bin/opencode
+$OPENCODE_LOCAL_REPO/dist/opencode-windows-x64/bin/opencode.exe
+</code></pre>
+<p>If those files are not present, the script falls back to the GitHub download.</p>
+<h2>Windows Packaging</h2>
+<p>Build the Windows app first:</p>
+<pre><code class="language-bash">flutter build windows --release
+</code></pre>
+<p>Prep the sidecar and then package:</p>
+<pre><code class="language-bash">python3 utils/opencode_sidecar.py windows-x64
+python3 utils/package_release.py
+</code></pre>
+<p>What the packaging script does:</p>
+<ul>
+<li>reads the app version from <code>pubspec.yaml</code></li>
+<li>copies updater files into <code>build/windows/x64/runner/Release</code></li>
+<li>copies everything from <code>utils/release_dependencies/</code> (including the sidecar)
+into <code>build/windows/x64/runner/Release/</code></li>
+<li>verifies that <code>opencode_sidecar/manifest.json</code> and <code>opencode.exe</code> exist</li>
+<li>zips the release directory into
+<code>build/release/arcane-forge-studio-windows-v&lt;version&gt;.zip</code></li>
+</ul>
+<p>Windows release naming matters because <code>utils/update.py</code> expects the archive to
+follow this exact pattern:</p>
+<pre><code class="language-text">arcane-forge-studio-windows-v&lt;version&gt;.zip
+</code></pre>
+<h2>macOS Packaging</h2>
+<p>Build the macOS app first:</p>
+<pre><code class="language-bash">flutter build macos --release
+</code></pre>
+<p>Prep the sidecar and then package:</p>
+<pre><code class="language-bash">python3 utils/opencode_sidecar.py darwin-arm64
+python3 utils/package_release_macos.py
+</code></pre>
+<p>What the packaging script does:</p>
+<ul>
+<li>reads the app version from <code>pubspec.yaml</code></li>
+<li>locates <code>build/macos/Build/Products/Release/Arcane Forge Studio.app</code></li>
+<li>copies the sidecar from <code>utils/release_dependencies/opencode_sidecar/</code> into
+<code>Arcane Forge Studio.app/Contents/Resources/opencode_sidecar/</code></li>
+<li>verifies that the sidecar manifest and binary are present</li>
+<li>creates a DMG at
+<code>build/release/Arcane-Forge-Studio-macOS-v&lt;version&gt;.dmg</code></li>
+</ul>
+<h2>Publishing Checklist</h2>
+<p>Use this checklist before publishing a release:</p>
+<ol>
+<li>Bump the app version in <code>pubspec.yaml</code>.</li>
+<li>If needed, update <code>version</code> in <code>utils/opencode_sidecar_manifest.json</code>.</li>
+<li>Run local validation:
+<code>dart analyze lib/screens/development/coding_agent test</code></li>
+<li>Run targeted sidecar tests:
+<code>flutter test test/opencode_server_manager_test.dart test/coding_agent_config_service_test.dart test/game_agent_skill_service_test.dart test/coding_agent_screen_widget_test.dart</code>
+and <code>python3 -m unittest discover -s utils/tests -v</code> for skill packaging.</li>
+<li>Build the desktop artifact for the platform you are releasing.</li>
+<li>Run <code>python3 utils/opencode_sidecar.py &lt;platform&gt;</code> to stage the sidecar.</li>
+<li>Run the matching packaging script from <code>utils/</code>.</li>
+<li>Inspect the packaged artifact and confirm the sidecar exists:<ul>
+<li>Windows: <code>opencode_sidecar/manifest.json</code> and <code>opencode.exe</code></li>
+<li>macOS: <code>Contents/Resources/opencode_sidecar/manifest.json</code> and <code>opencode</code></li>
+<li>Both: <code>skill-manifest.json</code> and the full <code>skills/arcane-forge-game-agent/</code>
+directory; retain the recorded source commit for rebuilds.</li>
+</ul>
+</li>
+<li>Smoke-test on a machine without a system <code>opencode</code> installed.</li>
+<li>Publish the artifact to GitHub Releases.</li>
+</ol>
+<h2>Contributor Notes</h2>
+<ul>
+<li>The app-managed OpenCode config is generated at runtime by Arcane Forge and is
+not stored in workspace <code>.opencode</code> folders.</li>
+<li>Packaging the sidecar is not the same as shipping the OpenCode desktop app.
+We bundle the standalone CLI used by <code>opencode serve</code>.</li>
+<li>Windows sidecar packaging is already in place even though the embedded
+Windows UI remains separately gated.</li>
+<li>If the sidecar helper cannot find local build output and cannot download the
+pinned asset, packaging should fail fast instead of silently creating a
+sidecar-less release.</li>
+</ul>
+</main></body></html>
