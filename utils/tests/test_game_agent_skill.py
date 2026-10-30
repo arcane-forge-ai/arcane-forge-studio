@@ -218,7 +218,8 @@ class SkillBundleTests(unittest.TestCase):
                     with patch.object(module, "copy_update_assets"):
                         self.assertEqual(module.main(), 0)
                 else:
-                    with patch.object(module, "get_dmg_size", return_value="1 MB"):
+                    with patch.object(module, "get_dmg_size", return_value="1 MB"), \
+                         patch.object(module, "sign_and_verify_app"):
                         self.assertEqual(module.main(), 0)
                 self.assertEqual(stage.call_args.args[1], COMMIT)
                 self.assertEqual(calls, ["stage", "copy"])

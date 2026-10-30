@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from opencode_sidecar import RELEASE_DEPS_SIDECAR_DIR, verify_staged_sidecar
@@ -53,6 +54,38 @@ def copy_opencode_sidecar(app_path: Path) -> None:
     print(f"Bundled OpenCode sidecar from {RELEASE_DEPS_SIDECAR_DIR} -> {sidecar_dir}")
 
 
+def sign_and_verify_app(app_path: Path) -> None:
+    """Reseal resources after bundling without replacing nested code signatures."""
+    try:
+        signature = subprocess.run(
+            ["codesign", "--display", "--verbose=2", str(app_path)],
+            check=True, capture_output=True, text=True,
+        )
+        identity = os.environ.get("MACOS_CODESIGN_IDENTITY", "").strip()
+        if not identity:
+            if "Signature=adhoc" not in signature.stderr:
+                raise SystemExit(
+                    "The app has a non-ad-hoc signature. Set MACOS_CODESIGN_IDENTITY "
+                    "to its signing identity before packaging."
+                )
+            identity = "-"
+        subprocess.run(
+            [
+                "codesign", "--force", "--sign", identity,
+                "--preserve-metadata=identifier,entitlements,requirements,flags,runtime",
+                str(app_path),
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["codesign", "--verify", "--deep", "--strict", str(app_path)],
+            check=True, capture_output=True, text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(f"Failed to sign or verify the macOS app: {exc.stderr}") from exc
+    print(f"Re-signed and verified app bundle: {app_path}")
+
+
 def create_dmg(app_path: Path, version: str) -> Path:
     RELEASE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     dmg_name = ASSET_NAME_TEMPLATE.format(version=version) + ".dmg"
@@ -63,23 +96,32 @@ def create_dmg(app_path: Path, version: str) -> Path:
         print(f"Removed existing DMG: {dmg_path}")
 
     print(f"Creating DMG: {dmg_path}")
-    try:
-        subprocess.run(
-            [
-                "hdiutil",
-                "create",
-                "-volname", "Arcane Forge Studio",
-                "-srcfolder", str(app_path),
-                "-ov",
-                "-format", "UDZO",
-                str(dmg_path)
-            ],
-            check=True,
-            capture_output=True,
-            text=True
-        )
-    except subprocess.CalledProcessError as e:
-        raise SystemExit(f"Failed to create DMG: {e.stderr}")
+    with tempfile.TemporaryDirectory(prefix="arcane-forge-dmg-") as temp_dir:
+        staging_dir = Path(temp_dir)
+        staged_app_path = staging_dir / APP_NAME
+        applications_link = staging_dir / "Applications"
+
+        shutil.copytree(app_path, staged_app_path, symlinks=True)
+        applications_link.symlink_to("/Applications")
+        print(f"Prepared DMG staging directory at: {staging_dir}")
+
+        try:
+            subprocess.run(
+                [
+                    "hdiutil",
+                    "create",
+                    "-volname", "Arcane Forge Studio",
+                    "-srcfolder", str(staging_dir),
+                    "-ov",
+                    "-format", "UDZO",
+                    str(dmg_path)
+                ],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise SystemExit(f"Failed to create DMG: {e.stderr}")
 
     return dmg_path
 
@@ -106,6 +148,7 @@ def main() -> int:
     except SkillBundleError as exc:
         raise SystemExit(f"Skill packaging failed: {exc}") from exc
     copy_opencode_sidecar(app_path)
+    sign_and_verify_app(app_path)
 
     dmg_path = create_dmg(app_path, version)
     dmg_size = get_dmg_size(dmg_path)
